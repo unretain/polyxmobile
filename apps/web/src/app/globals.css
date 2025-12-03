@@ -1,0 +1,485 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 142 76% 36%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 50.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 142 76% 36%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* Custom utilities */
+.text-up {
+  color: #22c55e;
+}
+
+.text-down {
+  color: #ef4444;
+}
+
+.bg-up {
+  background-color: #22c55e;
+}
+
+.bg-down {
+  background-color: #ef4444;
+}
+
+/* iOS-style 3D cylinder/slot machine text rotation */
+.ios-cylinder {
+  position: relative;
+  width: 80px;
+  height: 24px;
+  perspective: 300px;
+  perspective-origin: 50% 50%;
+}
+
+.ios-cylinder-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.group:hover .ios-cylinder-inner {
+  transform: rotateX(-90deg);
+}
+
+.ios-cylinder-face {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Front face - "The docs" - visible by default */
+.ios-cylinder-front {
+  transform: translateZ(12px);
+}
+
+/* Bottom face - "Click me" - rotates up into view on hover */
+.ios-cylinder-bottom {
+  transform: rotateX(90deg) translateZ(12px);
+}
+
+/* Star.fun style animated line */
+.animated-line {
+  position: relative;
+  overflow: hidden;
+}
+
+.animated-line::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  animation: line-sweep 3s ease-in-out infinite;
+}
+
+@keyframes line-sweep {
+  0% {
+    left: -100%;
+  }
+  50%, 100% {
+    left: 100%;
+  }
+}
+
+/* Glow pulse animation */
+.glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(34, 197, 94, 0.6);
+  }
+}
+
+/* Border glow animation */
+.border-glow {
+  position: relative;
+}
+
+.border-glow::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: linear-gradient(45deg, transparent, rgba(34, 197, 94, 0.5), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: -1;
+}
+
+.border-glow:hover::before {
+  opacity: 1;
+  animation: border-rotate 2s linear infinite;
+}
+
+@keyframes border-rotate {
+  0% {
+    background: linear-gradient(0deg, transparent, rgba(34, 197, 94, 0.5), transparent);
+  }
+  25% {
+    background: linear-gradient(90deg, transparent, rgba(34, 197, 94, 0.5), transparent);
+  }
+  50% {
+    background: linear-gradient(180deg, transparent, rgba(34, 197, 94, 0.5), transparent);
+  }
+  75% {
+    background: linear-gradient(270deg, transparent, rgba(34, 197, 94, 0.5), transparent);
+  }
+  100% {
+    background: linear-gradient(360deg, transparent, rgba(34, 197, 94, 0.5), transparent);
+  }
+}
+
+/* Shimmer effect for skeleton loading */
+.shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+  animation: shimmer 1.5s infinite ease-out;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Float animation */
+.float {
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Star.fun style pulse line animation - "Apply here" */
+.animate-pulse-line {
+  animation: pulse-line 2s ease-in-out infinite;
+}
+
+@keyframes pulse-line {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(300%);
+    opacity: 0;
+  }
+}
+
+/* Boost.gg style animations */
+
+/* Neon glow effect */
+.neon-glow {
+  box-shadow: 0 0 5px rgba(0, 255, 30, 0.3),
+              0 0 10px rgba(0, 255, 30, 0.2),
+              0 0 20px rgba(0, 255, 30, 0.1);
+}
+
+.neon-glow-hover:hover {
+  box-shadow: 0 0 10px rgba(0, 255, 30, 0.5),
+              0 0 20px rgba(0, 255, 30, 0.3),
+              0 0 40px rgba(0, 255, 30, 0.2);
+}
+
+/* Boost.gg text glow */
+.text-glow {
+  text-shadow: 0 0 10px rgba(0, 255, 30, 0.5),
+               0 0 20px rgba(0, 255, 30, 0.3);
+}
+
+/* Boost.gg card shine effect on hover */
+.card-shine {
+  position: relative;
+  overflow: hidden;
+}
+
+.card-shine::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.05),
+    transparent
+  );
+  transition: left 0.5s ease;
+  pointer-events: none;
+}
+
+.card-shine:hover::before {
+  left: 100%;
+}
+
+/* Boost.gg grid background */
+.boost-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Boost.gg gradient text */
+.gradient-text-boost {
+  background: linear-gradient(135deg, #00ff1e 0%, #00cc18 50%, #00ff1e 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Boost.gg subtle border animation */
+.border-animate {
+  position: relative;
+}
+
+.border-animate::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    var(--border-angle, 0deg),
+    transparent 40%,
+    rgba(0, 255, 30, 0.3) 50%,
+    transparent 60%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: border-spin 4s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes border-spin {
+  to {
+    --border-angle: 360deg;
+  }
+}
+
+@property --border-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+/* Boost.gg smooth scale on hover */
+.scale-hover {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.scale-hover:hover {
+  transform: scale(1.02);
+}
+
+/* Boost.gg status dot pulse */
+.status-pulse {
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+@keyframes status-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(0, 255, 30, 0.4);
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 0 0 4px rgba(0, 255, 30, 0);
+  }
+}
+
+/* Boost.gg button press effect */
+.btn-press {
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.btn-press:active {
+  transform: scale(0.98);
+}
+
+/* Boost.gg fade in animation */
+.fade-in-up {
+  animation: fade-in-up 0.6s ease-out forwards;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Stagger children animations */
+.stagger-children > *:nth-child(1) { animation-delay: 0.1s; }
+.stagger-children > *:nth-child(2) { animation-delay: 0.2s; }
+.stagger-children > *:nth-child(3) { animation-delay: 0.3s; }
+.stagger-children > *:nth-child(4) { animation-delay: 0.4s; }
+.stagger-children > *:nth-child(5) { animation-delay: 0.5s; }
+
+/* Star.fun style grid */
+.star-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+/* Conic gradient for swirling effect */
+.bg-gradient-conic {
+  background: conic-gradient(var(--tw-gradient-stops));
+}
+
+/* Slow spin animation */
+.animate-slow-spin {
+  animation: slow-spin 20s linear infinite;
+}
+
+@keyframes slow-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Star.fun coral accent glow */
+.coral-glow {
+  box-shadow: 0 0 5px rgba(255, 107, 74, 0.3),
+              0 0 10px rgba(255, 107, 74, 0.2),
+              0 0 20px rgba(255, 107, 74, 0.1);
+}
+
+.coral-glow-hover:hover {
+  box-shadow: 0 0 10px rgba(255, 107, 74, 0.5),
+              0 0 20px rgba(255, 107, 74, 0.3),
+              0 0 40px rgba(255, 107, 74, 0.2);
+}
+
+/* Star.fun text glow coral */
+.text-glow-coral {
+  text-shadow: 0 0 10px rgba(255, 107, 74, 0.5),
+               0 0 20px rgba(255, 107, 74, 0.3);
+}
+
+/* Star.fun gradient text coral */
+.gradient-text-coral {
+  background: linear-gradient(135deg, #FF6B4A 0%, #FF8F6B 50%, #FF6B4A 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Star.fun status pulse coral */
+.status-pulse-coral {
+  animation: status-pulse-coral 2s ease-in-out infinite;
+}
+
+@keyframes status-pulse-coral {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(255, 107, 74, 0.4);
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 0 0 4px rgba(255, 107, 74, 0);
+  }
+}

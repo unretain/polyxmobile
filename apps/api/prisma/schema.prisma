@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Token {
+  id             String   @id @default(cuid())
+  address        String   @unique
+  symbol         String
+  name           String
+  decimals       Int
+  logoUri        String?
+  description    String?
+  website        String?
+  twitter        String?
+  telegram       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Cached market data
+  price          Float?
+  priceChange24h Float?
+  volume24h      Float?
+  marketCap      Float?
+  liquidity      Float?
+
+  ohlcv OHLCV[]
+
+  @@index([symbol])
+  @@index([marketCap])
+  @@index([volume24h])
+  @@index([createdAt])
+}
+
+model OHLCV {
+  id        String   @id @default(cuid())
+  tokenId   String
+  token     Token    @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+
+  timestamp DateTime
+  timeframe String   // "1m", "5m", "15m", "1h", "4h", "1d"
+  open      Float
+  high      Float
+  low       Float
+  close     Float
+  volume    Float
+
+  @@unique([tokenId, timestamp, timeframe])
+  @@index([tokenId, timeframe, timestamp])
+}
+
+model Watchlist {
+  id        String   @id @default(cuid())
+  sessionId String
+  tokenId   String
+  createdAt DateTime @default(now())
+
+  @@unique([sessionId, tokenId])
+  @@index([sessionId])
+}
