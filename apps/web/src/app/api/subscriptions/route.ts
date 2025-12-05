@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // Pricing tiers
-export const PRICING = {
+const PRICING = {
   FREE: {
     name: "Free",
     price: 0,

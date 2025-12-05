@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { Suspense, useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Copy, Check, Code, ExternalLink, Zap, Box, Palette, Settings, ChevronRight, Sun, Moon, Play, Pause, Sparkles, Building, Crown, X, Loader2 } from "lucide-react";
@@ -78,7 +78,7 @@ function CodeBlock({ code, language = "html" }: { code: string; language?: strin
 }
 
 // Feature card component
-function FeatureCard({ icon: Icon, title, description, isDark }: { icon: React.ElementType; title: string; description: string; isDark: boolean }) {
+function FeatureCard({ icon: Icon, title, description, isDark }: { icon: React.ComponentType<{ className?: string }>; title: string; description: string; isDark: boolean }) {
   return (
     <div className={`p-6 border transition-all hover:scale-[1.02] ${
       isDark ? 'bg-white/5 border-white/10 hover:border-[#FF6B4A]/30' : 'bg-black/5 border-black/10 hover:border-[#FF6B4A]/30'
@@ -132,7 +132,7 @@ function ApiEndpoint({ method, path, description, params, isDark }: {
   );
 }
 
-export default function SolutionsPage() {
+function SolutionsPageContent() {
   const { isDark, toggleTheme } = useThemeStore();
   const searchParams = useSearchParams();
   const [selectedToken, setSelectedToken] = useState(DEMO_TOKENS[0]);
@@ -940,5 +940,18 @@ export default function SolutionsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// Wrap in Suspense for useSearchParams
+export default function SolutionsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#FF6B4A] border-t-transparent" />
+      </div>
+    }>
+      <SolutionsPageContent />
+    </Suspense>
   );
 }

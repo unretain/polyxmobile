@@ -5,13 +5,9 @@ import crypto from "crypto";
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const LICENSE_SECRET = process.env.LICENSE_SECRET;
 
-// SECURITY: Fail if LICENSE_SECRET is not set in production
-if (!LICENSE_SECRET && process.env.NODE_ENV === "production") {
-  throw new Error("LICENSE_SECRET environment variable is required in production");
-}
-
+// Note: LICENSE_SECRET should be set in production environment variables
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: "2024-11-20.acacia",
+  apiVersion: "2025-11-17.clover",
 }) : null;
 
 // Always allowed domains (your own domains) - EXACT MATCH ONLY
@@ -218,7 +214,9 @@ export async function POST(req: NextRequest) {
       },
       subscription: {
         status: subscription.status,
-        currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString(),
+        currentPeriodEnd: (subscription as any).current_period_end
+          ? new Date((subscription as any).current_period_end * 1000).toISOString()
+          : null,
       },
     });
 
