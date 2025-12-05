@@ -45,3 +45,20 @@ coverage
 *.log
 nul
 apps/web/nul
+
+# Claude Code local settings (may contain permissions with secrets)
+.claude/settings.local.json
+
+# Video files
+*.mp4
+*.mov
+*.avi
+
+# Image files in root (screenshots/temp)
+/image*.png
+/image*.jpg
+Screen\ Recording*
+
+# Scripts with potential secrets
+run-prisma.*
+setup-stripe.js

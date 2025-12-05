@@ -17,6 +17,7 @@ import {
 import { formatPrice, formatNumber, formatPercent, shortenAddress, cn } from "@/lib/utils";
 import { useTokenStore } from "@/stores/tokenStore";
 import { usePulseStore, type OHLCV } from "@/stores/pulseStore";
+import { useThemeStore } from "@/stores/themeStore";
 import { Chart3D } from "@/components/charts/Chart3D";
 import { Line3DChart } from "@/components/charts/Line3DChart";
 import { ChartControls } from "@/components/charts/ChartControls";
@@ -173,7 +174,7 @@ function formatTokenAmount(amount: string | number): string {
 }
 
 // Trades Table Component
-function TradesTable({ trades, isLoading, symbol }: { trades: Trade[]; isLoading: boolean; symbol: string }) {
+function TradesTable({ trades, isLoading, symbol, isDark = true }: { trades: Trade[]; isLoading: boolean; symbol: string; isDark?: boolean }) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-48">
@@ -184,7 +185,7 @@ function TradesTable({ trades, isLoading, symbol }: { trades: Trade[]; isLoading
 
   if (trades.length === 0) {
     return (
-      <div className="flex items-center justify-center h-48 text-white/50 text-sm">
+      <div className={`flex items-center justify-center h-48 text-sm ${isDark ? 'text-white/50' : 'text-black/50'}`}>
         No trades found
       </div>
     );
@@ -194,7 +195,7 @@ function TradesTable({ trades, isLoading, symbol }: { trades: Trade[]; isLoading
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-white/10 text-left text-white/50">
+          <tr className={`border-b text-left ${isDark ? 'border-white/10 text-white/50' : 'border-black/10 text-black/50'}`}>
             <th className="pb-2 pr-4 font-medium">Time</th>
             <th className="pb-2 pr-4 font-medium">Type</th>
             <th className="pb-2 pr-4 font-medium">Amount</th>
@@ -206,8 +207,8 @@ function TradesTable({ trades, isLoading, symbol }: { trades: Trade[]; isLoading
         </thead>
         <tbody>
           {trades.map((trade, i) => (
-            <tr key={trade.txHash + i} className="border-b border-white/5 hover:bg-white/5">
-              <td className="py-2 pr-4 text-white/50 text-xs">
+            <tr key={trade.txHash + i} className={`border-b ${isDark ? 'border-white/5 hover:bg-white/5' : 'border-black/5 hover:bg-black/5'}`}>
+              <td className={`py-2 pr-4 text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>
                 {new Date(trade.timestamp).toLocaleTimeString()}
               </td>
               <td className="py-2 pr-4">
@@ -219,15 +220,15 @@ function TradesTable({ trades, isLoading, symbol }: { trades: Trade[]; isLoading
                 </span>
               </td>
               <td className="py-2 pr-4 font-mono text-xs">
-                <span className="font-medium text-white">{formatTokenAmount(trade.tokenAmount || "0")}</span>
-                <span className="text-white/50 ml-1">{trade.tokenSymbol || symbol}</span>
+                <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{formatTokenAmount(trade.tokenAmount || "0")}</span>
+                <span className={`ml-1 ${isDark ? 'text-white/50' : 'text-black/50'}`}>{trade.tokenSymbol || symbol}</span>
               </td>
-              <td className="py-2 pr-4 font-mono text-xs text-white/50">
+              <td className={`py-2 pr-4 font-mono text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>
                 ${trade.priceUsd?.toFixed(8) || "—"}
               </td>
               <td className="py-2 pr-4 font-mono text-xs">
-                <span className="font-medium text-white">${trade.totalValueUsd?.toFixed(2) || "0.00"}</span>
-                <span className="text-white/50 ml-1">
+                <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>${trade.totalValueUsd?.toFixed(2) || "0.00"}</span>
+                <span className={`ml-1 ${isDark ? 'text-white/50' : 'text-black/50'}`}>
                   ({trade.otherAmount ? formatTokenAmount(trade.otherAmount) : "—"} {trade.otherSymbol || "SOL"})
                 </span>
               </td>
@@ -246,7 +247,7 @@ function TradesTable({ trades, isLoading, symbol }: { trades: Trade[]; isLoading
                   href={`https://solscan.io/tx/${trade.txHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-white/50 hover:text-white"
+                  className={isDark ? 'text-white/50 hover:text-white' : 'text-black/50 hover:text-black'}
                 >
                   <ExternalLink className="h-4 w-4" />
                 </a>
@@ -263,11 +264,13 @@ function TradesTable({ trades, isLoading, symbol }: { trades: Trade[]; isLoading
 function HoldersSidebar({
   stats,
   topHolders,
-  isLoading
+  isLoading,
+  isDark = true
 }: {
   stats: HolderStats | null;
   topHolders: TopHolder[];
   isLoading: boolean;
+  isDark?: boolean;
 }) {
   if (isLoading) {
     return (
@@ -282,25 +285,25 @@ function HoldersSidebar({
       {/* Holder Stats */}
       <div className="space-y-3">
         <div className="flex justify-between items-center">
-          <span className="text-white/50 text-sm">Total Holders</span>
-          <span className="font-bold text-lg text-white">{stats?.totalHolders?.toLocaleString() || "—"}</span>
+          <span className={`text-sm ${isDark ? 'text-white/50' : 'text-black/50'}`}>Total Holders</span>
+          <span className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>{stats?.totalHolders?.toLocaleString() || "—"}</span>
         </div>
 
         {stats?.holderChange && Object.keys(stats.holderChange).length > 0 && (
           <div className="space-y-2">
-            <span className="text-xs text-white/50">Holder Change</span>
+            <span className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Holder Change</span>
             <div className="grid grid-cols-2 gap-2 text-xs">
               {stats.holderChange["1h"] && (
-                <div className="flex justify-between bg-white/5 px-2 py-1">
-                  <span className="text-white/50">1h</span>
+                <div className={`flex justify-between px-2 py-1 ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
+                  <span className={isDark ? 'text-white/50' : 'text-black/50'}>1h</span>
                   <span className={stats.holderChange["1h"].change >= 0 ? "text-up" : "text-down"}>
                     {stats.holderChange["1h"].change >= 0 ? "+" : ""}{stats.holderChange["1h"].change}
                   </span>
                 </div>
               )}
               {stats.holderChange["24h"] && (
-                <div className="flex justify-between bg-white/5 px-2 py-1">
-                  <span className="text-white/50">24h</span>
+                <div className={`flex justify-between px-2 py-1 ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
+                  <span className={isDark ? 'text-white/50' : 'text-black/50'}>24h</span>
                   <span className={stats.holderChange["24h"].change >= 0 ? "text-up" : "text-down"}>
                     {stats.holderChange["24h"].change >= 0 ? "+" : ""}{stats.holderChange["24h"].change}
                   </span>
@@ -314,12 +317,12 @@ function HoldersSidebar({
       {/* Top Holders */}
       {topHolders.length > 0 && (
         <div className="space-y-2">
-          <h4 className="text-sm font-medium text-white/50">Top Holders</h4>
+          <h4 className={`text-sm font-medium ${isDark ? 'text-white/50' : 'text-black/50'}`}>Top Holders</h4>
           <div className="space-y-1">
             {topHolders.slice(0, 10).map((holder, i) => (
-              <div key={holder.address} className="flex items-center justify-between text-xs py-1.5 border-b border-white/10">
+              <div key={holder.address} className={`flex items-center justify-between text-xs py-1.5 border-b ${isDark ? 'border-white/10' : 'border-black/10'}`}>
                 <div className="flex items-center gap-2">
-                  <span className="text-white/50 w-4">{i + 1}.</span>
+                  <span className={`w-4 ${isDark ? 'text-white/50' : 'text-black/50'}`}>{i + 1}.</span>
                   <a
                     href={`https://solscan.io/account/${holder.address}`}
                     target="_blank"
@@ -329,7 +332,7 @@ function HoldersSidebar({
                     {shortenAddress(holder.address, 4)}
                   </a>
                 </div>
-                <span className="font-medium text-white">{holder.percentOfSupply?.toFixed(2)}%</span>
+                <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{holder.percentOfSupply?.toFixed(2)}%</span>
               </div>
             ))}
           </div>
@@ -342,6 +345,7 @@ function HoldersSidebar({
 export default function TokenPage() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const { isDark } = useThemeStore();
   const address = params.address as string;
   const fromPulse = searchParams.get("source") === "pulse";
   const [pulseToken, setPulseToken] = useState<PulseTokenData | null>(null);
@@ -640,17 +644,21 @@ export default function TokenPage() {
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between flex-shrink-0 px-4 py-3 bg-white/5 backdrop-blur-md border border-white/10">
+      <div className={`flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between flex-shrink-0 px-4 py-3 backdrop-blur-md border ${
+        isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
+      }`}>
         <div className="flex items-start gap-4">
           <Link
             href={fromPulse ? "/pulse" : "/dashboard"}
-            className="p-2 transition-colors hover:bg-white/10 text-white"
+            className={`p-2 transition-colors ${isDark ? 'hover:bg-white/10 text-white' : 'hover:bg-black/10 text-black'}`}
           >
             <ArrowLeft className="h-5 w-5" />
           </Link>
 
           <div className="flex items-center gap-4">
-            <div className="relative h-12 w-12 overflow-hidden rounded-full bg-white/5 ring-2 ring-white/10">
+            <div className={`relative h-12 w-12 overflow-hidden rounded-full ring-2 ${
+              isDark ? 'bg-white/5 ring-white/10' : 'bg-black/5 ring-black/10'
+            }`}>
               {token?.logoUri ? (
                 <Image
                   src={token.logoUri}
@@ -660,7 +668,9 @@ export default function TokenPage() {
                   unoptimized
                 />
               ) : (
-                <div className="flex h-full w-full items-center justify-center text-xl font-bold bg-gradient-to-br from-[#FF6B4A]/20 to-white/5 text-white/40">
+                <div className={`flex h-full w-full items-center justify-center text-xl font-bold bg-gradient-to-br from-[#FF6B4A]/20 ${
+                  isDark ? 'to-white/5 text-white/40' : 'to-black/5 text-black/40'
+                }`}>
                   {token?.symbol?.charAt(0) ?? "?"}
                 </div>
               )}
@@ -668,8 +678,8 @@ export default function TokenPage() {
 
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold text-white">{token?.symbol ?? "Loading..."}</h1>
-                <span className="bg-white/10 px-2 py-0.5 text-xs text-white/60">
+                <h1 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{token?.symbol ?? "Loading..."}</h1>
+                <span className={`px-2 py-0.5 text-xs ${isDark ? 'bg-white/10 text-white/60' : 'bg-black/10 text-black/60'}`}>
                   {token?.name}
                 </span>
                 {fromPulse && (
@@ -682,7 +692,9 @@ export default function TokenPage() {
               <div className="mt-1 flex items-center gap-2">
                 <button
                   onClick={handleCopyAddress}
-                  className="flex items-center gap-1 text-xs text-white/50 transition-colors hover:text-white"
+                  className={`flex items-center gap-1 text-xs transition-colors ${
+                    isDark ? 'text-white/50 hover:text-white' : 'text-black/50 hover:text-black'
+                  }`}
                 >
                   {shortenAddress(address, 6)}
                   <Copy className="h-3 w-3" />
@@ -692,7 +704,9 @@ export default function TokenPage() {
                   href={`https://solscan.io/token/${address}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-xs text-white/50 transition-colors hover:text-white"
+                  className={`flex items-center gap-1 text-xs transition-colors ${
+                    isDark ? 'text-white/50 hover:text-white' : 'text-black/50 hover:text-black'
+                  }`}
                 >
                   Solscan <ExternalLink className="h-3 w-3" />
                 </a>
@@ -701,7 +715,9 @@ export default function TokenPage() {
                   href={`https://pump.fun/${address}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-xs text-white/50 transition-colors hover:text-white"
+                  className={`flex items-center gap-1 text-xs transition-colors ${
+                    isDark ? 'text-white/50 hover:text-white' : 'text-black/50 hover:text-black'
+                  }`}
                 >
                   pump.fun <ExternalLink className="h-3 w-3" />
                 </a>
@@ -716,7 +732,7 @@ export default function TokenPage() {
               href={token.website.startsWith("http") ? token.website : `https://${token.website}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+              className={`p-2 transition-colors ${isDark ? 'text-white/50 hover:bg-white/10 hover:text-white' : 'text-black/50 hover:bg-black/10 hover:text-black'}`}
               title="Website"
             >
               <Globe className="h-5 w-5" />
@@ -727,14 +743,14 @@ export default function TokenPage() {
               href={token.twitter.startsWith("http") ? token.twitter : `https://twitter.com/${token.twitter.replace("@", "")}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="p-2 text-white/50 transition-colors hover:bg-white/10 hover:text-white"
+              className={`p-2 transition-colors ${isDark ? 'text-white/50 hover:bg-white/10 hover:text-white' : 'text-black/50 hover:bg-black/10 hover:text-black'}`}
               title="Twitter"
             >
               <Twitter className="h-5 w-5" />
             </a>
           )}
           {!token?.website && !token?.twitter && (
-            <span className="text-xs text-white/50">No social links</span>
+            <span className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>No social links</span>
           )}
         </div>
       </div>
@@ -745,35 +761,35 @@ export default function TokenPage() {
         <div className="flex-1 flex flex-col gap-4 min-w-0 overflow-hidden">
           {/* Stats Row */}
           <div className="grid gap-3 grid-cols-4 flex-shrink-0">
-            <div className="border border-white/10 bg-white/5 backdrop-blur-md p-3">
-              <p className="text-xs text-white/50">Price</p>
-              <p className="text-lg font-bold text-white">${formatPrice(token?.price ?? 0)}</p>
+            <div className={`border backdrop-blur-md p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'}`}>
+              <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Price</p>
+              <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${formatPrice(token?.price ?? 0)}</p>
               <div className={cn("flex items-center gap-1 text-xs font-medium", isPositive ? "text-up" : "text-down")}>
                 {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
                 {formatPercent(token?.priceChange24h ?? 0)}
               </div>
             </div>
 
-            <div className="border border-white/10 bg-white/5 backdrop-blur-md p-3">
-              <p className="text-xs text-white/50">Market Cap</p>
-              <p className="text-lg font-bold text-white">${formatNumber(token?.marketCap ?? 0)}</p>
+            <div className={`border backdrop-blur-md p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'}`}>
+              <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Market Cap</p>
+              <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${formatNumber(token?.marketCap ?? 0)}</p>
             </div>
 
-            <div className="border border-white/10 bg-white/5 backdrop-blur-md p-3">
-              <p className="text-xs text-white/50">24h Volume</p>
-              <p className="text-lg font-bold text-white">${formatNumber(token?.volume24h ?? 0)}</p>
+            <div className={`border backdrop-blur-md p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'}`}>
+              <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>24h Volume</p>
+              <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${formatNumber(token?.volume24h ?? 0)}</p>
             </div>
 
-            <div className="border border-white/10 bg-white/5 backdrop-blur-md p-3">
-              <p className="text-xs text-white/50">Liquidity</p>
-              <p className="text-lg font-bold text-white">${formatNumber(token?.liquidity ?? 0)}</p>
+            <div className={`border backdrop-blur-md p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'}`}>
+              <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Liquidity</p>
+              <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${formatNumber(token?.liquidity ?? 0)}</p>
             </div>
           </div>
 
           {/* Chart Controls */}
           <div className="flex items-center justify-between gap-4 flex-shrink-0">
             {/* Chart Type Toggle */}
-            <div className="flex items-center gap-1 bg-white/5 border border-white/10 p-1">
+            <div className={`flex items-center gap-1 border p-1 ${isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}>
               <button
                 onClick={() => {
                   setChartType("line");
@@ -786,7 +802,7 @@ export default function TokenPage() {
                   "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors",
                   chartType === "line"
                     ? "bg-[#FF6B4A] text-white"
-                    : "text-white/60 hover:text-white"
+                    : isDark ? "text-white/60 hover:text-white" : "text-black/60 hover:text-black"
                 )}
               >
                 <LineChart className="h-4 w-4" />
@@ -804,7 +820,7 @@ export default function TokenPage() {
                   "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors",
                   chartType === "candle"
                     ? "bg-[#FF6B4A] text-white"
-                    : "text-white/60 hover:text-white"
+                    : isDark ? "text-white/60 hover:text-white" : "text-black/60 hover:text-black"
                 )}
               >
                 <BarChart3 className="h-4 w-4" />
@@ -823,7 +839,7 @@ export default function TokenPage() {
 
           {/* 3D Chart */}
           {/* Pass actual token price to ensure chart header shows correct current price */}
-          <div className="flex-shrink-0 h-[400px] border border-white/10 overflow-hidden">
+          <div className={`flex-shrink-0 h-[400px] border overflow-hidden ${isDark ? 'border-white/10' : 'border-black/10'}`}>
             {chartType === "line" ? (
               <Line3DChart
                 data={ohlcv}
@@ -845,22 +861,26 @@ export default function TokenPage() {
 
           {/* Pulse tokens: Show Trades Table | Dashboard tokens: Show Market Stats */}
           {fromPulse ? (
-            <div className="flex-1 min-h-0 border border-white/10 bg-white/5 backdrop-blur-md p-4 overflow-hidden flex flex-col">
+            <div className={`flex-1 min-h-0 border backdrop-blur-md p-4 overflow-hidden flex flex-col ${
+              isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'
+            }`}>
               <div className="flex items-center justify-between mb-3 flex-shrink-0">
-                <h3 className="font-semibold text-white">Recent Trades</h3>
-                <span className="text-xs text-white/50">{trades.length} trades</span>
+                <h3 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Recent Trades</h3>
+                <span className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>{trades.length} trades</span>
               </div>
               <div className="flex-1 overflow-auto">
-                <TradesTable trades={trades} isLoading={tradesLoading} symbol={token?.symbol || "TOKEN"} />
+                <TradesTable trades={trades} isLoading={tradesLoading} symbol={token?.symbol || "TOKEN"} isDark={isDark} />
               </div>
             </div>
           ) : (
-            <div className="flex-1 min-h-0 border border-white/10 bg-white/5 backdrop-blur-md p-4 overflow-hidden">
-              <h3 className="font-semibold text-white mb-4">Market Statistics</h3>
+            <div className={`flex-1 min-h-0 border backdrop-blur-md p-4 overflow-hidden ${
+              isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'
+            }`}>
+              <h3 className={`font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Market Statistics</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <p className="text-xs text-white/50">Market Cap</p>
-                  <p className="text-xl font-bold text-white">${formatNumber(token?.marketCap ?? 0)}</p>
+                  <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Market Cap</p>
+                  <p className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${formatNumber(token?.marketCap ?? 0)}</p>
                   <div className={cn("flex items-center gap-1 text-xs font-medium", isPositive ? "text-up" : "text-down")}>
                     {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
                     {formatPercent(token?.priceChange24h ?? 0)}
@@ -868,8 +888,8 @@ export default function TokenPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <p className="text-xs text-white/50">Volume (24h)</p>
-                  <p className="text-xl font-bold text-white">${formatNumber(token?.volume24h ?? 0)}</p>
+                  <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Volume (24h)</p>
+                  <p className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${formatNumber(token?.volume24h ?? 0)}</p>
                   <div className={cn("flex items-center gap-1 text-xs font-medium", isPositive ? "text-up" : "text-down")}>
                     {isPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
                     {formatPercent(token?.priceChange24h ?? 0)}
@@ -877,8 +897,8 @@ export default function TokenPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <p className="text-xs text-white/50">Fully Diluted Valuation</p>
-                  <p className="text-lg font-bold text-white">
+                  <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Fully Diluted Valuation</p>
+                  <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                     ${formatNumber(
                       supplyData?.totalSupply && token?.price
                         ? token.price * supplyData.totalSupply
@@ -888,8 +908,8 @@ export default function TokenPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <p className="text-xs text-white/50">Vol/Mkt Cap (24h)</p>
-                  <p className="text-lg font-bold text-white">
+                  <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Vol/Mkt Cap (24h)</p>
+                  <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                     {token?.marketCap && token?.volume24h
                       ? ((token.volume24h / token.marketCap) * 100).toFixed(2) + "%"
                       : "N/A"}
@@ -902,36 +922,40 @@ export default function TokenPage() {
 
         {/* Pulse tokens: Show Holder Stats | Dashboard tokens: Show Supply Stats */}
         {fromPulse ? (
-          <div className="w-64 flex-shrink-0 border border-white/10 bg-white/5 backdrop-blur-md p-4 overflow-auto">
-            <h3 className="font-semibold text-white mb-4">Holder Stats</h3>
-            <HoldersSidebar stats={holderStats} topHolders={topHolders} isLoading={holdersLoading} />
+          <div className={`w-64 flex-shrink-0 border backdrop-blur-md p-4 overflow-auto ${
+            isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'
+          }`}>
+            <h3 className={`font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Holder Stats</h3>
+            <HoldersSidebar stats={holderStats} topHolders={topHolders} isLoading={holdersLoading} isDark={isDark} />
           </div>
         ) : (
-          <div className="w-64 flex-shrink-0 border border-white/10 bg-white/5 backdrop-blur-md p-4 overflow-auto">
-            <h3 className="font-semibold text-white mb-4">Supply Info</h3>
+          <div className={`w-64 flex-shrink-0 border backdrop-blur-md p-4 overflow-auto ${
+            isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'
+          }`}>
+            <h3 className={`font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Supply Info</h3>
             <div className="space-y-4">
               <div className="space-y-1">
-                <p className="text-xs text-white/50">Total Supply</p>
-                <p className="text-lg font-bold text-white">
+                <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Total Supply</p>
+                <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                   {supplyData?.totalSupply ? formatNumber(supplyData.totalSupply) : "N/A"}
                 </p>
               </div>
 
               <div className="space-y-1">
-                <p className="text-xs text-white/50">Max Supply</p>
-                <p className="text-lg font-bold text-white">
+                <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Max Supply</p>
+                <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                   {supplyData?.maxSupply ? formatNumber(supplyData.maxSupply) : "No Cap"}
                 </p>
               </div>
 
               <div className="space-y-1">
-                <p className="text-xs text-white/50">Circulating Supply</p>
-                <p className="text-lg font-bold text-white">
+                <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Circulating Supply</p>
+                <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                   {supplyData?.circulatingSupply ? formatNumber(supplyData.circulatingSupply) : "N/A"}
                 </p>
                 {supplyData?.totalSupply && supplyData.totalSupply > 0 && supplyData.circulatingSupply && (
                   <div className="mt-2">
-                    <div className="h-2 w-full bg-white/10">
+                    <div className={`h-2 w-full ${isDark ? 'bg-white/10' : 'bg-black/10'}`}>
                       <div
                         className="h-full bg-[#FF6B4A]"
                         style={{
@@ -939,17 +963,17 @@ export default function TokenPage() {
                         }}
                       />
                     </div>
-                    <p className="mt-1 text-xs text-white/50">
+                    <p className={`mt-1 text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>
                       {((supplyData.circulatingSupply / supplyData.totalSupply) * 100).toFixed(1)}% of total
                     </p>
                   </div>
                 )}
               </div>
 
-              <div className="border-t border-white/10 pt-4 space-y-1">
-                <p className="text-xs text-white/50">DEX Liquidity</p>
-                <p className="text-lg font-bold text-white">${formatNumber(token?.liquidity ?? 0)}</p>
-                <p className="text-[10px] text-white/30">Solana DEX pools</p>
+              <div className={`border-t pt-4 space-y-1 ${isDark ? 'border-white/10' : 'border-black/10'}`}>
+                <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>DEX Liquidity</p>
+                <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${formatNumber(token?.liquidity ?? 0)}</p>
+                <p className={`text-[10px] ${isDark ? 'text-white/30' : 'text-black/30'}`}>Solana DEX pools</p>
               </div>
             </div>
           </div>

@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import { tokenRoutes } from "./routes/tokens";
 import { trendingRoutes } from "./routes/trending";
 import { pulseRoutes } from "./routes/pulse";
+import { ohlcvRoutes } from "./routes/ohlcv";
 import { setupWebSocket } from "./websocket";
 
 dotenv.config();
@@ -32,6 +33,7 @@ app.get("/health", (req, res) => {
 app.use("/api/tokens", tokenRoutes);
 app.use("/api/trending", trendingRoutes);
 app.use("/api/pulse", pulseRoutes);
+app.use("/api/ohlcv", ohlcvRoutes);
 
 // WebSocket setup
 setupWebSocket(io);

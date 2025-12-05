@@ -507,6 +507,8 @@ class MoralisService {
       );
 
       if (!response.ok) {
+        const errorBody = await response.text();
+        console.error(`Moralis bonding tokens error body: ${errorBody}`);
         throw new Error(`Moralis bonding tokens API error: ${response.status}`);
       }
 

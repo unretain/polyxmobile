@@ -3,9 +3,10 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { LogOut, User, Shield, Copy, Check, Key, ChevronDown } from "lucide-react";
+import { LogOut, User, Shield, Copy, Check, Key, ChevronDown, Sun, Moon } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 import { useAuthStore } from "@/stores/authStore";
+import { useThemeStore } from "@/stores/themeStore";
 import { useState, useRef, useEffect } from "react";
 import { shortenAddress } from "@/lib/wallet";
 import { getUserById } from "@/lib/userDb";
@@ -14,6 +15,7 @@ export function Header() {
   const router = useRouter();
   const { data: session } = useSession();
   const { user, logout } = useAuthStore();
+  const { isDark, toggleTheme } = useThemeStore();
   const [copied, setCopied] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
@@ -67,45 +69,79 @@ export function Header() {
   return (
     <>
       <header className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center gap-4">
+        <div className="max-w-7xl mx-auto flex items-center relative">
           {/* Left - Logo */}
-          <Link href="/" className="flex items-center px-4 py-2 rounded-full border backdrop-blur-md bg-white/5 border-white/10 hover:bg-white/10 transition-colors">
-            <span className="font-medium text-sm">[<span className="text-white">poly</span><span className="text-[#FF6B4A]">x</span>]</span>
+          <Link href="/" className={`flex items-center px-4 py-2 rounded-full border backdrop-blur-md transition-colors ${
+            isDark
+              ? 'bg-white/5 border-white/10 hover:bg-white/10'
+              : 'bg-black/5 border-black/10 hover:bg-black/10'
+          }`}>
+            <span className={`font-medium text-sm ${isDark ? 'text-white' : 'text-black'}`}>[poly<span className="text-[#FF6B4A]">x</span>]</span>
           </Link>
 
-          {/* Spacer to push nav and wallet/account to the right of logo */}
-          <div className="flex-1" />
-
-          {/* Center - Navigation */}
-          <nav className="flex items-center gap-1 px-2 py-1.5 rounded-full border backdrop-blur-md bg-white/5 border-white/10">
+          {/* Center - Navigation (absolutely positioned to stay centered) */}
+          <nav className={`absolute left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1.5 rounded-full border backdrop-blur-md ${
+            isDark
+              ? 'bg-white/5 border-white/10'
+              : 'bg-black/5 border-black/10'
+          }`}>
             <Link
               href="/pulse"
-              className="px-4 py-1.5 rounded-full text-sm font-medium text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                isDark
+                  ? 'text-white/60 hover:text-white hover:bg-white/10'
+                  : 'text-black/60 hover:text-black hover:bg-black/10'
+              }`}
             >
               Pulse
             </Link>
             <Link
               href="/dashboard"
-              className="px-4 py-1.5 rounded-full text-sm font-medium text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                isDark
+                  ? 'text-white/60 hover:text-white hover:bg-white/10'
+                  : 'text-black/60 hover:text-black hover:bg-black/10'
+              }`}
             >
               Dashboard
             </Link>
             <Link
               href="/solutions"
-              className="px-4 py-1.5 rounded-full text-sm font-medium text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                isDark
+                  ? 'text-white/60 hover:text-white hover:bg-white/10'
+                  : 'text-black/60 hover:text-black hover:bg-black/10'
+              }`}
             >
               Solutions
             </Link>
             <Link
               href="/markets"
-              className="px-4 py-1.5 rounded-full text-sm font-medium text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                isDark
+                  ? 'text-white/60 hover:text-white hover:bg-white/10'
+                  : 'text-black/60 hover:text-black hover:bg-black/10'
+              }`}
             >
               Markets
             </Link>
           </nav>
 
-          {/* Right - Wallet & User Menu */}
-          <div className="flex items-center gap-2">
+          {/* Right - Wallet & User Menu (ml-auto pushes to right) */}
+          <div className="flex items-center gap-2 ml-auto">
+            {/* Theme Toggle */}
+            <button
+              onClick={toggleTheme}
+              className={`p-2.5 rounded-full border backdrop-blur-md transition-colors ${
+                isDark
+                  ? 'bg-white/5 border-white/10 hover:bg-white/10 text-white/60 hover:text-white'
+                  : 'bg-black/5 border-black/10 hover:bg-black/10 text-black/60 hover:text-black'
+              }`}
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
+
             {/* Wallet Balance - shown first */}
             {walletAddress && (
               <button
@@ -114,7 +150,11 @@ export function Header() {
                   setCopied(true);
                   setTimeout(() => setCopied(false), 2000);
                 }}
-                className="flex items-center gap-2 rounded-full border backdrop-blur-md bg-white/5 border-white/10 px-3 py-2 text-sm font-medium transition-colors hover:bg-white/10"
+                className={`flex items-center gap-2 rounded-full border backdrop-blur-md px-3 py-2 text-sm font-medium transition-colors ${
+                  isDark
+                    ? 'bg-white/5 border-white/10 hover:bg-white/10'
+                    : 'bg-black/5 border-black/10 hover:bg-black/10'
+                }`}
                 title="Click to copy address"
               >
                 <Image
@@ -124,14 +164,14 @@ export function Header() {
                   height={20}
                   className="rounded-full"
                 />
-                <span className="text-white font-medium">0.00</span>
-                <span className="text-white/40">SOL</span>
-                <div className="w-px h-4 bg-white/10" />
-                <span className="text-white/60">{shortenAddress(walletAddress)}</span>
+                <span className={`font-medium ${isDark ? 'text-white' : 'text-black'}`}>0.00</span>
+                <span className={isDark ? 'text-white/40' : 'text-black/40'}>SOL</span>
+                <div className={`w-px h-4 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+                <span className={isDark ? 'text-white/60' : 'text-black/60'}>{shortenAddress(walletAddress)}</span>
                 {copied ? (
                   <Check className="h-3 w-3 text-green-400" />
                 ) : (
-                  <Copy className="h-3 w-3 text-white/40" />
+                  <Copy className={`h-3 w-3 ${isDark ? 'text-white/40' : 'text-black/40'}`} />
                 )}
               </button>
             )}
@@ -141,7 +181,11 @@ export function Header() {
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setShowDropdown(!showDropdown)}
-                  className="flex items-center gap-2 px-3 py-2 rounded-full border backdrop-blur-md bg-white/5 border-white/10 hover:bg-white/10 transition-colors"
+                  className={`flex items-center gap-2 px-3 py-2 rounded-full border backdrop-blur-md transition-colors ${
+                    isDark
+                      ? 'bg-white/5 border-white/10 hover:bg-white/10'
+                      : 'bg-black/5 border-black/10 hover:bg-black/10'
+                  }`}
                 >
                   <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#FF6B4A] to-[#FF8F6B] flex items-center justify-center">
                     <User className="h-4 w-4 text-white" />
@@ -149,17 +193,21 @@ export function Header() {
                   {user?.twoFactorEnabled && (
                     <Shield className="h-3 w-3 text-green-500" />
                   )}
-                  <ChevronDown className={`h-4 w-4 text-white/40 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+                  <ChevronDown className={`h-4 w-4 transition-transform ${isDark ? 'text-white/40' : 'text-black/40'} ${showDropdown ? 'rotate-180' : ''}`} />
                 </button>
 
                 {/* Dropdown Menu */}
                 {showDropdown && (
-                  <div className="absolute right-0 top-full mt-2 w-56 rounded-xl border backdrop-blur-md bg-[#111]/95 border-white/10 shadow-xl overflow-hidden">
+                  <div className={`absolute right-0 top-full mt-2 w-56 rounded-xl border backdrop-blur-md shadow-xl overflow-hidden ${
+                    isDark
+                      ? 'bg-[#111]/95 border-white/10'
+                      : 'bg-white/95 border-black/10'
+                  }`}>
                     {/* User Info */}
-                    <div className="px-4 py-3 border-b border-white/10">
-                      <p className="text-sm font-medium text-white truncate">{currentUser.name || currentUser.email}</p>
+                    <div className={`px-4 py-3 border-b ${isDark ? 'border-white/10' : 'border-black/10'}`}>
+                      <p className={`text-sm font-medium truncate ${isDark ? 'text-white' : 'text-black'}`}>{currentUser.name || currentUser.email}</p>
                       {walletAddress && (
-                        <p className="text-xs text-white/40 mt-1">{shortenAddress(walletAddress)}</p>
+                        <p className={`text-xs mt-1 ${isDark ? 'text-white/40' : 'text-black/40'}`}>{shortenAddress(walletAddress)}</p>
                       )}
                     </div>
 
@@ -167,7 +215,11 @@ export function Header() {
                     <div className="py-1">
                       <button
                         onClick={handleOpenSecurity}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors"
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                          isDark
+                            ? 'text-white/70 hover:text-white hover:bg-white/5'
+                            : 'text-black/70 hover:text-black hover:bg-black/5'
+                        }`}
                       >
                         <Key className="h-4 w-4" />
                         Security
@@ -192,9 +244,9 @@ export function Header() {
       {showSecurityModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowSecurityModal(false)} />
-          <div className="relative w-full max-w-md bg-[#0f0f0f] border border-white/10 rounded-2xl shadow-2xl">
+          <div className="relative w-full max-w-md border rounded-2xl shadow-2xl bg-[#0f0f0f] border-white/10">
             <div className="p-6 border-b border-white/10">
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <h2 className="text-xl font-bold flex items-center gap-2 text-white">
                 <Shield className="h-5 w-5 text-[#FF6B4A]" />
                 Security
               </h2>
@@ -202,7 +254,7 @@ export function Header() {
 
             <div className="p-6 space-y-4">
               {/* 2FA Status */}
-              <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
+              <div className="flex items-center justify-between p-4 rounded-xl border bg-white/5 border-white/10">
                 <div className="flex items-center gap-3">
                   <Shield className={`h-5 w-5 ${user?.twoFactorEnabled ? 'text-green-500' : 'text-white/40'}`} />
                   <div>
@@ -217,7 +269,7 @@ export function Header() {
 
               {/* Wallet Info */}
               {walletAddress && (
-                <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+                <div className="p-4 rounded-xl border bg-white/5 border-white/10">
                   <div className="flex items-center gap-3 mb-3">
                     <Image
                       src="/solana-logo.png"
@@ -228,7 +280,7 @@ export function Header() {
                     />
                     <p className="text-sm font-medium text-white">Wallet Address</p>
                   </div>
-                  <p className="font-mono text-xs text-white/60 break-all select-all bg-black/30 rounded-lg p-3">
+                  <p className="font-mono text-xs break-all select-all rounded-lg p-3 text-white/60 bg-black/30">
                     {walletAddress}
                   </p>
                 </div>
@@ -241,12 +293,12 @@ export function Header() {
                     <Key className="h-5 w-5 text-red-400" />
                     <p className="text-sm font-medium text-red-400">Private Key</p>
                   </div>
-                  <p className="text-xs text-white/50 mb-3">
+                  <p className="text-xs mb-3 text-white/50">
                     Warning: Never share your private key with anyone. Anyone with your private key can access your funds.
                   </p>
                   {privateKey ? (
                     <div className="space-y-2">
-                      <p className="font-mono text-xs text-white/60 break-all select-all bg-black/30 rounded-lg p-3">
+                      <p className="font-mono text-xs break-all select-all rounded-lg p-3 text-white/60 bg-black/30">
                         {privateKey}
                       </p>
                       <button
@@ -267,7 +319,7 @@ export function Header() {
                       </button>
                     </div>
                   ) : (
-                    <p className="text-xs text-white/40 italic">
+                    <p className="text-xs italic text-white/40">
                       Private key not available (Phantom wallet or external wallet)
                     </p>
                   )}
@@ -278,7 +330,7 @@ export function Header() {
             <div className="p-6 border-t border-white/10">
               <button
                 onClick={() => setShowSecurityModal(false)}
-                className="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white font-medium py-2.5 rounded-lg transition-colors"
+                className="w-full font-medium py-2.5 rounded-lg transition-colors bg-white/5 hover:bg-white/10 border border-white/10 text-white"
               >
                 Close
               </button>

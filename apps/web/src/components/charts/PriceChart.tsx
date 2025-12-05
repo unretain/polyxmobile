@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { createChart, ColorType, LineStyle, CandlestickSeries, HistogramSeries } from "lightweight-charts";
 import type { IChartApi } from "lightweight-charts";
 import type { OHLCV } from "@/stores/chartStore";
+import { useThemeStore } from "@/stores/themeStore";
 
 interface PriceChartProps {
   data: OHLCV[];
@@ -14,6 +15,7 @@ interface PriceChartProps {
 type SeriesType = any;
 
 export function PriceChart({ data, isLoading }: PriceChartProps) {
+  const { isDark } = useThemeStore();
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<SeriesType>(null);
@@ -26,12 +28,12 @@ export function PriceChart({ data, isLoading }: PriceChartProps) {
     const chart = createChart(containerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: "transparent" },
-        textColor: "#9ca3af",
+        textColor: isDark ? "#9ca3af" : "#374151",
         fontFamily: "Inter, system-ui, sans-serif",
       },
       grid: {
-        vertLines: { color: "rgba(255, 255, 255, 0.05)" },
-        horzLines: { color: "rgba(255, 255, 255, 0.05)" },
+        vertLines: { color: isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.05)" },
+        horzLines: { color: isDark ? "rgba(255, 255, 255, 0.05)" : "rgba(0, 0, 0, 0.05)" },
       },
       crosshair: {
         mode: 1,
@@ -49,14 +51,14 @@ export function PriceChart({ data, isLoading }: PriceChartProps) {
         },
       },
       rightPriceScale: {
-        borderColor: "rgba(255, 255, 255, 0.1)",
+        borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
         scaleMargins: {
           top: 0.1,
           bottom: 0.2,
         },
       },
       timeScale: {
-        borderColor: "rgba(255, 255, 255, 0.1)",
+        borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
         timeVisible: true,
         secondsVisible: false,
       },
@@ -123,7 +125,7 @@ export function PriceChart({ data, isLoading }: PriceChartProps) {
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
     };
-  }, []);
+  }, [isDark]);
 
   // Update data
   useEffect(() => {
@@ -156,7 +158,7 @@ export function PriceChart({ data, isLoading }: PriceChartProps) {
   return (
     <div className="relative h-full w-full">
       {isLoading && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/50">
+        <div className={`absolute inset-0 z-10 flex items-center justify-center ${isDark ? 'bg-black/50' : 'bg-white/50'}`}>
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         </div>
       )}
