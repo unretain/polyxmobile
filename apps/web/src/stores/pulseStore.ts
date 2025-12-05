@@ -109,10 +109,10 @@ const filterValidTokens = (tokens: PulseToken[]): PulseToken[] => {
       if (!t.address || !t.symbol || t.symbol === "???") return false;
       // Must be from last 24 hours (new tokens only)
       if (t.createdAt < twentyFourHoursAgo) return false;
-      // Must be from pump.fun/pumpportal source (not trending like SOL, TRUMP)
-      if (t.source && !["pump.fun", "pumpportal", "meteora"].includes(t.source)) return false;
+      // Must be from pump.fun/pumpportal/moralis source (not trending like SOL, TRUMP)
+      if (t.source && !["pump.fun", "pumpportal", "meteora", "moralis"].includes(t.source)) return false;
       // Filter out known established tokens that shouldn't be in Pulse
-      const establishedSymbols = ["SOL", "TRUMP", "BONK", "WIF", "JUP", "USDC", "USDT", "RAY", "ORCA"];
+      const establishedSymbols = ["SOL", "TRUMP", "BONK", "WIF", "JUP", "USDC", "USDT", "RAY", "ORCA", "KAZOO"];
       if (establishedSymbols.includes(t.symbol.toUpperCase())) return false;
       return true;
     });

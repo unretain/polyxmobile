@@ -1,10 +1,13 @@
 import { Server, Socket } from "socket.io";
 import { pumpPortalService } from "../services/pumpportal";
 import { meteoraService } from "../services/meteora";
+import { getGrpcService } from "../grpc";
+import { Timeframe } from "../ohlcv";
 
 interface SubscriptionState {
   tokens: Set<string>;
   pulse: boolean;
+  ohlcvSubscriptions: Set<string>; // Format: "baseMint:quoteMint:timeframe"
 }
 
 const subscriptions = new Map<string, SubscriptionState>();
@@ -18,7 +21,7 @@ export function setupWebSocket(io: Server) {
     console.log(`Client connected: ${socket.id}`);
 
     // Initialize subscription state for this client
-    subscriptions.set(socket.id, { tokens: new Set(), pulse: false });
+    subscriptions.set(socket.id, { tokens: new Set(), pulse: false, ohlcvSubscriptions: new Set() });
 
     // Handle token subscription
     socket.on("subscribe:token", (data: { address: string }) => {
@@ -60,6 +63,45 @@ export function setupWebSocket(io: Server) {
       }
     });
 
+    // Handle OHLCV candle subscription
+    socket.on("subscribe:ohlcv", (data: { baseMint: string; quoteMint: string; timeframe: Timeframe }) => {
+      const state = subscriptions.get(socket.id);
+      if (state) {
+        const subKey = `${data.baseMint}:${data.quoteMint}:${data.timeframe}`;
+        state.ohlcvSubscriptions.add(subKey);
+        socket.join(`ohlcv:${subKey}`);
+        console.log(`Client ${socket.id} subscribed to OHLCV ${subKey}`);
+      }
+    });
+
+    // Handle OHLCV candle unsubscription
+    socket.on("unsubscribe:ohlcv", (data: { baseMint: string; quoteMint: string; timeframe: Timeframe }) => {
+      const state = subscriptions.get(socket.id);
+      if (state) {
+        const subKey = `${data.baseMint}:${data.quoteMint}:${data.timeframe}`;
+        state.ohlcvSubscriptions.delete(subKey);
+        socket.leave(`ohlcv:${subKey}`);
+        console.log(`Client ${socket.id} unsubscribed from OHLCV ${subKey}`);
+      }
+    });
+
+    // Handle trade subscription (all trades for a pair)
+    socket.on("subscribe:trades", (data: { baseMint: string; quoteMint: string }) => {
+      const state = subscriptions.get(socket.id);
+      if (state) {
+        const subKey = `${data.baseMint}:${data.quoteMint}`;
+        socket.join(`trades:${subKey}`);
+        console.log(`Client ${socket.id} subscribed to trades ${subKey}`);
+      }
+    });
+
+    // Handle trade unsubscription
+    socket.on("unsubscribe:trades", (data: { baseMint: string; quoteMint: string }) => {
+      const subKey = `${data.baseMint}:${data.quoteMint}`;
+      socket.leave(`trades:${subKey}`);
+      console.log(`Client ${socket.id} unsubscribed from trades ${subKey}`);
+    });
+
     // Handle disconnection
     socket.on("disconnect", () => {
       subscriptions.delete(socket.id);
@@ -77,6 +119,10 @@ export function setupWebSocket(io: Server) {
 
   // Start price update simulation (replace with real data feeds later)
   startPriceUpdates(io);
+
+  // Initialize gRPC OHLCV streaming
+  console.log("🔧 Initializing gRPC OHLCV streaming...");
+  initializeGrpcOhlcv(io);
 }
 
 // Initialize PumpPortal WebSocket for real-time pump.fun data
@@ -170,6 +216,48 @@ function startPriceUpdates(io: Server) {
       });
     }
   }, 5000); // Update every 5 seconds
+}
+
+// Initialize gRPC service for OHLCV streaming
+async function initializeGrpcOhlcv(io: Server) {
+  const grpcService = getGrpcService();
+
+  // Forward candle updates to WebSocket subscribers
+  grpcService.on("candleUpdate", (data: { baseMint: string; quoteMint: string; timeframe: string; candle: any }) => {
+    const subKey = `${data.baseMint}:${data.quoteMint}:${data.timeframe}`;
+    io.to(`ohlcv:${subKey}`).emit("ohlcv:update", data);
+  });
+
+  // Forward candle closed events
+  grpcService.on("candleClosed", (data: { baseMint: string; quoteMint: string; timeframe: string; candle: any }) => {
+    const subKey = `${data.baseMint}:${data.quoteMint}:${data.timeframe}`;
+    io.to(`ohlcv:${subKey}`).emit("ohlcv:closed", data);
+  });
+
+  // Forward trade events
+  grpcService.on("trade", (data: { baseMint: string; quoteMint: string; trade: any }) => {
+    const subKey = `${data.baseMint}:${data.quoteMint}`;
+    io.to(`trades:${subKey}`).emit("trade", data);
+  });
+
+  // Start the gRPC service if configured
+  const grpcEndpoint = process.env.GRPC_ENDPOINT;
+  const grpcToken = process.env.GRPC_TOKEN;
+
+  if (grpcEndpoint) {
+    try {
+      await grpcService.start({
+        enabled: true,
+        endpoint: grpcEndpoint,
+        xToken: grpcToken,
+      });
+      console.log("✅ gRPC OHLCV streaming initialized");
+    } catch (error) {
+      console.error("Failed to initialize gRPC OHLCV:", error);
+    }
+  } else {
+    console.log("⚠️ GRPC_ENDPOINT not set - OHLCV streaming disabled");
+  }
 }
 
 // Export function to broadcast updates from other parts of the app

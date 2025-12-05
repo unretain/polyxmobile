@@ -26,7 +26,31 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var theme = localStorage.getItem('polyx-theme');
+                  if (theme) {
+                    var parsed = JSON.parse(theme);
+                    if (parsed.state && parsed.state.isDark !== false) {
+                      document.documentElement.classList.add('dark');
+                    }
+                  } else {
+                    // Default to dark if no preference
+                    document.documentElement.classList.add('dark');
+                  }
+                } catch (e) {
+                  document.documentElement.classList.add('dark');
+                }
+              })();
+            `,
+          }}
+        />
+      </head>
       <body className={`${inter.variable} ${dmMono.variable} ${fragmentMono.variable} font-sans`}>
         <SessionProvider>{children}</SessionProvider>
       </body>

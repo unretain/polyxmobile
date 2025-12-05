@@ -8,6 +8,7 @@ import { formatPrice, formatPercent } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { Flame, TrendingUp, TrendingDown } from "lucide-react";
 import { useTokenStore, type Token } from "@/stores/tokenStore";
+import { useThemeStore } from "@/stores/themeStore";
 import type { OHLCV } from "@/stores/chartStore";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -37,6 +38,7 @@ const Mini3DChart = dynamic(
 
 // Individual trending token card - lazy loads 3D chart only when visible
 function TrendingTokenCard({ token, index, isVisible }: { token: Token; index: number; isVisible: boolean }) {
+  const { isDark } = useThemeStore();
   const [ohlcv, setOhlcv] = useState<OHLCV[]>([]);
   const [isLoadingOhlcv, setIsLoadingOhlcv] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
@@ -74,13 +76,19 @@ function TrendingTokenCard({ token, index, isVisible }: { token: Token; index: n
   return (
     <Link
       href={`/token/${token.address}`}
-      className="group flex min-w-[280px] flex-col gap-2 border border-white/5 bg-white/5 p-3 transition-all hover:bg-[#FF6B4A]/10 hover:border-[#FF6B4A]/30"
+      className={`group flex min-w-[280px] flex-col gap-2 border p-3 transition-all hover:bg-[#FF6B4A]/10 hover:border-[#FF6B4A]/30 ${
+        isDark
+          ? 'border-white/5 bg-white/5'
+          : 'border-black/10 bg-white'
+      }`}
     >
       <div className="flex items-center gap-3">
-        <span className="text-lg font-bold text-white/30">
+        <span className={`text-lg font-bold ${isDark ? 'text-white/30' : 'text-gray-400'}`}>
           #{index + 1}
         </span>
-        <div className="relative h-8 w-8 overflow-hidden rounded-full bg-white/5 ring-2 ring-white/10">
+        <div className={`relative h-8 w-8 overflow-hidden rounded-full ring-2 ${
+          isDark ? 'bg-white/5 ring-white/10' : 'bg-black/5 ring-black/10'
+        }`}>
           {imageUrl && !imageError ? (
             <Image
               src={imageUrl}
@@ -91,15 +99,17 @@ function TrendingTokenCard({ token, index, isVisible }: { token: Token; index: n
               onError={() => setImageError(true)}
             />
           ) : (
-            <div className="flex h-full w-full items-center justify-center text-sm font-bold text-white/40 bg-gradient-to-br from-white/10 to-white/5">
+            <div className={`flex h-full w-full items-center justify-center text-sm font-bold bg-gradient-to-br ${
+              isDark ? 'text-white/40 from-white/10 to-white/5' : 'text-black/40 from-black/10 to-black/5'
+            }`}>
               {token.symbol.charAt(0)}
             </div>
           )}
         </div>
         <div className="flex-1">
-          <p className="font-medium text-white">{token.symbol}</p>
+          <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{token.symbol}</p>
           <div className="flex items-center gap-2">
-            <span className="text-sm text-white/60">${formatPrice(token.price ?? 0)}</span>
+            <span className={`text-sm ${isDark ? 'text-white/60' : 'text-gray-600'}`}>${formatPrice(token.price ?? 0)}</span>
             <span
               className={cn(
                 "flex items-center gap-0.5 text-xs font-medium",
@@ -118,7 +128,7 @@ function TrendingTokenCard({ token, index, isVisible }: { token: Token; index: n
       </div>
 
       {/* Mini 3D Chart - only renders when visible to save WebGL contexts */}
-      <div className="h-20 w-full overflow-hidden bg-black/30">
+      <div className={`h-20 w-full overflow-hidden ${isDark ? 'bg-black/30' : 'bg-gray-100'}`}>
         {isVisible ? (
           <Mini3DChart
             data={ohlcv}
@@ -126,7 +136,7 @@ function TrendingTokenCard({ token, index, isVisible }: { token: Token; index: n
             currentMarketCap={token.marketCap}
           />
         ) : (
-          <div className="h-full w-full flex items-center justify-center text-white/30 text-xs">
+          <div className={`h-full w-full flex items-center justify-center text-xs ${isDark ? 'text-white/30' : 'text-gray-400'}`}>
             Scroll to view
           </div>
         )}
@@ -139,6 +149,7 @@ function TrendingTokenCard({ token, index, isVisible }: { token: Token; index: n
 const allowedTokens = ["sol", "mon", "weth", "trump", "wbtc", "zec", "met", "pump", "wojak", "useless", "pengu", "jup"];
 
 export function TrendingTokens() {
+  const { isDark } = useThemeStore();
   const { tokens } = useTokenStore();
   const containerRef = useRef<HTMLDivElement>(null);
   // Start as true since trending is at top of page and visible on load
@@ -171,20 +182,26 @@ export function TrendingTokens() {
   }
 
   return (
-    <div ref={containerRef} className="border border-white/5 bg-[#111] overflow-hidden card-shine">
+    <div ref={containerRef} className={`border overflow-hidden card-shine ${
+      isDark ? 'border-white/5 bg-[#111]' : 'border-black/10 bg-white'
+    }`}>
       {/* Header matching landing page style */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5 bg-gradient-to-r from-white/5 to-transparent">
+      <div className={`flex items-center gap-3 px-4 py-3 border-b bg-gradient-to-r to-transparent ${
+        isDark ? 'border-white/5 from-white/5' : 'border-black/5 from-black/5'
+      }`}>
         <div className="p-2 bg-[#FF6B4A]/20">
           <Flame className="h-5 w-5 text-[#FF6B4A]" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="font-bold text-sm text-white">Trending Now</h3>
-            <span className="text-xs text-white/40 bg-white/5 px-1.5 py-0.5 rounded-full">
+            <h3 className={`font-bold text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>Trending Now</h3>
+            <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+              isDark ? 'text-white/40 bg-white/5' : 'text-gray-500 bg-black/5'
+            }`}>
               {trending.length}
             </span>
           </div>
-          <p className="text-xs text-white/40 truncate">Top performers by volume</p>
+          <p className={`text-xs truncate ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Top performers by volume</p>
         </div>
       </div>
 

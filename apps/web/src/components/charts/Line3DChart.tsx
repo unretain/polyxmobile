@@ -7,11 +7,23 @@ import * as THREE from "three";
 import { formatPrice, formatNumber } from "@/lib/utils";
 import type { OHLCV } from "@/stores/chartStore";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
+import { useThemeStore } from "@/stores/themeStore";
 import { FlyControls } from "./FlyControls";
 import { DrawingLayer, DrawingToolbar, Drawing, DrawingToolType, DRAWING_COLORS, DEFAULT_LINE_WIDTH } from "./drawing";
 
 // pump.fun tokens have 1 billion supply
 const PUMP_FUN_SUPPLY = 1_000_000_000;
+
+// Component to reactively update scene background based on theme
+function SceneBackground({ isDark }: { isDark: boolean }) {
+  const { scene } = useThree();
+
+  useEffect(() => {
+    scene.background = new THREE.Color(isDark ? '#0a0a0a' : '#f9fafb');
+  }, [scene, isDark]);
+
+  return null;
+}
 
 interface Line3DChartProps {
   data: OHLCV[];
@@ -224,6 +236,7 @@ function ChartScene({
   isFlyMode = false,
   activeTool = null,
   orbitControlsRef,
+  isDark = true,
 }: {
   data: OHLCV[];
   viewStart: number;
@@ -233,6 +246,7 @@ function ChartScene({
   isFlyMode?: boolean;
   activeTool?: DrawingToolType;
   orbitControlsRef?: React.RefObject<OrbitControlsImpl | null>;
+  isDark?: boolean;
 }) {
   const CHART_WIDTH = 12;
   const CHART_HEIGHT = 6;
@@ -359,7 +373,7 @@ function ChartScene({
       {/* Background plane */}
       <mesh position={[CHART_WIDTH / 2, CHART_HEIGHT / 2, -CHART_DEPTH / 2 - 0.1]}>
         <planeGeometry args={[CHART_WIDTH + 2, CHART_HEIGHT + 2]} />
-        <meshBasicMaterial color="#0a0a0a" />
+        <meshBasicMaterial color={isDark ? "#0a0a0a" : "#f9fafb"} />
       </mesh>
 
       {/* Grid */}
@@ -386,7 +400,7 @@ function ChartScene({
           key={`y-label-${i}`}
           position={[-0.3, label.y, 0]}
           fontSize={0.28}
-          color="#888888"
+          color={isDark ? "#888888" : "#666666"}
           anchorX="right"
           anchorY="middle"
         >
@@ -398,7 +412,7 @@ function ChartScene({
       <Text
         position={[-1.8, CHART_HEIGHT / 2, 0]}
         fontSize={0.25}
-        color="#aaaaaa"
+        color={isDark ? "#aaaaaa" : "#555555"}
         anchorX="center"
         anchorY="middle"
         rotation={[0, 0, Math.PI / 2]}
@@ -412,7 +426,7 @@ function ChartScene({
           key={`x-label-${i}`}
           position={[label.x, -0.4, 0]}
           fontSize={0.22}
-          color="#888888"
+          color={isDark ? "#888888" : "#666666"}
           anchorX="center"
           anchorY="top"
         >
@@ -424,7 +438,7 @@ function ChartScene({
       <Text
         position={[CHART_WIDTH / 2, -0.9, 0]}
         fontSize={0.2}
-        color="#aaaaaa"
+        color={isDark ? "#aaaaaa" : "#555555"}
         anchorX="center"
         anchorY="top"
       >
@@ -455,6 +469,7 @@ export function Line3DChart({
   marketCap,
   price,
 }: Line3DChartProps) {
+  const { isDark } = useThemeStore();
   const [isMounted, setIsMounted] = useState(false);
   const orbitControlsRef = useRef<OrbitControlsImpl | null>(null);
 
@@ -554,24 +569,24 @@ export function Line3DChart({
 
   if (data.length === 0 && !isLoading) {
     return (
-      <div className="h-full w-full flex items-center justify-center bg-[#0a0a0a] text-white/50">
+      <div className={`h-full w-full flex items-center justify-center ${isDark ? 'bg-[#0a0a0a] text-white/50' : 'bg-gray-50 text-black/50'}`}>
         No data available
       </div>
     );
   }
 
   return (
-    <div className="relative h-full w-full bg-[#0a0a0a] overflow-hidden flex flex-row">
+    <div className={`relative h-full w-full overflow-hidden flex flex-row ${isDark ? 'bg-[#0a0a0a]' : 'bg-gray-50'}`}>
       {/* Coral swirl background - like landing page */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px]">
-          <div className="absolute inset-0 bg-gradient-conic from-[#FF6B4A]/30 via-[#FF8F6B]/15 via-[#FF6B4A]/20 to-[#FF6B4A]/30 blur-[80px] animate-slow-spin" />
+          <div className={`absolute inset-0 bg-gradient-conic from-[#FF6B4A]/30 via-[#FF8F6B]/15 via-[#FF6B4A]/20 to-[#FF6B4A]/30 blur-[80px] animate-slow-spin ${isDark ? '' : 'opacity-50'}`} />
         </div>
-        <div className="absolute inset-0 bg-[#0a0a0a]/60" />
+        <div className={`absolute inset-0 ${isDark ? 'bg-[#0a0a0a]/60' : 'bg-white/60'}`} />
       </div>
 
       {isLoading && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#0a0a0a]/80">
+        <div className={`absolute inset-0 z-10 flex items-center justify-center ${isDark ? 'bg-[#0a0a0a]/80' : 'bg-white/80'}`}>
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#FF6B4A] border-t-transparent" />
         </div>
       )}
@@ -598,15 +613,15 @@ export function Line3DChart({
         <div className="absolute top-4 left-4 z-10">
           {showMarketCap && marketCap ? (
             <>
-              <div className="text-xs text-white/50 mb-0.5">Market Cap</div>
-              <div className="text-2xl font-bold text-white">${formatNumber(marketCap)}</div>
+              <div className={`text-xs mb-0.5 ${isDark ? 'text-white/50' : 'text-black/50'}`}>Market Cap</div>
+              <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${formatNumber(marketCap)}</div>
             </>
           ) : price ? (
-            <div className="text-2xl font-bold text-white">${formatPrice(price)}</div>
+            <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${formatPrice(price)}</div>
           ) : (
-            <div className="text-2xl font-bold text-white/50">Loading...</div>
+            <div className={`text-2xl font-bold ${isDark ? 'text-white/50' : 'text-black/50'}`}>Loading...</div>
           )}
-          <div className="text-xs text-white/50">
+          <div className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>
             {dateRange} • {data.length} points
           </div>
         </div>
@@ -617,7 +632,7 @@ export function Line3DChart({
             <div className={`text-sm font-medium ${priceChange.isPositive ? "text-up" : "text-down"}`}>
               {priceChange.isPositive ? "+" : ""}${formatPrice(priceChange.value)} ({priceChange.isPositive ? "+" : ""}{priceChange.percent.toFixed(2)}%)
             </div>
-            <div className="text-xs text-white/50">
+            <div className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>
               visible range
             </div>
           </div>
@@ -627,6 +642,7 @@ export function Line3DChart({
         <div className="flex-1 min-h-0">
           {isMounted && (
             <Canvas gl={{ antialias: true, alpha: true }}>
+              <SceneBackground isDark={isDark} />
               <Suspense fallback={null}>
                 <ChartScene
                   data={data}
@@ -637,6 +653,7 @@ export function Line3DChart({
                   isFlyMode={isFlyMode}
                   activeTool={activeTool}
                   orbitControlsRef={orbitControlsRef}
+                  isDark={isDark}
                 />
 
                 {/* Drawing layer */}
@@ -663,7 +680,9 @@ export function Line3DChart({
         </div>
 
         {/* Controls hint */}
-        <div className="absolute bottom-4 left-4 bg-white/5 backdrop-blur-md border border-white/10 px-3 py-1.5 text-xs text-white/50">
+        <div className={`absolute bottom-4 left-4 backdrop-blur-md border px-3 py-1.5 text-xs ${
+          isDark ? 'bg-white/5 border-white/10 text-white/50' : 'bg-black/5 border-black/10 text-black/50'
+        }`}>
           {isFlyMode ? (
             "WASD: move • Q/E: up/down • Mouse: look • Shift: speed • ESC: exit"
           ) : (
@@ -677,7 +696,7 @@ export function Line3DChart({
         <div className="absolute top-4 right-4 z-10">
           <div className="bg-[#FF6B4A]/10 border border-[#FF6B4A]/30 px-3 py-1.5 text-xs">
             <span className="text-[#FF6B4A] font-medium">Shift+Enter</span>
-            <span className="text-white/50"> for fly mode</span>
+            <span className={isDark ? 'text-white/50' : 'text-black/50'}> for fly mode</span>
           </div>
         </div>
       )}
@@ -685,12 +704,14 @@ export function Line3DChart({
       {/* Fly mode instructions - shown for 4 seconds after entering fly mode */}
       {isFlyMode && showFlyModeInstructions && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none animate-in fade-in duration-300">
-          <div className="flex flex-col items-center gap-2 bg-[#0a0a0a]/90 backdrop-blur-md px-6 py-4 border border-[#FF6B4A]/50">
-            <div className="text-[#FF6B4A] font-bold text-lg">✈️ FLY MODE</div>
-            <div className="text-xs text-white/50 text-center space-y-1">
-              <p>Click to lock mouse • ESC to exit</p>
-              <p className="font-mono">W/S: Forward/Back • A/D: Strafe</p>
-              <p className="font-mono">Q/E: Down/Up • Shift: Speed boost</p>
+          <div className={`flex flex-col items-center gap-2 backdrop-blur-md px-6 py-4 border border-[#FF6B4A]/50 ${
+            isDark ? 'bg-[#0a0a0a]/90' : 'bg-white/90'
+          }`}>
+            <div className="text-[#FF6B4A] font-bold text-lg">FLY MODE</div>
+            <div className={`text-xs text-center space-y-1 ${isDark ? 'text-white/50' : 'text-black/50'}`}>
+              <p>Click to lock mouse - ESC to exit</p>
+              <p className="font-mono">W/S: Forward/Back - A/D: Strafe</p>
+              <p className="font-mono">Q/E: Down/Up - Shift: Speed boost</p>
             </div>
           </div>
         </div>
@@ -700,8 +721,8 @@ export function Line3DChart({
       {isFlyMode && !showFlyModeInstructions && (
         <div className="absolute top-4 right-4 z-10">
           <div className="bg-[#FF6B4A]/20 border border-[#FF6B4A] px-3 py-1.5 text-xs">
-            <span className="text-[#FF6B4A] font-bold">✈️ FLY MODE</span>
-            <span className="text-white/50"> • ESC to exit</span>
+            <span className="text-[#FF6B4A] font-bold">FLY MODE</span>
+            <span className={isDark ? 'text-white/50' : 'text-black/50'}> - ESC to exit</span>
           </div>
         </div>
       )}
