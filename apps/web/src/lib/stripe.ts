@@ -1,9 +1,27 @@
 import Stripe from "stripe";
 
-// Initialize Stripe with secret key
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2025-11-17.clover",
-  typescript: true,
+// Lazy initialization to avoid build-time errors when env var is not set
+let _stripe: Stripe | null = null;
+
+function getStripe(): Stripe {
+  if (!_stripe) {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) {
+      throw new Error("STRIPE_SECRET_KEY environment variable is not set");
+    }
+    _stripe = new Stripe(key, {
+      apiVersion: "2025-11-17.clover",
+      typescript: true,
+    });
+  }
+  return _stripe;
+}
+
+// Export getter for lazy access
+export const stripe = new Proxy({} as Stripe, {
+  get(_, prop) {
+    return (getStripe() as any)[prop];
+  },
 });
 
 // Product and Price IDs - these will be set after creating products in Stripe
