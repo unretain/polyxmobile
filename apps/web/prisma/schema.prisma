@@ -75,6 +75,10 @@ model User {
   image         String?
   emailVerified DateTime?
 
+  // Solana wallet (generated on first sign-in)
+  walletAddress    String?   @unique  // Public key
+  walletEncrypted  String?   @db.Text // Encrypted private key
+
   // OAuth accounts
   accounts      Account[]
   sessions      Session[]
@@ -86,6 +90,7 @@ model User {
   updatedAt     DateTime  @updatedAt
 
   @@index([email])
+  @@index([walletAddress])
 }
 
 model Account {
