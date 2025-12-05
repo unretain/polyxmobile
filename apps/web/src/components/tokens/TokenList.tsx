@@ -12,26 +12,17 @@ export function TokenList() {
     fetchTokens();
   }, [fetchTokens]);
 
-  // Only these tokens should appear on dashboard (whitelist)
-  const allowedTokens = ["sol", "mon", "weth", "trump", "wbtc", "zec", "met", "pump", "wojak", "useless", "pengu", "jup"];
+  // Filter tokens by search query
+  const filteredTokens = tokens.filter((token) => {
+    if (!searchQuery) return true;
 
-  const filteredTokens = tokens.filter(
-    (token) => {
-      const symbolLower = token.symbol.toLowerCase();
-
-      // Only allow whitelisted tokens
-      if (!allowedTokens.includes(symbolLower)) {
-        return false;
-      }
-
-      // Apply search filter
-      return (
-        symbolLower.includes(searchQuery.toLowerCase()) ||
-        token.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        token.address.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-  );
+    const query = searchQuery.toLowerCase();
+    return (
+      token.symbol.toLowerCase().includes(query) ||
+      token.name.toLowerCase().includes(query) ||
+      token.address.toLowerCase().includes(query)
+    );
+  });
 
   if (isLoading && tokens.length === 0) {
     return (

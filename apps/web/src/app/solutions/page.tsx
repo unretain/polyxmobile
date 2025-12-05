@@ -347,6 +347,154 @@ function SolutionsPageContent() {
               isDark={isDark}
             />
           </div>
+
+          {/* Pricing Section - Moved to top */}
+          <div id="pricing" className="mb-16">
+            <div className="text-center mb-12">
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#FF6B4A]/10 border border-[#FF6B4A]/30 mb-6">
+                <Sparkles className="w-4 h-4 text-[#FF6B4A]" />
+                <span className="text-sm font-medium text-[#FF6B4A]">Pricing</span>
+              </div>
+              <h2 className="text-4xl font-bold mb-4">Simple, transparent pricing</h2>
+              <p className={`text-lg max-w-2xl mx-auto ${isDark ? 'text-white/60' : 'text-gray-600'}`}>
+                Start free, upgrade when you need more. No hidden fees.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Free Plan */}
+              <div className={`relative p-6 border transition-all hover:scale-[1.02] ${
+                isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
+              }`}>
+                <div className="mb-6">
+                  <div className={`w-12 h-12 rounded-lg flex items-center justify-center mb-4 ${
+                    isDark ? 'bg-white/10' : 'bg-black/10'
+                  }`}>
+                    <Box className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-xl font-bold mb-1">Free</h3>
+                  <p className={`text-sm ${isDark ? 'text-white/60' : 'text-gray-600'}`}>
+                    For personal projects
+                  </p>
+                </div>
+
+                <div className="mb-6">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-bold">$0</span>
+                    <span className={isDark ? 'text-white/40' : 'text-gray-500'}>/month</span>
+                  </div>
+                </div>
+
+                <ul className="space-y-3 mb-8">
+                  {["1 domain", "1,000 views/month", "Watermark included", "Community support"].map((feature, i) => (
+                    <li key={i} className="flex items-center gap-2 text-sm">
+                      <Check className="w-4 h-4 text-green-400" />
+                      <span className={isDark ? 'text-white/80' : 'text-gray-700'}>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <Link
+                  href="/dashboard"
+                  className={`w-full py-3 font-medium border transition-colors flex items-center justify-center ${
+                    isDark
+                      ? 'border-white/20 text-white hover:bg-white/10'
+                      : 'border-black/20 text-black hover:bg-black/10'
+                  }`}
+                >
+                  Get Started Free
+                </Link>
+              </div>
+
+              {/* Pro Plan */}
+              <div className={`relative p-6 border-2 border-[#FF6B4A] transition-all hover:scale-[1.02] ${
+                isDark ? 'bg-[#FF6B4A]/5' : 'bg-[#FF6B4A]/5'
+              }`}>
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                  <span className="px-3 py-1 text-xs font-bold bg-[#FF6B4A] text-white rounded-full">
+                    MOST POPULAR
+                  </span>
+                </div>
+
+                <div className="mb-6">
+                  <div className="w-12 h-12 rounded-lg bg-[#FF6B4A]/20 flex items-center justify-center mb-4">
+                    <Building className="w-6 h-6 text-[#FF6B4A]" />
+                  </div>
+                  <h3 className="text-xl font-bold mb-1">Pro</h3>
+                  <p className={`text-sm ${isDark ? 'text-white/60' : 'text-gray-600'}`}>
+                    For growing businesses
+                  </p>
+                </div>
+
+                <div className="mb-6">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-bold">$29</span>
+                    <span className={isDark ? 'text-white/40' : 'text-gray-500'}>/month</span>
+                  </div>
+                </div>
+
+                <ul className="space-y-3 mb-8">
+                  {["3 domains", "50,000 views/month", "No watermark", "Priority support", "Custom themes"].map((feature, i) => (
+                    <li key={i} className="flex items-center gap-2 text-sm">
+                      <Check className="w-4 h-4 text-[#FF6B4A]" />
+                      <span className={isDark ? 'text-white/80' : 'text-gray-700'}>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <button
+                  onClick={() => handleCheckout("PRO")}
+                  className="w-full py-3 font-medium bg-[#FF6B4A] text-white hover:bg-[#FF5A36] transition-colors"
+                >
+                  Subscribe to Pro
+                </button>
+              </div>
+
+              {/* Business Plan */}
+              <div className={`relative p-6 border transition-all hover:scale-[1.02] ${
+                isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
+              }`}>
+                <div className="mb-6">
+                  <div className={`w-12 h-12 rounded-lg flex items-center justify-center mb-4 ${
+                    isDark ? 'bg-purple-500/20' : 'bg-purple-500/20'
+                  }`}>
+                    <Crown className="w-6 h-6 text-purple-400" />
+                  </div>
+                  <h3 className="text-xl font-bold mb-1">Business</h3>
+                  <p className={`text-sm ${isDark ? 'text-white/60' : 'text-gray-600'}`}>
+                    For enterprises
+                  </p>
+                </div>
+
+                <div className="mb-6">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-4xl font-bold">$99</span>
+                    <span className={isDark ? 'text-white/40' : 'text-gray-500'}>/month</span>
+                  </div>
+                </div>
+
+                <ul className="space-y-3 mb-8">
+                  {["10 domains", "500,000 views/month", "No watermark", "White-label option", "Dedicated support", "Custom integrations"].map((feature, i) => (
+                    <li key={i} className="flex items-center gap-2 text-sm">
+                      <Check className="w-4 h-4 text-purple-400" />
+                      <span className={isDark ? 'text-white/80' : 'text-gray-700'}>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <button
+                  onClick={() => handleCheckout("BUSINESS")}
+                  className={`w-full py-3 font-medium border transition-colors ${
+                    isDark
+                      ? 'border-purple-500/50 text-purple-400 hover:bg-purple-500/10'
+                      : 'border-purple-500/50 text-purple-600 hover:bg-purple-500/10'
+                  }`}
+                >
+                  Subscribe to Business
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -607,183 +755,6 @@ function SolutionsPageContent() {
               ]}
               isDark={isDark}
             />
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing Section */}
-      <section id="pricing" className="py-16 px-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#FF6B4A]/10 border border-[#FF6B4A]/30 mb-6">
-              <Sparkles className="w-4 h-4 text-[#FF6B4A]" />
-              <span className="text-sm font-medium text-[#FF6B4A]">Pricing</span>
-            </div>
-            <h2 className="text-4xl font-bold mb-4">Simple, transparent pricing</h2>
-            <p className={`text-lg max-w-2xl mx-auto ${isDark ? 'text-white/60' : 'text-gray-600'}`}>
-              Start free, upgrade when you need more. No hidden fees.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Free Plan */}
-            <div className={`relative p-6 border transition-all hover:scale-[1.02] ${
-              isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
-            }`}>
-              <div className="mb-6">
-                <div className={`w-12 h-12 rounded-lg flex items-center justify-center mb-4 ${
-                  isDark ? 'bg-white/10' : 'bg-black/10'
-                }`}>
-                  <Box className="w-6 h-6" />
-                </div>
-                <h3 className="text-xl font-bold mb-1">Free</h3>
-                <p className={`text-sm ${isDark ? 'text-white/60' : 'text-gray-600'}`}>
-                  For personal projects
-                </p>
-              </div>
-
-              <div className="mb-6">
-                <div className="flex items-baseline gap-1">
-                  <span className="text-4xl font-bold">$0</span>
-                  <span className={isDark ? 'text-white/40' : 'text-gray-500'}>/month</span>
-                </div>
-              </div>
-
-              <ul className="space-y-3 mb-8">
-                {["1 domain", "1,000 views/month", "Watermark included", "Community support"].map((feature, i) => (
-                  <li key={i} className="flex items-center gap-2 text-sm">
-                    <Check className="w-4 h-4 text-green-400" />
-                    <span className={isDark ? 'text-white/80' : 'text-gray-700'}>{feature}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <button className={`w-full py-3 font-medium border transition-colors ${
-                isDark
-                  ? 'border-white/20 text-white hover:bg-white/10'
-                  : 'border-black/20 text-black hover:bg-black/10'
-              }`}>
-                Get Started
-              </button>
-            </div>
-
-            {/* Pro Plan */}
-            <div className={`relative p-6 border-2 border-[#FF6B4A] transition-all hover:scale-[1.02] ${
-              isDark ? 'bg-[#FF6B4A]/5' : 'bg-[#FF6B4A]/5'
-            }`}>
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                <span className="px-3 py-1 text-xs font-bold bg-[#FF6B4A] text-white rounded-full">
-                  MOST POPULAR
-                </span>
-              </div>
-
-              <div className="mb-6">
-                <div className="w-12 h-12 rounded-lg bg-[#FF6B4A]/20 flex items-center justify-center mb-4">
-                  <Building className="w-6 h-6 text-[#FF6B4A]" />
-                </div>
-                <h3 className="text-xl font-bold mb-1">Pro</h3>
-                <p className={`text-sm ${isDark ? 'text-white/60' : 'text-gray-600'}`}>
-                  For growing businesses
-                </p>
-              </div>
-
-              <div className="mb-6">
-                <div className="flex items-baseline gap-1">
-                  <span className="text-4xl font-bold">$29</span>
-                  <span className={isDark ? 'text-white/40' : 'text-gray-500'}>/month</span>
-                </div>
-              </div>
-
-              <ul className="space-y-3 mb-8">
-                {["3 domains", "50,000 views/month", "No watermark", "Priority support", "Custom themes"].map((feature, i) => (
-                  <li key={i} className="flex items-center gap-2 text-sm">
-                    <Check className="w-4 h-4 text-[#FF6B4A]" />
-                    <span className={isDark ? 'text-white/80' : 'text-gray-700'}>{feature}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <button
-                onClick={() => handleCheckout("PRO")}
-                className="w-full py-3 font-medium bg-[#FF6B4A] text-white hover:bg-[#FF5A36] transition-colors"
-              >
-                Subscribe to Pro
-              </button>
-            </div>
-
-            {/* Business Plan */}
-            <div className={`relative p-6 border transition-all hover:scale-[1.02] ${
-              isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
-            }`}>
-              <div className="mb-6">
-                <div className={`w-12 h-12 rounded-lg flex items-center justify-center mb-4 ${
-                  isDark ? 'bg-purple-500/20' : 'bg-purple-500/20'
-                }`}>
-                  <Crown className="w-6 h-6 text-purple-400" />
-                </div>
-                <h3 className="text-xl font-bold mb-1">Business</h3>
-                <p className={`text-sm ${isDark ? 'text-white/60' : 'text-gray-600'}`}>
-                  For enterprises
-                </p>
-              </div>
-
-              <div className="mb-6">
-                <div className="flex items-baseline gap-1">
-                  <span className="text-4xl font-bold">$99</span>
-                  <span className={isDark ? 'text-white/40' : 'text-gray-500'}>/month</span>
-                </div>
-              </div>
-
-              <ul className="space-y-3 mb-8">
-                {["10 domains", "500,000 views/month", "No watermark", "White-label option", "Dedicated support", "Custom integrations"].map((feature, i) => (
-                  <li key={i} className="flex items-center gap-2 text-sm">
-                    <Check className="w-4 h-4 text-purple-400" />
-                    <span className={isDark ? 'text-white/80' : 'text-gray-700'}>{feature}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <button
-                onClick={() => handleCheckout("BUSINESS")}
-                className={`w-full py-3 font-medium border transition-colors ${
-                  isDark
-                    ? 'border-purple-500/50 text-purple-400 hover:bg-purple-500/10'
-                    : 'border-purple-500/50 text-purple-600 hover:bg-purple-500/10'
-                }`}
-              >
-                Subscribe to Business
-              </button>
-            </div>
-          </div>
-
-          {/* FAQ or Additional Info */}
-          <div className={`mt-12 p-6 border text-center ${
-            isDark ? 'border-white/10 bg-white/[0.02]' : 'border-black/10 bg-black/[0.02]'
-          }`}>
-            <p className={`text-sm ${isDark ? 'text-white/60' : 'text-gray-600'}`}>
-              All plans include SSL encryption, 99.9% uptime SLA, and automatic updates.
-              <br />
-              Need a custom plan? <a href="mailto:sales@polyx.xyz" className="text-[#FF6B4A] hover:underline">Contact us</a>
-            </p>
-          </div>
-
-          {/* License Dashboard Link */}
-          <div className={`mt-8 p-6 border flex items-center justify-between ${
-            isDark ? 'border-white/10 bg-white/[0.02]' : 'border-black/10 bg-black/[0.02]'
-          }`}>
-            <div>
-              <h3 className="font-bold mb-1">Already a subscriber?</h3>
-              <p className={`text-sm ${isDark ? 'text-white/60' : 'text-gray-600'}`}>
-                Manage your license keys and domain restrictions
-              </p>
-            </div>
-            <Link
-              href="/dashboard/license"
-              className="flex items-center gap-2 px-4 py-2 bg-[#FF6B4A]/10 border border-[#FF6B4A]/30 text-[#FF6B4A] font-medium hover:bg-[#FF6B4A]/20 transition-colors"
-            >
-              License Dashboard
-              <ChevronRight className="w-4 h-4" />
-            </Link>
           </div>
         </div>
       </section>
