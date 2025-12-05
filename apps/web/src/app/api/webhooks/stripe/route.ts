@@ -4,14 +4,9 @@ import Stripe from "stripe";
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 
-// SECURITY: Require webhook secret in production
-if (!STRIPE_WEBHOOK_SECRET && process.env.NODE_ENV === "production") {
-  throw new Error("STRIPE_WEBHOOK_SECRET environment variable is required in production");
-}
-
-// Initialize Stripe
+// Initialize Stripe lazily
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: "2024-11-20.acacia",
+  apiVersion: "2025-11-17.clover",
 }) : null;
 
 // This webhook handles Stripe events for subscription management

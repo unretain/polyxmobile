@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 // Public pricing information - no auth required
-export const PRICING_PLANS = {
+const PRICING_PLANS = {
   FREE: {
     id: "FREE",
     name: "Free",
