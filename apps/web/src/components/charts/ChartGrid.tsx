@@ -8,10 +8,11 @@ interface ChartGridProps {
   width: number;
   height: number;
   depth: number;
+  isDark?: boolean;
 }
 
-export function ChartGrid({ width, height, depth }: ChartGridProps) {
-  const gridColor = new THREE.Color("#1a1a1a");
+export function ChartGrid({ width, height, depth, isDark = true }: ChartGridProps) {
+  const gridColor = new THREE.Color(isDark ? "#1a1a1a" : "#e5e7eb");
   const accentColor = new THREE.Color("#FF6B4A");
 
   // Generate floor grid lines
@@ -138,7 +139,7 @@ export function ChartGrid({ width, height, depth }: ChartGridProps) {
       <mesh position={[width / 2, -0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[width + 4, depth + 4]} />
         <meshStandardMaterial
-          color="#0a0a0a"
+          color={isDark ? "#0a0a0a" : "#f3f4f6"}
           transparent
           opacity={0.8}
         />

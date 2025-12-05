@@ -24,17 +24,77 @@ interface GammaMarket {
   conditionId?: string;
   enableOrderBook?: boolean;
   clobTokenIds?: string; // JSON string array
-  events?: Array<{
-    id: string;
-    slug: string;
-    title: string;
-    tags?: Array<{ id: string; label: string; slug: string }>;
-  }>;
+  groupItemTitle?: string; // For multi-option markets, this is the outcome name
+}
+
+interface GammaEvent {
+  id: string;
+  ticker: string;
+  slug: string;
+  title: string;
+  description?: string;
+  startDate?: string;
+  endDate: string;
+  image?: string;
+  icon?: string;
+  active: boolean;
+  closed: boolean;
+  volume: number;
+  liquidity: number;
+  enableOrderBook?: boolean;
+  negRisk?: boolean;
+  markets: GammaMarket[];
+  tags?: Array<{ id: string; label: string; slug: string }>;
 }
 
 export interface PriceHistory {
   t: number; // Unix timestamp
   p: number; // Price
+}
+
+function detectCategory(tags: string[], question?: string): string {
+  // Combine tags and question for keyword matching
+  const tagStr = tags.map((t) => t.toLowerCase()).join(" ");
+  const questionStr = (question || "").toLowerCase();
+  const searchStr = tagStr + " " + questionStr;
+
+  // Sports - check for any sports-related keywords
+  const sportsKeywords = ["sports", "nfl", "nba", "mlb", "nhl", "soccer", "football", "basketball", "baseball", "hockey", "tennis", "golf", "mma", "boxing", "f1", "racing", "ufc", "cricket", "rugby", "olympics", "ncaa", "college", "league", "championship", "super bowl", "world cup", "premier league", "playoffs", "mvp", "quarterback", "touchdown", "goal", "match", "game", "team", "coach", "player"];
+  if (sportsKeywords.some(k => searchStr.includes(k))) {
+    return "Sports";
+  }
+
+  // Politics - check for political keywords
+  const politicsKeywords = ["politics", "election", "government", "congress", "senate", "president", "vote", "republican", "democrat", "trump", "biden", "political", "governor", "mayor", "legislation", "bill", "law", "supreme court", "cabinet", "administration", "white house", "poll", "nominee", "impeach", "constitutional", "primary", "electoral", "ballot"];
+  if (politicsKeywords.some(k => searchStr.includes(k))) {
+    return "Politics";
+  }
+
+  // Crypto - check for crypto keywords
+  const cryptoKeywords = ["crypto", "bitcoin", "ethereum", "btc", "eth", "defi", "blockchain", "web3", "solana", "sol", "token", "nft", "altcoin", "memecoin", "doge", "xrp", "cardano", "polygon", "binance", "coinbase", "usdt", "usdc", "stablecoin", "halving", "mining", "wallet", "exchange"];
+  if (cryptoKeywords.some(k => searchStr.includes(k))) {
+    return "Crypto";
+  }
+
+  // Business - check for business keywords
+  const businessKeywords = ["business", "economics", "stocks", "finance", "fed", "market", "company", "tech", "stock", "ipo", "earnings", "revenue", "profit", "ceo", "merger", "acquisition", "tesla", "apple", "google", "amazon", "microsoft", "nvidia", "meta", "interest rate", "inflation", "gdp", "recession", "s&p", "dow", "nasdaq", "tariff", "trade", "economic"];
+  if (businessKeywords.some(k => searchStr.includes(k))) {
+    return "Business";
+  }
+
+  // Culture - check for culture/entertainment keywords
+  const cultureKeywords = ["culture", "entertainment", "celebrity", "movies", "music", "tv", "streaming", "netflix", "disney", "movie", "film", "actor", "actress", "singer", "album", "grammy", "oscar", "emmy", "award", "pop", "hip hop", "tiktok", "youtube", "influencer", "viral", "show", "series", "concert", "tour", "kardashian", "kanye", "taylor swift"];
+  if (cultureKeywords.some(k => searchStr.includes(k))) {
+    return "Culture";
+  }
+
+  // Science - check for science keywords
+  const scienceKeywords = ["science", "space", "ai", "technology", "climate", "nasa", "spacex", "rocket", "satellite", "mars", "moon", "artificial intelligence", "machine learning", "research", "discovery", "physics", "chemistry", "biology", "medical", "vaccine", "health", "fda", "drug", "weather", "hurricane", "earthquake", "pandemic", "virus", "agi", "openai", "anthropic", "gpt"];
+  if (scienceKeywords.some(k => searchStr.includes(k))) {
+    return "Science";
+  }
+
+  return "Other";
 }
 
 export async function GET(request: Request) {
@@ -45,16 +105,17 @@ export async function GET(request: Request) {
   const category = searchParams.get("category");
 
   try {
-    // Fetch ALL binary (Yes/No) markets sorted by volume
+    // Fetch ALL events (including multi-outcome) sorted by volume
+    // Using /events endpoint which returns complete market data for each event
     if (action === "markets") {
-      const allMarkets: GammaMarket[] = [];
+      const allEvents: GammaEvent[] = [];
       const BATCH_SIZE = 100;
       let offset = 0;
       let hasMore = true;
 
-      // Paginate through all markets (don't filter by tag_id - it's unreliable)
+      // Paginate through all events
       while (hasMore) {
-        const url = `${GAMMA_API}/markets?limit=${BATCH_SIZE}&offset=${offset}&closed=false&order=volume&ascending=false`;
+        const url = `${GAMMA_API}/events?limit=${BATCH_SIZE}&offset=${offset}&closed=false&order=volume&ascending=false`;
 
         const response = await fetch(url, {
           headers: { Accept: "application/json" },
@@ -65,123 +126,159 @@ export async function GET(request: Request) {
           throw new Error(`Gamma API error: ${response.status}`);
         }
 
-        const batch: GammaMarket[] = await response.json();
+        const batch: GammaEvent[] = await response.json();
 
         if (batch.length === 0) {
           hasMore = false;
         } else {
-          allMarkets.push(...batch);
+          allEvents.push(...batch);
           offset += BATCH_SIZE;
 
-          // Safety limit - max 2000 markets
-          if (offset >= 2000 || batch.length < BATCH_SIZE) {
+          // Safety limit - max 1000 events (each can have many markets)
+          if (offset >= 1000 || batch.length < BATCH_SIZE) {
             hasMore = false;
           }
         }
       }
 
-      // Dedupe markets by ID (API can return duplicates across batches)
-      const seenIds = new Set<string>();
-      const uniqueMarkets = allMarkets.filter((market) => {
-        if (seenIds.has(market.id)) return false;
-        seenIds.add(market.id);
-        return true;
-      });
+      const transformedMarkets: any[] = [];
 
-      // Transform and filter markets - ONLY Yes/No binary markets
-      const transformedMarkets = uniqueMarkets
-        .filter((market) => {
-          // Must be active with order book
-          if (!market.active || market.closed || !market.enableOrderBook) {
-            return false;
+      // Process each event
+      for (const event of allEvents) {
+        if (!event.active || event.closed) {
+          continue;
+        }
+
+        // Filter to only active, open markets with order book
+        const activeMarkets = event.markets.filter(
+          (m) => m.active && !m.closed && m.enableOrderBook
+        );
+
+        if (activeMarkets.length === 0) {
+          continue;
+        }
+
+        // Determine if this is a multi-outcome event
+        // Multi-outcome events have markets with groupItemTitle set
+        const hasGroupItems = activeMarkets.some((m) => m.groupItemTitle);
+        const isMultiOutcome = hasGroupItems || activeMarkets.length > 1;
+
+        // Determine category
+        const detectedCategory = detectCategory(
+          event.tags?.map((t) => t.label) || [],
+          event.title
+        );
+
+        if (isMultiOutcome && hasGroupItems) {
+          // Multi-outcome event - each market is an outcome
+          const outcomes: { name: string; probability: number; tokenId: string; volume: number }[] = [];
+
+          for (const market of activeMarkets) {
+            let probability = 0.5;
+            let tokenId = "";
+
+            try {
+              const prices = JSON.parse(market.outcomePrices);
+              // First price is the Yes probability for this outcome
+              probability = parseFloat(prices[0]) || 0.5;
+            } catch {}
+
+            try {
+              if (market.clobTokenIds) {
+                const tokenIds = JSON.parse(market.clobTokenIds);
+                tokenId = tokenIds[0] || "";
+              }
+            } catch {}
+
+            outcomes.push({
+              name: market.groupItemTitle || market.question,
+              probability,
+              tokenId,
+              volume: market.volumeNum || parseFloat(market.volume) || 0,
+            });
           }
 
-          // Parse outcomes - only keep binary Yes/No markets
+          // Sort outcomes by probability descending
+          outcomes.sort((a, b) => b.probability - a.probability);
+
+          transformedMarkets.push({
+            id: event.id,
+            question: event.title,
+            slug: event.slug,
+            description: event.description,
+            outcomes: outcomes.map((o) => o.name),
+            outcomeProbabilities: outcomes.map((o) => o.probability),
+            outcomeTokenIds: outcomes.map((o) => o.tokenId),
+            outcomeVolumes: outcomes.map((o) => o.volume),
+            isMultiOutcome: true,
+            volume: event.volume || 0,
+            liquidity: event.liquidity || 0,
+            endDate: event.endDate,
+            startDate: event.startDate,
+            category: detectedCategory,
+            image: event.image,
+            icon: event.icon,
+            tags: event.tags?.map((t) => t.label) || [],
+          });
+        } else {
+          // Binary Yes/No market (single market in event)
+          const market = activeMarkets[0];
+
           try {
             const outcomes = JSON.parse(market.outcomes);
-            // Only include markets with exactly 2 outcomes
-            if (outcomes.length !== 2) {
-              return false;
-            }
-            // Check if it's a Yes/No market (not multi-option like team selections)
             const outcomeLabels = outcomes.map((o: string) => o.toLowerCase());
             const isYesNo = outcomeLabels.includes("yes") && outcomeLabels.includes("no");
-            return isYesNo;
-          } catch {
-            return false;
-          }
-        })
-        .map((market) => {
-          // Parse outcome prices
-          let yesProbability = 0.5;
-          try {
-            const prices = JSON.parse(market.outcomePrices);
-            const outcomes = JSON.parse(market.outcomes);
-            // Find the Yes outcome index
-            const yesIndex = outcomes.findIndex((o: string) => o.toLowerCase() === "yes");
-            yesProbability = yesIndex >= 0 ? parseFloat(prices[yesIndex]) || 0.5 : parseFloat(prices[0]) || 0.5;
-          } catch {
-            // Keep default
-          }
 
-          // Parse tokenIds
-          let tokenIds: string[] = [];
-          try {
-            if (market.clobTokenIds) {
-              tokenIds = JSON.parse(market.clobTokenIds);
+            if (!isYesNo || outcomes.length !== 2) {
+              continue; // Skip non-binary standalone markets
             }
+
+            let yesProbability = 0.5;
+            try {
+              const prices = JSON.parse(market.outcomePrices);
+              const yesIndex = outcomes.findIndex((o: string) => o.toLowerCase() === "yes");
+              yesProbability = yesIndex >= 0 ? parseFloat(prices[yesIndex]) || 0.5 : parseFloat(prices[0]) || 0.5;
+            } catch {}
+
+            let tokenIds: string[] = [];
+            try {
+              if (market.clobTokenIds) {
+                tokenIds = JSON.parse(market.clobTokenIds);
+              }
+            } catch {}
+
+            const volume = market.volumeNum || parseFloat(market.volume) || 0;
+            const liquidity = market.liquidityNum || parseFloat(market.liquidity) || 0;
+
+            transformedMarkets.push({
+              id: market.id,
+              question: event.title || market.question,
+              slug: event.slug || market.slug,
+              description: event.description || market.description,
+              outcomes: ["Yes", "No"],
+              outcomeProbabilities: [yesProbability, 1 - yesProbability],
+              outcomeTokenIds: tokenIds,
+              outcomeVolumes: [volume * yesProbability, volume * (1 - yesProbability)],
+              isMultiOutcome: false,
+              volume: event.volume || volume,
+              liquidity: event.liquidity || liquidity,
+              endDate: market.endDate,
+              startDate: market.startDate,
+              category: detectedCategory,
+              image: event.image || market.image,
+              icon: event.icon || market.icon,
+              tags: event.tags?.map((t) => t.label) || [],
+            });
           } catch {
-            // Keep empty
+            continue;
           }
+        }
+      }
 
-          // Determine category from event tags
-          let detectedCategory = "Other";
-          const event = market.events?.[0];
-          if (event?.tags?.length) {
-            const tagLabels = event.tags.map((t) => t.label.toLowerCase());
-            if (tagLabels.some((t) => ["sports", "nfl", "nba", "mlb", "soccer", "football", "basketball", "baseball", "hockey", "tennis", "golf", "mma", "boxing", "f1", "racing"].includes(t))) {
-              detectedCategory = "Sports";
-            } else if (tagLabels.some((t) => ["politics", "election", "government", "congress", "senate", "president", "vote", "republican", "democrat"].includes(t))) {
-              detectedCategory = "Politics";
-            } else if (tagLabels.some((t) => ["crypto", "bitcoin", "ethereum", "btc", "eth", "defi", "blockchain", "web3"].includes(t))) {
-              detectedCategory = "Crypto";
-            } else if (tagLabels.some((t) => ["business", "economics", "stocks", "finance", "fed", "market", "company", "tech"].includes(t))) {
-              detectedCategory = "Business";
-            } else if (tagLabels.some((t) => ["culture", "entertainment", "celebrity", "movies", "music", "tv", "streaming"].includes(t))) {
-              detectedCategory = "Culture";
-            } else if (tagLabels.some((t) => ["science", "space", "ai", "technology", "climate"].includes(t))) {
-              detectedCategory = "Science";
-            }
-          }
-
-          const volume = market.volumeNum || parseFloat(market.volume) || 0;
-          const liquidity = market.liquidityNum || parseFloat(market.liquidity) || 0;
-
-          return {
-            id: market.id,
-            question: market.question,
-            slug: event?.slug || market.slug,
-            description: market.description,
-            outcomes: ["Yes", "No"],
-            yesProbability,
-            noProbability: 1 - yesProbability,
-            volume,
-            liquidity,
-            endDate: market.endDate,
-            startDate: market.startDate,
-            category: detectedCategory,
-            image: market.image,
-            icon: market.icon,
-            tokenIds,
-            conditionId: market.conditionId,
-            tags: event?.tags?.map((t) => t.label) || [],
-          };
-        });
-
-      // Already sorted by volume from API, but ensure it
+      // Sort by volume descending
       transformedMarkets.sort((a, b) => b.volume - a.volume);
 
-      // Filter by category if specified (do this AFTER sorting)
+      // Filter by category if specified
       const categoryMap: Record<string, string> = {
         sports: "Sports",
         politics: "Politics",
@@ -303,88 +400,94 @@ function generateMockPriceHistory(interval: string): PriceHistory[] {
 function getMockMarkets() {
   return [
     {
-      id: "mock-1",
-      question: "Will Bitcoin reach $100,000 by end of 2024?",
-      slug: "bitcoin-100k-2024",
-      outcomes: ["Yes", "No"],
-      yesProbability: 0.42,
-      noProbability: 0.58,
-      volume: 2500000,
-      liquidity: 450000,
-      endDate: "2024-12-31T23:59:59Z",
+      id: "mock-btc-price",
+      question: "What price will Bitcoin hit in 2025?",
+      slug: "bitcoin-price-2025",
+      outcomes: ["↑ 1,000,000", "↑ 250,000", "↑ 200,000", "↑ 170,000", "↑ 150,000", "↑ 140,000", "↑ 130,000", "↑ 120,000"],
+      outcomeProbabilities: [0.01, 0.01, 0.01, 0.01, 0.01, 0.02, 0.03, 0.06],
+      outcomeTokenIds: ["mock-1m", "mock-250k", "mock-200k", "mock-170k", "mock-150k", "mock-140k", "mock-130k", "mock-120k"],
+      outcomeVolumes: [6549547, 5636675, 9693828, 3384332, 11683141, 4063502, 8713068, 1962559],
+      isMultiOutcome: true,
+      volume: 76528582,
+      liquidity: 5000000,
+      endDate: "2026-01-01T00:00:00Z",
       category: "Crypto",
-      tokenIds: ["mock-btc-yes", "mock-btc-no"],
       tags: ["Crypto", "Bitcoin"],
     },
     {
-      id: "mock-2",
-      question: "Will the Fed cut rates in December 2024?",
-      slug: "fed-rate-cut-dec-2024",
+      id: "mock-eth-price",
+      question: "What price will Ethereum hit in 2025?",
+      slug: "ethereum-price-2025",
+      outcomes: ["↑ 17,000", "↑ 14,000", "↑ 12,000", "↑ 10,000", "↑ 8,000"],
+      outcomeProbabilities: [0.01, 0.01, 0.05, 0.15, 0.30],
+      outcomeTokenIds: ["mock-eth-17k", "mock-eth-14k", "mock-eth-12k", "mock-eth-10k", "mock-eth-8k"],
+      outcomeVolumes: [500000, 800000, 1500000, 3000000, 5000000],
+      isMultiOutcome: true,
+      volume: 15000000,
+      liquidity: 2000000,
+      endDate: "2026-01-01T00:00:00Z",
+      category: "Crypto",
+      tags: ["Crypto", "Ethereum"],
+    },
+    {
+      id: "mock-fed",
+      question: "Will the Fed cut rates in December?",
+      slug: "fed-rate-cut-dec",
       outcomes: ["Yes", "No"],
-      yesProbability: 0.78,
-      noProbability: 0.22,
+      outcomeProbabilities: [0.78, 0.22],
+      outcomeTokenIds: ["mock-fed-yes", "mock-fed-no"],
+      outcomeVolumes: [1400000, 400000],
+      isMultiOutcome: false,
       volume: 1800000,
       liquidity: 320000,
       endDate: "2024-12-18T23:59:59Z",
       category: "Business",
-      tokenIds: ["mock-fed-yes", "mock-fed-no"],
       tags: ["Fed", "Economics"],
     },
     {
-      id: "mock-3",
-      question: "Will Ethereum ETF be approved by January 2025?",
-      slug: "eth-etf-jan-2025",
-      outcomes: ["Yes", "No"],
-      yesProbability: 0.65,
-      noProbability: 0.35,
-      volume: 980000,
-      liquidity: 210000,
-      endDate: "2025-01-31T23:59:59Z",
+      id: "mock-btc-dec",
+      question: "Bitcoin above __ on December 3?",
+      slug: "btc-dec-3",
+      outcomes: ["78,000", "80,000", "82,000", "85,000"],
+      outcomeProbabilities: [1.0, 1.0, 0.95, 0.70],
+      outcomeTokenIds: ["mock-btc-78", "mock-btc-80", "mock-btc-82", "mock-btc-85"],
+      outcomeVolumes: [200000, 300000, 400000, 500000],
+      isMultiOutcome: true,
+      volume: 1400000,
+      liquidity: 200000,
+      endDate: "2024-12-04T00:00:00Z",
       category: "Crypto",
-      tokenIds: ["mock-eth-yes", "mock-eth-no"],
-      tags: ["Crypto", "Ethereum", "ETF"],
+      tags: ["Crypto", "Bitcoin"],
     },
     {
-      id: "mock-4",
+      id: "mock-lighter",
+      question: "Lighter market cap (FDV) one day after launch?",
+      slug: "lighter-fdv",
+      outcomes: [">$1B", ">$2B", ">$5B", ">$10B"],
+      outcomeProbabilities: [0.73, 0.71, 0.45, 0.20],
+      outcomeTokenIds: ["mock-l-1b", "mock-l-2b", "mock-l-5b", "mock-l-10b"],
+      outcomeVolumes: [5000000, 4000000, 2000000, 1000000],
+      isMultiOutcome: true,
+      volume: 13000000,
+      liquidity: 1500000,
+      endDate: "2025-01-15T00:00:00Z",
+      category: "Crypto",
+      tags: ["Crypto", "DeFi"],
+    },
+    {
+      id: "mock-chiefs",
       question: "Chiefs to win Super Bowl?",
       slug: "chiefs-super-bowl",
       outcomes: ["Yes", "No"],
-      yesProbability: 0.35,
-      noProbability: 0.65,
+      outcomeProbabilities: [0.35, 0.65],
+      outcomeTokenIds: ["mock-chiefs-yes", "mock-chiefs-no"],
+      outcomeVolumes: [262500, 487500],
+      isMultiOutcome: false,
       volume: 750000,
       liquidity: 180000,
       endDate: "2025-02-09T23:59:59Z",
       category: "Sports",
-      tokenIds: ["mock-chiefs-yes", "mock-chiefs-no"],
       tags: ["Sports", "NFL", "Super Bowl"],
-    },
-    {
-      id: "mock-5",
-      question: "Will SpaceX Starship complete orbital flight?",
-      slug: "spacex-starship-orbital",
-      outcomes: ["Yes", "No"],
-      yesProbability: 0.85,
-      noProbability: 0.15,
-      volume: 620000,
-      liquidity: 145000,
-      endDate: "2024-12-31T23:59:59Z",
-      category: "Science",
-      tokenIds: ["mock-spacex-yes", "mock-spacex-no"],
-      tags: ["Science", "Space", "SpaceX"],
-    },
-    {
-      id: "mock-6",
-      question: "Will Tesla stock reach $400 by Q1 2025?",
-      slug: "tesla-400-q1-2025",
-      outcomes: ["Yes", "No"],
-      yesProbability: 0.31,
-      noProbability: 0.69,
-      volume: 890000,
-      liquidity: 195000,
-      endDate: "2025-03-31T23:59:59Z",
-      category: "Business",
-      tokenIds: ["mock-tsla-yes", "mock-tsla-no"],
-      tags: ["Business", "Stocks", "Tesla"],
     },
   ];
 }

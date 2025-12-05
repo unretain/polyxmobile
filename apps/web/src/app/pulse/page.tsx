@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Activity, Zap, RefreshCw, Copy, ExternalLink, TrendingUp, Search, X } from "lucide-react";
+import { useThemeStore } from "@/stores/themeStore";
 import { formatNumber, formatPercent, shortenAddress, cn } from "@/lib/utils";
 import { usePulseStore, type PulseToken } from "@/stores/pulseStore";
 
@@ -41,9 +42,10 @@ function getBondingProgress(marketCap: number): number {
 interface TokenRowProps {
   token: PulseToken;
   showProgress?: boolean;
+  isDark: boolean;
 }
 
-function TokenRow({ token, showProgress = false }: TokenRowProps) {
+function TokenRow({ token, showProgress = false, isDark }: TokenRowProps) {
   const progress = getBondingProgress(token.marketCap);
   const isPositive = token.priceChange24h >= 0;
 
@@ -62,11 +64,15 @@ function TokenRow({ token, showProgress = false }: TokenRowProps) {
       )}
     >
       {/* Token Logo */}
-      <div className="relative h-9 w-9 flex-shrink-0 overflow-hidden rounded-full bg-white/5 ring-2 ring-white/10">
+      <div className={`relative h-9 w-9 flex-shrink-0 overflow-hidden rounded-full ring-2 ${
+        isDark ? 'bg-white/5 ring-white/10' : 'bg-black/5 ring-black/10'
+      }`}>
         {token.logoUri ? (
           <Image src={token.logoUri} alt={token.symbol} fill className="object-cover" unoptimized />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-sm font-bold text-white/40 bg-gradient-to-br from-[#FF6B4A]/20 to-white/5">
+          <div className={`flex h-full w-full items-center justify-center text-sm font-bold bg-gradient-to-br ${
+            isDark ? 'text-white/40 from-[#FF6B4A]/20 to-white/5' : 'text-black/40 from-[#FF6B4A]/20 to-black/5'
+          }`}>
             {token.symbol?.charAt(0) ?? "?"}
           </div>
         )}
@@ -75,17 +81,17 @@ function TokenRow({ token, showProgress = false }: TokenRowProps) {
       {/* Token Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="font-semibold text-sm truncate text-white">{token.symbol}</span>
-          <span className="text-xs text-white/40 truncate max-w-[80px]">{token.name}</span>
+          <span className={`font-semibold text-sm truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>{token.symbol}</span>
+          <span className={`text-xs truncate max-w-[80px] ${isDark ? 'text-white/40' : 'text-gray-500'}`}>{token.name}</span>
         </div>
-        <div className="flex items-center gap-2 text-xs text-white/40">
+        <div className={`flex items-center gap-2 text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
           <span className="font-medium">{formatMC(token.marketCap)}</span>
           <span>•</span>
           <span>{timeAgo(token.createdAt)}</span>
           {showProgress && (
             <>
               <span>•</span>
-              <span className="text-white/60">{progress.toFixed(0)}%</span>
+              <span className={isDark ? 'text-white/60' : 'text-gray-600'}>{progress.toFixed(0)}%</span>
             </>
           )}
         </div>
@@ -103,7 +109,7 @@ function TokenRow({ token, showProgress = false }: TokenRowProps) {
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
         <button
           onClick={copyAddress}
-          className="p-1.5 hover:bg-white/10 transition-colors text-white/60"
+          className={`p-1.5 transition-colors ${isDark ? 'hover:bg-white/10 text-white/60' : 'hover:bg-black/10 text-gray-500'}`}
           title="Copy address"
         >
           <Copy className="h-3.5 w-3.5" />
@@ -127,37 +133,43 @@ interface TokenColumnProps {
   emptyMessage: string;
   showProgress?: boolean;
   accentColor?: string;
+  isDark: boolean;
 }
 
-function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress }: TokenColumnProps) {
+function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDark }: TokenColumnProps) {
   return (
-    <div className="flex flex-col h-full border border-white/10 bg-white/5 backdrop-blur-md overflow-hidden">
+    <div className={`flex flex-col h-full border backdrop-blur-md overflow-hidden ${
+      isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-white'
+    }`}>
       {/* Column Header */}
       <div className={cn(
-        "flex items-center gap-3 px-4 py-3 border-b border-white/10",
-        "bg-gradient-to-r from-white/10 to-transparent"
+        "flex items-center gap-3 px-4 py-3 border-b",
+        "bg-gradient-to-r to-transparent",
+        isDark ? 'border-white/10 from-white/10' : 'border-black/10 from-black/5'
       )}>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="font-medium text-sm text-[#FF6B4A]">[{title.toLowerCase()}]</h3>
-            <span className="text-xs text-white/40 bg-white/5 px-1.5 py-0.5 rounded-full">
+            <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+              isDark ? 'text-white/40 bg-white/5' : 'text-gray-500 bg-black/5'
+            }`}>
               {tokens.length}
             </span>
           </div>
-          <p className="text-xs text-white/50 truncate">{subtitle}</p>
+          <p className={`text-xs truncate ${isDark ? 'text-white/50' : 'text-gray-500'}`}>{subtitle}</p>
         </div>
       </div>
 
       {/* Token List */}
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {tokens.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 text-white/40">
+          <div className={`flex flex-col items-center justify-center h-32 ${isDark ? 'text-white/40' : 'text-gray-400'}`}>
             <Activity className="h-8 w-8 mb-2 opacity-40" />
             <span className="text-xs">{emptyMessage}</span>
           </div>
         ) : (
           tokens.map((token) => (
-            <TokenRow key={token.address} token={token} showProgress={showProgress} />
+            <TokenRow key={token.address} token={token} showProgress={showProgress} isDark={isDark} />
           ))
         )}
       </div>
@@ -167,6 +179,7 @@ function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress }: To
 
 export default function PulsePage() {
   const router = useRouter();
+  const { isDark } = useThemeStore();
   const {
     newPairs,
     graduatingPairs,
@@ -296,15 +309,17 @@ export default function PulsePage() {
   return (
     <div className="h-full flex flex-col gap-4">
       {/* Header */}
-      <div className="flex items-center justify-between flex-shrink-0 px-4 py-3 bg-white/5 backdrop-blur-md border border-white/10">
+      <div className={`flex items-center justify-between flex-shrink-0 px-4 py-3 backdrop-blur-md border ${
+        isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
+      }`}>
         <div className="flex items-center gap-3">
           <div className="bg-[#FF6B4A]/20 p-2.5 ring-1 ring-[#FF6B4A]/40">
             <Activity className="h-5 w-5 text-[#FF6B4A]" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-white">Pulse</h1>
-            <p className="text-sm text-white/50">
-              Real-time pump.fun token discovery • <span className="text-white/80">{totalTokens}</span> tokens
+            <h1 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Pulse</h1>
+            <p className={`text-sm ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
+              Real-time pump.fun token discovery • <span className={isDark ? 'text-white/80' : 'text-gray-700'}>{totalTokens}</span> tokens
             </p>
           </div>
         </div>
@@ -313,21 +328,25 @@ export default function PulsePage() {
           {/* Search Button */}
           <button
             onClick={openSearch}
-            className="flex items-center gap-2 bg-white/5 border border-white/10 px-3 py-2 text-sm text-white/50 hover:bg-white/10 hover:border-[#FF6B4A]/30 transition-all"
+            className={`flex items-center gap-2 border px-3 py-2 text-sm transition-all hover:border-[#FF6B4A]/30 ${
+              isDark
+                ? 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
+                : 'bg-black/5 border-black/10 text-gray-500 hover:bg-black/10'
+            }`}
           >
             <Search className="h-4 w-4" />
             <span>Search by name, ticker, or CA...</span>
-            <kbd className="ml-2 px-1.5 py-0.5 text-xs bg-white/10 text-white/40">Esc</kbd>
+            <kbd className={`ml-2 px-1.5 py-0.5 text-xs ${isDark ? 'bg-white/10 text-white/40' : 'bg-black/10 text-gray-400'}`}>Esc</kbd>
           </button>
 
           {/* Real-time indicator */}
           <div className={cn(
             "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-sm",
-            isRealtime ? "bg-up/15 text-up ring-1 ring-up/40" : "bg-white/10 text-white/50"
+            isRealtime ? "bg-up/15 text-up ring-1 ring-up/40" : isDark ? "bg-white/10 text-white/50" : "bg-black/10 text-gray-500"
           )}>
             <span className={cn(
               "h-2 w-2 rounded-full",
-              isRealtime ? "bg-up animate-pulse" : "bg-white/40"
+              isRealtime ? "bg-up animate-pulse" : isDark ? "bg-white/40" : "bg-gray-400"
             )} />
             {isRealtime ? "Live" : "Polling"}
           </div>
@@ -336,8 +355,9 @@ export default function PulsePage() {
             onClick={() => fetchAllPairs()}
             disabled={isLoading}
             className={cn(
-              "flex items-center gap-2 border bg-[#FF6B4A]/10 border-[#FF6B4A]/30 px-4 py-2 text-sm font-medium text-white transition-all",
+              "flex items-center gap-2 border bg-[#FF6B4A]/10 border-[#FF6B4A]/30 px-4 py-2 text-sm font-medium transition-all",
               "hover:bg-[#FF6B4A]/20 hover:border-[#FF6B4A]/50 active:scale-95",
+              isDark ? 'text-white' : 'text-gray-900',
               isLoading && "opacity-50"
             )}
           >
@@ -362,6 +382,7 @@ export default function PulsePage() {
           subtitle="Just launched on pump.fun"
           tokens={newPairs}
           emptyMessage="Waiting for new tokens..."
+          isDark={isDark}
         />
 
         {/* Column 2: Final Stretch */}
@@ -371,6 +392,7 @@ export default function PulsePage() {
           tokens={graduatingPairs}
           emptyMessage="No tokens graduating..."
           showProgress
+          isDark={isDark}
         />
 
         {/* Column 3: Migrated */}
@@ -379,20 +401,23 @@ export default function PulsePage() {
           subtitle="Graduated to Raydium/PumpSwap"
           tokens={graduatedPairs}
           emptyMessage="No migrated tokens yet..."
+          isDark={isDark}
         />
       </div>
 
       {/* Footer Stats */}
-      <div className="flex items-center justify-between px-4 py-3 bg-white/5 backdrop-blur-md border border-white/10 text-xs text-white/50 flex-shrink-0">
+      <div className={`flex items-center justify-between px-4 py-3 backdrop-blur-md border text-xs flex-shrink-0 ${
+        isDark ? 'bg-white/5 border-white/10 text-white/50' : 'bg-black/5 border-black/10 text-gray-500'
+      }`}>
         <div className="flex items-center gap-4">
           <span>
-            <strong className="text-white/80">{newPairs.length}</strong> new pairs
+            <strong className={isDark ? 'text-white/80' : 'text-gray-700'}>{newPairs.length}</strong> new pairs
           </span>
           <span>
-            <strong className="text-white/80">{graduatingPairs.length}</strong> graduating
+            <strong className={isDark ? 'text-white/80' : 'text-gray-700'}>{graduatingPairs.length}</strong> graduating
           </span>
           <span>
-            <strong className="text-white/80">{graduatedPairs.length}</strong> migrated
+            <strong className={isDark ? 'text-white/80' : 'text-gray-700'}>{graduatedPairs.length}</strong> migrated
           </span>
         </div>
         <div className="flex items-center gap-2">

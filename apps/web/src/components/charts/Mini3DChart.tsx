@@ -5,6 +5,7 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import { PerspectiveCamera, Text } from "@react-three/drei";
 import * as THREE from "three";
 import type { OHLCV } from "@/stores/pulseStore";
+import { useThemeStore } from "@/stores/themeStore";
 
 interface Mini3DChartProps {
   data: OHLCV[];
@@ -306,6 +307,7 @@ export function Mini3DChart({
   showMarketCap = false,
   currentMarketCap,
 }: Mini3DChartProps) {
+  const { isDark } = useThemeStore();
   const [isMounted, setIsMounted] = useState(false);
 
   // Ensure component is mounted before rendering Canvas to prevent HMR issues
@@ -325,7 +327,9 @@ export function Mini3DChart({
 
   if (isLoading && displayData.length === 0) {
     return (
-      <div className="h-full w-full flex items-center justify-center bg-white/5 border border-white/10">
+      <div className={`h-full w-full flex items-center justify-center border ${
+        isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
+      }`}>
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-[#22c55e] border-t-transparent" />
       </div>
     );
@@ -333,20 +337,24 @@ export function Mini3DChart({
 
   if (displayData.length === 0) {
     return (
-      <div className="h-full w-full flex items-center justify-center bg-white/5 border border-white/10 text-white/50 text-xs">
+      <div className={`h-full w-full flex items-center justify-center border text-xs ${
+        isDark ? 'bg-white/5 border-white/10 text-white/50' : 'bg-black/5 border-black/10 text-gray-500'
+      }`}>
         No data
       </div>
     );
   }
 
   return (
-    <div className="h-full w-full overflow-hidden bg-white/5 border border-white/10 relative">
+    <div className={`h-full w-full overflow-hidden border relative ${
+      isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
+    }`}>
       {/* Coral swirl background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[200px] h-[200px]">
-          <div className="absolute inset-0 bg-gradient-conic from-[#FF6B4A]/25 via-[#FF8F6B]/10 via-[#FF6B4A]/15 to-[#FF6B4A]/25 blur-[40px] animate-slow-spin" />
+          <div className={`absolute inset-0 bg-gradient-conic from-[#FF6B4A]/25 via-[#FF8F6B]/10 via-[#FF6B4A]/15 to-[#FF6B4A]/25 blur-[40px] animate-slow-spin ${isDark ? '' : 'opacity-50'}`} />
         </div>
-        <div className="absolute inset-0 bg-[#0a0a0a]/40" />
+        <div className={`absolute inset-0 ${isDark ? 'bg-[#0a0a0a]/40' : 'bg-white/40'}`} />
       </div>
       {isMounted && (
         <Canvas gl={{ antialias: true, alpha: true }}>

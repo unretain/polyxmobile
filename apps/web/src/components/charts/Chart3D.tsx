@@ -1,8 +1,20 @@
 "use client";
 
 import { Suspense, useMemo, useState, useRef, useEffect, useCallback } from "react";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, PerspectiveCamera, Environment } from "@react-three/drei";
+import * as THREE from "three";
+
+// Component to reactively update scene background based on theme
+function SceneBackground({ isDark }: { isDark: boolean }) {
+  const { scene } = useThree();
+
+  useEffect(() => {
+    scene.background = new THREE.Color(isDark ? '#0a0a0a' : '#f9fafb');
+  }, [scene, isDark]);
+
+  return null;
+}
 import { Candlestick3D } from "./Candlestick3D";
 import { VolumeBar3D } from "./VolumeBar3D";
 import { ChartGrid } from "./ChartGrid";
@@ -11,6 +23,7 @@ import { FlyControls } from "./FlyControls";
 import { DrawingLayer, DrawingToolbar, Drawing, DrawingToolType, DRAWING_COLORS, DEFAULT_LINE_WIDTH } from "./drawing";
 import { formatPrice, formatNumber } from "@/lib/utils";
 import type { OHLCV } from "@/stores/chartStore";
+import { useThemeStore } from "@/stores/themeStore";
 
 // Props for external toolbar rendering
 export interface DrawingToolbarRenderProps {
@@ -35,9 +48,86 @@ interface Chart3DProps {
   isLoadingMore?: boolean; // Loading state for fetching more data
   showDrawingTools?: boolean; // Whether to show the drawing toolbar (default: true)
   renderToolbar?: (props: DrawingToolbarRenderProps) => React.ReactNode; // Custom toolbar renderer
+  showWatermark?: boolean; // Show embedded watermark in the 3D scene (for free tier)
 }
 
-export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLoadMore, hasMoreData = true, isLoadingMore = false, showDrawingTools = true, renderToolbar }: Chart3DProps) {
+// 3D Watermark component rendered in Three.js scene
+// This is rendered INTO the canvas, making it nearly impossible to remove
+function Watermark3D({ chartWidth, chartHeight }: { chartWidth: number; chartHeight: number }) {
+  const groupRef = useRef<THREE.Group>(null);
+  const { camera } = useThree();
+
+  // Update watermark rotation to always face camera
+  useEffect(() => {
+    const updateRotation = () => {
+      if (groupRef.current) {
+        // Keep watermark facing the camera
+        groupRef.current.lookAt(camera.position);
+      }
+    };
+
+    // Initial update
+    updateRotation();
+
+    // Create an animation frame loop to keep watermark facing camera
+    let animationId: number;
+    const animate = () => {
+      updateRotation();
+      animationId = requestAnimationFrame(animate);
+    };
+    animate();
+
+    return () => {
+      if (animationId) cancelAnimationFrame(animationId);
+    };
+  }, [camera]);
+
+  // Create canvas texture for the watermark text
+  const texture = useMemo(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Make it semi-transparent
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.font = 'bold 64px Inter, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('POLYX FREE', canvas.width / 2, canvas.height / 2);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.needsUpdate = true;
+    return tex;
+  }, []);
+
+  if (!texture) return null;
+
+  return (
+    <group ref={groupRef} position={[chartWidth / 2, chartHeight / 2, 5]}>
+      {/* Main watermark - slightly offset */}
+      <mesh position={[0, 0, 0]}>
+        <planeGeometry args={[20, 5]} />
+        <meshBasicMaterial map={texture} transparent opacity={0.15} depthWrite={false} />
+      </mesh>
+      {/* Secondary watermark - rotated */}
+      <mesh position={[-8, -2, -2]} rotation={[0, 0, Math.PI / 12]}>
+        <planeGeometry args={[16, 4]} />
+        <meshBasicMaterial map={texture} transparent opacity={0.08} depthWrite={false} />
+      </mesh>
+      {/* Third watermark - different angle */}
+      <mesh position={[8, 2, -3]} rotation={[0, 0, -Math.PI / 15]}>
+        <planeGeometry args={[16, 4]} />
+        <meshBasicMaterial map={texture} transparent opacity={0.08} depthWrite={false} />
+      </mesh>
+    </group>
+  );
+}
+
+export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLoadMore, hasMoreData = true, isLoadingMore = false, showDrawingTools = true, renderToolbar, showWatermark = false }: Chart3DProps) {
+  const { isDark } = useThemeStore();
   // Debug: log when component receives new data
   console.log('[Chart3D] Render - data.length:', data.length, 'isLoading:', isLoading);
 
@@ -525,19 +615,21 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   return (
     <div
       ref={containerRef}
-      className={`relative h-full w-full bg-[#0a0a0a] select-none flex ${renderToolbar ? "flex-row" : "flex-row"}`}
+      className={`relative h-full w-full select-none flex ${renderToolbar ? "flex-row" : "flex-row"} ${renderToolbar ? '' : (isDark ? 'bg-[#0a0a0a]' : 'bg-gray-50')}`}
       onDoubleClick={handleDoubleClick}
     >
-      {/* Coral swirl background - like landing page */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px]">
-          <div className="absolute inset-0 bg-gradient-conic from-[#FF6B4A]/30 via-[#FF8F6B]/15 via-[#FF6B4A]/20 to-[#FF6B4A]/30 blur-[80px] animate-slow-spin" />
+      {/* Coral swirl background - only show when not using custom toolbar (landing page has its own) */}
+      {!renderToolbar && (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px]">
+            <div className={`absolute inset-0 bg-gradient-conic from-[#FF6B4A]/30 via-[#FF8F6B]/15 via-[#FF6B4A]/20 to-[#FF6B4A]/30 blur-[80px] animate-slow-spin ${isDark ? '' : 'opacity-50'}`} />
+          </div>
+          <div className={`absolute inset-0 ${isDark ? 'bg-[#0a0a0a]/60' : 'bg-white/60'}`} />
         </div>
-        <div className="absolute inset-0 bg-[#0a0a0a]/60" />
-      </div>
+      )}
 
       {isLoading && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#0a0a0a]/80">
+        <div className={`absolute inset-0 z-10 flex items-center justify-center ${isDark ? 'bg-[#0a0a0a]/80' : 'bg-white/80'}`}>
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#FF6B4A] border-t-transparent" />
         </div>
       )}
@@ -578,15 +670,15 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
           <div className="absolute top-4 left-4 z-10">
             {showMarketCap && marketCap ? (
               <>
-                <div className="text-xs text-white/50 mb-0.5">Market Cap</div>
-                <div className="text-2xl font-bold text-white">${formatNumber(marketCap)}</div>
+                <div className={`text-xs mb-0.5 ${isDark ? 'text-white/50' : 'text-gray-500'}`}>Market Cap</div>
+                <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${formatNumber(marketCap)}</div>
               </>
             ) : price ? (
-              <div className="text-2xl font-bold text-white">${formatPrice(price)}</div>
+              <div className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${formatPrice(price)}</div>
             ) : (
-              <div className="text-2xl font-bold text-white/50">Loading...</div>
+              <div className={`text-2xl font-bold ${isDark ? 'text-white/50' : 'text-gray-400'}`}>Loading...</div>
             )}
-            <div className="text-xs text-white/50">
+            <div className={`text-xs ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
               {dateRange} • {visibleData.length} candles
             </div>
           </div>
@@ -598,7 +690,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
           <div className={`text-sm font-medium ${priceChange.isPositive ? "text-up" : "text-down"}`}>
             {priceChange.isPositive ? "+" : ""}${formatPrice(priceChange.value)} ({priceChange.isPositive ? "+" : ""}{priceChange.percent.toFixed(2)}%)
           </div>
-          <div className="text-xs text-white/50">
+          <div className={`text-xs ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
             visible range
           </div>
         </div>
@@ -616,8 +708,10 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
               powerPreference: "high-performance",
               failIfMajorPerformanceCaveat: false
             }}
-            onCreated={({ gl }) => {
+            onCreated={({ gl, scene }) => {
               console.log('[Chart3D] Canvas created (key:', webglKey, ')');
+              // Set scene background based on theme
+              scene.background = new THREE.Color(isDark ? '#0a0a0a' : '#f9fafb');
               // Handle WebGL context loss
               gl.domElement.addEventListener('webglcontextlost', (e) => {
                 console.error('[Chart3D] WebGL context lost!', e);
@@ -630,6 +724,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
               });
             }}
           >
+            <SceneBackground isDark={isDark} />
             <Suspense fallback={null}>
               <PerspectiveCamera makeDefault position={cameraPosition} fov={50} />
 
@@ -640,7 +735,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
               {visibleData.length > 0 && (
                 <>
                   {/* Grid and axes */}
-                  <ChartGrid width={CHART_WIDTH} height={PRICE_HEIGHT} depth={VOLUME_Z_OFFSET + 4} />
+                  <ChartGrid width={CHART_WIDTH} height={PRICE_HEIGHT} depth={VOLUME_Z_OFFSET + 4} isDark={isDark} />
                   <ChartAxis
                     minPrice={bounds.minPrice}
                     maxPrice={bounds.maxPrice}
@@ -650,6 +745,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
                     showMarketCap={showMarketCap}
                     data={visibleData}
                     spacing={spacing}
+                    isDark={isDark}
                   />
 
                   {/* Candlesticks */}
@@ -682,6 +778,11 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
                       zOffset={VOLUME_Z_OFFSET}
                     />
                   ))}
+
+                  {/* 3D Watermark - rendered into the canvas for free tier */}
+                  {showWatermark && (
+                    <Watermark3D chartWidth={CHART_WIDTH} chartHeight={PRICE_HEIGHT} />
+                  )}
                 </>
               )}
 
@@ -724,7 +825,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
         )}
         {/* Overlay message when no data */}
         {isMounted && visibleData.length === 0 && !isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center text-white/50 bg-[#0a0a0a]/80">
+          <div className={`absolute inset-0 flex items-center justify-center ${isDark ? 'text-white/50 bg-[#0a0a0a]/80' : 'text-gray-500 bg-white/80'}`}>
             No chart data available
           </div>
         )}
@@ -734,7 +835,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       {!renderToolbar && showDrawingTools && (
         <div
           ref={sliderRef}
-          className="h-10 mx-4 mb-2 relative bg-white/5 border border-white/10"
+          className={`h-10 mx-4 mb-2 relative border ${isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}
         >
           {/* Mini chart preview */}
           <div className="absolute inset-0 opacity-30">
@@ -756,11 +857,11 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
 
           {/* Dimmed areas outside selection */}
           <div
-            className="absolute top-0 bottom-0 left-0 bg-[#0a0a0a]/70"
+            className={`absolute top-0 bottom-0 left-0 ${isDark ? 'bg-[#0a0a0a]/70' : 'bg-white/70'}`}
             style={{ width: `${viewStart * 100}%` }}
           />
           <div
-            className="absolute top-0 bottom-0 right-0 bg-[#0a0a0a]/70"
+            className={`absolute top-0 bottom-0 right-0 ${isDark ? 'bg-[#0a0a0a]/70' : 'bg-white/70'}`}
             style={{ width: `${(1 - viewEnd) * 100}%` }}
           />
 
@@ -796,9 +897,11 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
 
       {/* Loading more indicator */}
       {isLoadingMore && (
-        <div className="absolute top-4 right-4 z-10 flex items-center gap-2 bg-white/5 backdrop-blur-md border border-white/10 px-3 py-1.5">
+        <div className={`absolute top-4 right-4 z-10 flex items-center gap-2 backdrop-blur-md border px-3 py-1.5 ${
+          isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
+        }`}>
           <div className="h-3 w-3 animate-spin rounded-full border border-[#FF6B4A] border-t-transparent" />
-          <span className="text-xs text-white/50">Loading more...</span>
+          <span className={`text-xs ${isDark ? 'text-white/50' : 'text-gray-500'}`}>Loading more...</span>
         </div>
       )}
 
@@ -807,7 +910,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
         <div className="absolute top-4 right-4 z-10">
           <div className="bg-[#FF6B4A]/10 border border-[#FF6B4A]/30 px-3 py-1.5 text-xs">
             <span className="text-[#FF6B4A] font-medium">Shift+Enter</span>
-            <span className="text-white/50"> for fly mode</span>
+            <span className={isDark ? 'text-white/50' : 'text-gray-500'}> for fly mode</span>
           </div>
         </div>
       )}
@@ -815,12 +918,14 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       {/* Fly mode instructions - shown for 4 seconds after entering fly mode */}
       {isFlyMode && showFlyModeInstructions && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none animate-in fade-in duration-300">
-          <div className="flex flex-col items-center gap-2 bg-[#0a0a0a]/90 backdrop-blur-md px-6 py-4 border border-[#FF6B4A]/50">
-            <div className="text-[#FF6B4A] font-bold text-lg">✈️ FLY MODE</div>
-            <div className="text-xs text-white/50 text-center space-y-1">
-              <p>Click to lock mouse • ESC to exit</p>
-              <p className="font-mono">W/S: Forward/Back • A/D: Strafe</p>
-              <p className="font-mono">Q/E: Down/Up • Shift: Speed boost</p>
+          <div className={`flex flex-col items-center gap-2 backdrop-blur-md px-6 py-4 border border-[#FF6B4A]/50 ${
+            isDark ? 'bg-[#0a0a0a]/90' : 'bg-white/90'
+          }`}>
+            <div className="text-[#FF6B4A] font-bold text-lg">FLY MODE</div>
+            <div className={`text-xs text-center space-y-1 ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
+              <p>Click to lock mouse - ESC to exit</p>
+              <p className="font-mono">W/S: Forward/Back - A/D: Strafe</p>
+              <p className="font-mono">Q/E: Down/Up - Shift: Speed boost</p>
             </div>
           </div>
         </div>
@@ -830,21 +935,23 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       {isFlyMode && !showFlyModeInstructions && (
         <div className="absolute top-4 right-4 z-10">
           <div className="bg-[#FF6B4A]/20 border border-[#FF6B4A] px-3 py-1.5 text-xs">
-            <span className="text-[#FF6B4A] font-bold">✈️ FLY MODE</span>
-            <span className="text-white/50"> • ESC to exit</span>
+            <span className="text-[#FF6B4A] font-bold">FLY MODE</span>
+            <span className={isDark ? 'text-white/50' : 'text-gray-500'}> - ESC to exit</span>
           </div>
         </div>
       )}
 
       {/* Controls hint - only shown when drawing tools visible */}
       {showDrawingTools && (
-        <div className="absolute bottom-14 left-4 bg-white/5 backdrop-blur-md border border-white/10 px-3 py-1.5 text-xs text-white/50">
+        <div className={`absolute bottom-14 left-4 backdrop-blur-md border px-3 py-1.5 text-xs ${
+          isDark ? 'bg-white/5 border-white/10 text-white/50' : 'bg-black/5 border-black/10 text-gray-500'
+        }`}>
           {isFlyMode ? (
-            "WASD: move • Q/E: up/down • Mouse: look • Shift: speed • ESC: exit"
+            "WASD: move - Q/E: up/down - Mouse: look - Shift: speed - ESC: exit"
           ) : (
             <>
-              3D: drag rotate • scroll zoom • Slider: pan time • Double-click: reset
-              {hasMoreData && " • Scroll left for history"}
+              3D: drag rotate - scroll zoom - Slider: pan time - Double-click: reset
+              {hasMoreData && " - Scroll left for history"}
             </>
           )}
         </div>

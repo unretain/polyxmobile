@@ -9,6 +9,7 @@ import { ExternalLink } from "lucide-react";
 import type { Token } from "@/stores/tokenStore";
 import type { OHLCV } from "@/stores/chartStore";
 import { Mini3DChart } from "@/components/charts/Mini3DChart";
+import { useThemeStore } from "@/stores/themeStore";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -27,6 +28,7 @@ interface TokenCardProps {
 }
 
 export function TokenCard({ token }: TokenCardProps) {
+  const { isDark } = useThemeStore();
   const [ohlcv, setOhlcv] = useState<OHLCV[]>([]);
   const [isLoadingOhlcv, setIsLoadingOhlcv] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -91,11 +93,17 @@ export function TokenCard({ token }: TokenCardProps) {
     <Link
       ref={cardRef}
       href={`/token/${token.address}`}
-      className="group flex flex-col gap-3 border border-white/5 bg-[#111] p-4 transition-all hover:border-[#FF6B4A]/30 hover:bg-[#FF6B4A]/5 card-shine"
+      className={`group flex flex-col gap-3 border p-4 transition-all hover:border-[#FF6B4A]/30 hover:bg-[#FF6B4A]/5 card-shine ${
+        isDark
+          ? 'border-white/5 bg-[#111]'
+          : 'border-black/10 bg-white'
+      }`}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
-          <div className="relative h-10 w-10 overflow-hidden rounded-full bg-white/5 ring-2 ring-white/10">
+          <div className={`relative h-10 w-10 overflow-hidden rounded-full ring-2 ${
+            isDark ? 'bg-white/5 ring-white/10' : 'bg-black/5 ring-black/10'
+          }`}>
             {imageUrl && !imageError ? (
               <Image
                 src={imageUrl}
@@ -106,21 +114,25 @@ export function TokenCard({ token }: TokenCardProps) {
                 onError={() => setImageError(true)}
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center text-lg font-bold text-white/40 bg-gradient-to-br from-white/10 to-white/5">
+              <div className={`flex h-full w-full items-center justify-center text-lg font-bold bg-gradient-to-br ${
+                isDark ? 'text-white/40 from-white/10 to-white/5' : 'text-black/40 from-black/10 to-black/5'
+              }`}>
                 {token.symbol.charAt(0)}
               </div>
             )}
           </div>
           <div>
-            <h3 className="font-semibold text-sm text-white">{token.symbol}</h3>
-            <p className="text-xs text-white/40 truncate max-w-[100px]">{token.name}</p>
+            <h3 className={`font-semibold text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>{token.symbol}</h3>
+            <p className={`text-xs truncate max-w-[100px] ${isDark ? 'text-white/40' : 'text-gray-500'}`}>{token.name}</p>
           </div>
         </div>
-        <ExternalLink className="h-4 w-4 text-white/20 opacity-0 transition-opacity group-hover:opacity-100 group-hover:text-[#FF6B4A]" />
+        <ExternalLink className={`h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100 group-hover:text-[#FF6B4A] ${
+          isDark ? 'text-white/20' : 'text-black/20'
+        }`} />
       </div>
 
       {/* Mini 3D Chart - only renders when visible to save WebGL contexts */}
-      <div className="h-24 w-full bg-black/30 overflow-hidden">
+      <div className={`h-24 w-full overflow-hidden ${isDark ? 'bg-black/30' : 'bg-gray-100'}`}>
         {isVisible ? (
           <Mini3DChart
             data={ohlcv}
@@ -128,7 +140,7 @@ export function TokenCard({ token }: TokenCardProps) {
             currentMarketCap={token.marketCap}
           />
         ) : (
-          <div className="h-full w-full flex items-center justify-center text-white/30 text-xs">
+          <div className={`h-full w-full flex items-center justify-center text-xs ${isDark ? 'text-white/30' : 'text-gray-400'}`}>
             Loading...
           </div>
         )}
@@ -136,8 +148,8 @@ export function TokenCard({ token }: TokenCardProps) {
 
       <div className="flex items-end justify-between">
         <div>
-          <p className="text-lg font-bold text-white">${formatPrice(token.price ?? 0)}</p>
-          <p className="text-xs text-white/40">
+          <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${formatPrice(token.price ?? 0)}</p>
+          <p className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
             MC: ${formatNumber(token.marketCap ?? 0)}
           </p>
         </div>
@@ -151,7 +163,9 @@ export function TokenCard({ token }: TokenCardProps) {
         </div>
       </div>
 
-      <div className="flex items-center justify-between border-t border-white/5 pt-3 text-xs text-white/40">
+      <div className={`flex items-center justify-between border-t pt-3 text-xs ${
+        isDark ? 'border-white/5 text-white/40' : 'border-black/5 text-gray-500'
+      }`}>
         <span>Vol: ${formatNumber(token.volume24h ?? 0)}</span>
         <span>{shortenAddress(token.address)}</span>
       </div>

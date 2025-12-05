@@ -113,29 +113,34 @@ pulseRoutes.get("/new-pairs", async (req, res) => {
 
 // GET /api/pulse/graduating - Get coins about to graduate from pump.fun
 // PRIMARY SOURCE: Moralis pump.fun/bonding API (has bondingCurveProgress %)
-// "Final Stretch" = Market cap $20K-$69K (approaching graduation threshold)
+// "Final Stretch" = Market cap $15K-$69K (approaching graduation threshold)
 // Following Axiom.trade's approach: https://docs.axiom.trade/axiom/finding-tokens/pulse
 // Pump.fun graduation happens at ~$69K market cap when bonding curve is 100% filled
 pulseRoutes.get("/graduating", async (req, res) => {
   try {
     let tokens: any[] = [];
 
-    // Market cap thresholds for "Final Stretch" (following Axiom's approach)
+    // Market cap thresholds for "Final Stretch"
     // Pump.fun tokens graduate at ~$69K market cap
-    // Final Stretch = tokens with $20K-$69K market cap actively approaching graduation
-    const MIN_MARKET_CAP = 20000; // $20K - minimum to be in "Final Stretch"
+    // Final Stretch = tokens with $15K-$69K market cap actively approaching graduation
+    // We use $10K as "soft minimum" to keep tokens that dipped after hitting $15K
+    const MIN_MARKET_CAP = 15000; // $15K - minimum to enter "Final Stretch"
+    const SOFT_MIN_MARKET_CAP = 10000; // $10K - keep tokens that dipped below $15K but peaked above
     const MAX_MARKET_CAP = 69000; // $69K - graduation threshold
 
-    // PRIMARY: Use Moralis bonding endpoint
+    // PRIMARY: Use Moralis bonding endpoint (get 100 - Moralis max limit)
     try {
       const moralisTokens = await moralisService.getGraduatingPulsePairs(100);
-      // Filter by market cap range: $20K-$69K (true "Final Stretch")
-      // Tokens < $20K are too early, tokens >= $69K should have graduated
+      // Filter by market cap range: $10K-$69K (with $15K as the entry point)
+      // Tokens that hit $15K+ and dipped to $10K-$15K are kept (they "entered" Final Stretch)
+      // Tokens < $10K are removed (too far gone or never made it)
       tokens = moralisTokens.filter((t: any) => {
         const mc = t.marketCap || 0;
-        return mc >= MIN_MARKET_CAP && mc < MAX_MARKET_CAP;
+        // Keep tokens between soft min ($10K) and max ($69K)
+        // The bonding progress % helps identify tokens that reached higher MCs
+        return mc >= SOFT_MIN_MARKET_CAP && mc < MAX_MARKET_CAP;
       });
-      console.log(`📦 Got ${moralisTokens.length} bonding tokens, ${tokens.length} are in Final Stretch ($${MIN_MARKET_CAP/1000}K-$${MAX_MARKET_CAP/1000}K MC)`);
+      console.log(`📦 Got ${moralisTokens.length} bonding tokens, ${tokens.length} are in Final Stretch ($${SOFT_MIN_MARKET_CAP/1000}K-$${MAX_MARKET_CAP/1000}K MC)`);
     } catch (err) {
       console.error("Moralis bonding tokens error:", err);
     }
@@ -146,18 +151,19 @@ pulseRoutes.get("/graduating", async (req, res) => {
       if (realtimeTokens.length > 0) {
         tokens = realtimeTokens.filter((t: any) => {
           const mc = t.marketCap || 0;
-          return mc >= MIN_MARKET_CAP && mc < MAX_MARKET_CAP;
+          return mc >= SOFT_MIN_MARKET_CAP && mc < MAX_MARKET_CAP;
         });
         console.log(`📦 Using ${tokens.length} graduating tokens from PumpPortal`);
       }
     }
 
-    // Sort by market cap descending (closest to $69K graduation first)
-    // This shows tokens most likely to graduate soon at the top
+    // Sort by bonding curve progress ASCENDING (lowest progress = just entered Final Stretch = top)
+    // This shows tokens that JUST entered Final Stretch at the top, moving down as they approach graduation
+    // User wants: "add new ones at the top and as they go down remove them"
     tokens.sort((a, b) => {
-      const aMC = a.marketCap || 0;
-      const bMC = b.marketCap || 0;
-      return bMC - aMC;
+      const aProgress = a.bondingProgress || 0;
+      const bProgress = b.bondingProgress || 0;
+      return aProgress - bProgress; // Ascending: lowest progress first (newest to Final Stretch)
     });
 
     const response = {

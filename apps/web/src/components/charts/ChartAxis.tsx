@@ -63,6 +63,7 @@ interface ChartAxisProps {
   // NEW: Pass actual OHLCV data for date labels
   data?: OHLCV[];
   spacing?: number;
+  isDark?: boolean;
 }
 
 export function ChartAxis({
@@ -74,7 +75,11 @@ export function ChartAxis({
   showMarketCap = false,
   data = [],
   spacing = 1.2,
+  isDark = true,
 }: ChartAxisProps) {
+  // Theme-aware colors
+  const labelColor = isDark ? "#888" : "#666";
+  const axisLabelColor = isDark ? "#aaa" : "#555";
   // For Pulse tokens (showMarketCap=true): multiply price by supply to show market cap
   // For Dashboard tokens (showMarketCap=false): show actual price
   const multiplier = showMarketCap ? PUMP_FUN_SUPPLY : 1;
@@ -151,7 +156,7 @@ export function ChartAxis({
           key={`price-${index}`}
           position={position}
           fontSize={0.32}
-          color="#888"
+          color={labelColor}
           anchorX="right"
           anchorY="middle"
         >
@@ -171,7 +176,7 @@ export function ChartAxis({
           key={`date-${index}`}
           position={position}
           fontSize={0.5}
-          color="#aaa"
+          color={axisLabelColor}
           anchorX="center"
           anchorY="top"
         >
@@ -183,7 +188,7 @@ export function ChartAxis({
       <Text
         position={[-3.5, chartHeight / 2, 0]}
         fontSize={0.35}
-        color="#aaa"
+        color={axisLabelColor}
         anchorX="center"
         anchorY="middle"
         rotation={[0, 0, Math.PI / 2]}
@@ -194,7 +199,7 @@ export function ChartAxis({
       <Text
         position={[chartWidth / 2, -2.8, 0]}
         fontSize={0.4}
-        color="#aaa"
+        color={axisLabelColor}
         anchorX="center"
         anchorY="middle"
       >
