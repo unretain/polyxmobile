@@ -708,12 +708,7 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
                   disabled={isSubmitting}
                   className="flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg px-4 py-3 text-white transition-colors disabled:opacity-50"
                 >
-                  <div className="w-5 h-5 bg-[#AB9FF2] rounded flex items-center justify-center">
-                    <svg viewBox="0 0 34 34" className="w-3 h-3" fill="white">
-                      <circle cx="14" cy="15" r="2"/>
-                      <circle cx="22" cy="15" r="2"/>
-                    </svg>
-                  </div>
+                  <img src="/phantom-logo.png" alt="Phantom" className="w-5 h-5" />
                   <span>Phantom</span>
                 </button>
               </div>
@@ -1001,12 +996,7 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
                   disabled={isSubmitting}
                   className="flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg px-4 py-3 text-white transition-colors disabled:opacity-50"
                 >
-                  <div className="w-5 h-5 bg-[#AB9FF2] rounded flex items-center justify-center">
-                    <svg viewBox="0 0 34 34" className="w-3 h-3" fill="white">
-                      <circle cx="14" cy="15" r="2"/>
-                      <circle cx="22" cy="15" r="2"/>
-                    </svg>
-                  </div>
+                  <img src="/phantom-logo.png" alt="Phantom" className="w-5 h-5" />
                   <span>Phantom</span>
                 </button>
               </div>
