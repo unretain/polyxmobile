@@ -283,7 +283,7 @@ pulseRoutes.get("/token/:address", async (req, res) => {
 
     // First check PumpPortal cache for real-time token data
     const realtimeTokens = pumpPortalService.getRecentNewTokens();
-    let tokenData = realtimeTokens.find((t: any) => t.address === address);
+    let tokenData: any = realtimeTokens.find((t: any) => t.address === address);
 
     if (!tokenData) {
       // Check graduating tokens
@@ -564,7 +564,7 @@ pulseRoutes.get("/image/:address", async (req, res) => {
     const { address } = req.params;
 
     // Check cache first
-    let logoUrl = moralisService.getCachedLogo(address);
+    let logoUrl: string | null | undefined = moralisService.getCachedLogo(address);
 
     if (!logoUrl) {
       // Fetch from Moralis

@@ -55,7 +55,7 @@ function CameraModeButton({
   mode: CameraMode;
   currentMode: CameraMode;
   onClick: () => void;
-  icon: React.ElementType;
+  icon: React.ComponentType<{ className?: string }>;
   label: string;
   isDark: boolean;
 }) {
@@ -78,7 +78,7 @@ function CameraModeButton({
 }
 
 // Stats card component
-function StatCard({ label, value, icon: Icon, isDark }: { label: string; value: string; icon: React.ElementType; isDark: boolean }) {
+function StatCard({ label, value, icon: Icon, isDark }: { label: string; value: string; icon: React.ComponentType<{ className?: string }>; isDark: boolean }) {
   return (
     <div className={`flex items-center gap-3 p-3 border ${
       isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'

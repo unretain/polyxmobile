@@ -4,7 +4,7 @@ import Stripe from "stripe";
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: "2024-11-20.acacia",
+  apiVersion: "2025-11-17.clover",
 }) : null;
 
 // GET /api/subscription/status?email=user@example.com
@@ -96,8 +96,10 @@ export async function GET(req: NextRequest) {
       hasSubscription: true,
       customerId: customer.id,
       subscriptionId: subscription.id,
-      currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString(),
-      cancelAtPeriodEnd: subscription.cancel_at_period_end,
+      currentPeriodEnd: (subscription as any).current_period_end
+        ? new Date((subscription as any).current_period_end * 1000).toISOString()
+        : null,
+      cancelAtPeriodEnd: (subscription as any).cancel_at_period_end,
       features,
     });
 

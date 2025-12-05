@@ -93,6 +93,8 @@ class GeckoTerminalService {
         "1h": { type: "hour", aggregate: 1 },
         "4h": { type: "hour", aggregate: 4 },
         "1d": { type: "day", aggregate: 1 },
+        "1w": { type: "day", aggregate: 7 },
+        "1M": { type: "day", aggregate: 30 },
       };
 
       const { type, aggregate } = timeframeMap[timeframe];
