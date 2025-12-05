@@ -4,6 +4,39 @@ import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
+import { generateWalletForUser } from "./wallet";
+
+// Get wallet encryption secret from env
+const WALLET_ENCRYPTION_SECRET = process.env.NEXTAUTH_SECRET || "fallback-secret-change-in-production";
+
+/**
+ * Generate a Solana wallet for a user if they don't have one
+ */
+async function ensureUserHasWallet(userId: string): Promise<string | null> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { walletAddress: true },
+  });
+
+  if (user?.walletAddress) {
+    return user.walletAddress;
+  }
+
+  // Generate new wallet
+  const { publicKey, encryptedPrivateKey } = generateWalletForUser(WALLET_ENCRYPTION_SECRET);
+
+  // Store in database
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      walletAddress: publicKey,
+      walletEncrypted: encryptedPrivateKey,
+    },
+  });
+
+  console.log(`Generated Solana wallet ${publicKey} for user ${userId}`);
+  return publicKey;
+}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -34,19 +67,26 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           where: { email },
         });
 
-        // If user doesn't exist, create a new account
+        // If user doesn't exist, create a new account with wallet
         if (!user) {
           // Hash password
           const passwordHash = await bcrypt.hash(password, 12);
 
-          // Create new user
+          // Generate wallet
+          const { publicKey, encryptedPrivateKey } = generateWalletForUser(WALLET_ENCRYPTION_SECRET);
+
+          // Create new user with wallet
           const newUser = await prisma.user.create({
             data: {
               email,
               passwordHash,
               name: email.split("@")[0],
+              walletAddress: publicKey,
+              walletEncrypted: encryptedPrivateKey,
             },
           });
+
+          console.log(`Created new user ${email} with wallet ${publicKey}`);
 
           return {
             id: newUser.id,
@@ -81,19 +121,39 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   pages: {
     signIn: "/",
   },
+  events: {
+    // Generate wallet after OAuth sign-in (Google, etc.)
+    async signIn({ user, account }) {
+      if (user.id && account?.provider !== "credentials") {
+        // For OAuth providers, ensure user has a wallet
+        await ensureUserHasWallet(user.id);
+      }
+    },
+  },
   callbacks: {
-    async jwt({ token, user, account }) {
+    async jwt({ token, user, account, trigger }) {
       if (user) {
         token.id = user.id;
       }
       if (account?.provider === "google") {
         token.provider = "google";
       }
+
+      // Fetch wallet address on sign-in or session update
+      if ((trigger === "signIn" || trigger === "update") && token.id) {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { walletAddress: true },
+        });
+        token.walletAddress = dbUser?.walletAddress;
+      }
+
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
+        (session.user as { walletAddress?: string }).walletAddress = token.walletAddress as string | undefined;
       }
       return session;
     },
