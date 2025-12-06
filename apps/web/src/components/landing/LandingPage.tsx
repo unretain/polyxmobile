@@ -593,7 +593,7 @@ export function LandingPage() {
           </div>
 
           {/* Two Column Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-10 mb-16">
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-10">
             {/* Left Column - Cards */}
             <div className="space-y-5">
               {/* Token Preview Card */}
@@ -810,14 +810,13 @@ export function LandingPage() {
                 </div>
               </div>
 
-              {/* Vertical token ticker overlay - like $STAR reference */}
-              {/* Text is half-clipped off left edge, moves right on hover */}
+              {/* Vertical token ticker overlay - behind chart content, positioned to avoid toolbar */}
               <div
-                className={`absolute top-0 bottom-0 flex items-center pointer-events-none select-none z-10 transition-transform duration-500 ease-out ${isChartHovered ? '-translate-x-[30%]' : '-translate-x-[60%]'}`}
-                style={{ left: 0 }}
+                className={`absolute top-0 bottom-0 flex items-center pointer-events-none select-none z-[1] transition-transform duration-500 ease-out ${isChartHovered ? 'translate-x-[20%]' : 'translate-x-0'}`}
+                style={{ left: '15%' }}
               >
                 <span
-                  className={`text-[140px] md:text-[180px] font-black tracking-tight leading-none uppercase ${isDark ? 'text-white/[0.08]' : 'text-black/[0.08]'}`}
+                  className={`text-[120px] md:text-[160px] font-black tracking-tight leading-none uppercase ${isDark ? 'text-white/[0.04]' : 'text-black/[0.04]'}`}
                   style={{ writingMode: 'vertical-rl' }}
                 >
                   ${currentToken.symbol}
@@ -826,8 +825,8 @@ export function LandingPage() {
             </div>
           </div>
 
-          {/* Bottom Row - CTA Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
+          {/* Bottom Row - CTA Cards - matching reference layout */}
+          <div className="grid grid-cols-2 md:grid-cols-[1fr_1.5fr_0.8fr_0.8fr] gap-4 mt-8">
             {/* View Pulse Card with iOS cylinder rotation */}
             <Link
               href="/pulse"
