@@ -4,7 +4,8 @@ import { Suspense, useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Copy, Check, Code, ExternalLink, Zap, Box, Palette, Settings, ChevronRight, Sun, Moon, Play, Pause, Sparkles, Building, Crown, X, Loader2 } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { useThemeStore } from "@/stores/themeStore";
 
 // Dynamic import for Chart3D to prevent SSR issues
@@ -135,6 +136,8 @@ function ApiEndpoint({ method, path, description, params, isDark }: {
 function SolutionsPageContent() {
   const { isDark, toggleTheme } = useThemeStore();
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const { data: session } = useSession();
   const [selectedToken, setSelectedToken] = useState(DEMO_TOKENS[0]);
   const [candles, setCandles] = useState<OHLCVCandle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -145,6 +148,9 @@ function SolutionsPageContent() {
   const [embedTimeframe, setEmbedTimeframe] = useState("1h");
   const [isPlaying, setIsPlaying] = useState(true);
 
+  // Subscription state
+  const [userPlan, setUserPlan] = useState<"FREE" | "PRO" | "BUSINESS">("FREE");
+
   // Checkout modal state
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [checkoutPlan, setCheckoutPlan] = useState<"PRO" | "BUSINESS" | null>(null);
@@ -152,6 +158,20 @@ function SolutionsPageContent() {
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+
+  // Check user's subscription status
+  useEffect(() => {
+    if (session?.user) {
+      fetch("/api/subscription/status")
+        .then(res => res.json())
+        .then(data => {
+          if (data.plan) {
+            setUserPlan(data.plan);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [session]);
 
   // Check for success/canceled from Stripe redirect
   useEffect(() => {
@@ -447,12 +467,21 @@ function SolutionsPageContent() {
                   ))}
                 </ul>
 
-                <button
-                  onClick={() => handleCheckout("PRO")}
-                  className="w-full py-3 font-medium bg-[#FF6B4A] text-white hover:bg-[#FF5A36] transition-colors"
-                >
-                  Subscribe to Pro
-                </button>
+                {userPlan === "PRO" || userPlan === "BUSINESS" ? (
+                  <button
+                    onClick={() => router.push("/dashboard/license")}
+                    className="w-full py-3 font-medium bg-green-500 text-white hover:bg-green-600 transition-colors"
+                  >
+                    ✓ View Your License
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleCheckout("PRO")}
+                    className="w-full py-3 font-medium bg-[#FF6B4A] text-white hover:bg-[#FF5A36] transition-colors"
+                  >
+                    Subscribe to Pro
+                  </button>
+                )}
               </div>
 
               {/* Business Plan */}
@@ -487,16 +516,25 @@ function SolutionsPageContent() {
                   ))}
                 </ul>
 
-                <button
-                  onClick={() => handleCheckout("BUSINESS")}
-                  className={`w-full py-3 font-medium border transition-colors ${
-                    isDark
-                      ? 'border-purple-500/50 text-purple-400 hover:bg-purple-500/10'
-                      : 'border-purple-500/50 text-purple-600 hover:bg-purple-500/10'
-                  }`}
-                >
-                  Subscribe to Business
-                </button>
+                {userPlan === "BUSINESS" ? (
+                  <button
+                    onClick={() => router.push("/dashboard/license")}
+                    className="w-full py-3 font-medium bg-green-500 text-white hover:bg-green-600 transition-colors"
+                  >
+                    ✓ View Your License
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleCheckout("BUSINESS")}
+                    className={`w-full py-3 font-medium border transition-colors ${
+                      isDark
+                        ? 'border-purple-500/50 text-purple-400 hover:bg-purple-500/10'
+                        : 'border-purple-500/50 text-purple-600 hover:bg-purple-500/10'
+                    }`}
+                  >
+                    {userPlan === "PRO" ? "Upgrade to Business" : "Subscribe to Business"}
+                  </button>
+                )}
               </div>
             </div>
           </div>
