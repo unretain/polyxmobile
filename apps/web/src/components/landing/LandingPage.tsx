@@ -13,6 +13,15 @@ import { useAuthStore } from "@/stores/authStore";
 import { useThemeStore } from "@/stores/themeStore";
 import { shortenAddress } from "@/lib/wallet";
 
+// Extended session user type with our custom fields
+interface SessionUser {
+  name?: string | null;
+  email?: string | null;
+  image?: string | null;
+  walletAddress?: string;
+  twoFactorEnabled?: boolean;
+}
+
 // Dynamic import for Chart3D
 const Chart3D = dynamic(
   () => import("@/components/charts/Chart3D").then((mod) => mod.Chart3D),
@@ -257,7 +266,7 @@ export function LandingPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { data: session } = useSession();
-  const { user, logout } = useAuthStore();
+  const { logout } = useAuthStore(); // Only used to clear legacy storage
   const { isDark, toggleTheme } = useThemeStore();
   const [tokenIndex, setTokenIndex] = useState(0);
   const [tokenPrice, setTokenPrice] = useState<number | null>(null);
@@ -276,9 +285,10 @@ export function LandingPage() {
 
   const currentToken = FEATURED_TOKENS[tokenIndex];
 
-  // Use Zustand user first (has wallet info), fallback to NextAuth session
-  const currentUser = user || session?.user;
-  const walletAddress = user?.wallet;
+  // Auth is now entirely from NextAuth session (stored in cookies)
+  const currentUser = session?.user as SessionUser | undefined;
+  const walletAddress = currentUser?.walletAddress;
+  const twoFactorEnabled = currentUser?.twoFactorEnabled;
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -492,7 +502,7 @@ export function LandingPage() {
                     <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#FF6B4A] to-[#FF8F6B] flex items-center justify-center">
                       <User className="h-4 w-4 text-white" />
                     </div>
-                    {user?.twoFactorEnabled && (
+                    {twoFactorEnabled && (
                       <Shield className="h-3 w-3 text-green-500" />
                     )}
                     <ChevronDown className={`h-4 w-4 transition-transform ${isDark ? 'text-white/40' : 'text-black/40'} ${showDropdown ? 'rotate-180' : ''}`} />
@@ -935,14 +945,14 @@ export function LandingPage() {
               {/* 2FA Status */}
               <div className={`flex items-center justify-between p-4 rounded-xl border ${isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}>
                 <div className="flex items-center gap-3">
-                  <Shield className={`h-5 w-5 ${user?.twoFactorEnabled ? 'text-green-500' : isDark ? 'text-white/40' : 'text-black/40'}`} />
+                  <Shield className={`h-5 w-5 ${twoFactorEnabled ? 'text-green-500' : isDark ? 'text-white/40' : 'text-black/40'}`} />
                   <div>
                     <p className={`text-sm font-medium ${isDark ? 'text-white' : 'text-black'}`}>Two-Factor Authentication</p>
-                    <p className={`text-xs ${isDark ? 'text-white/40' : 'text-black/40'}`}>{user?.twoFactorEnabled ? 'Enabled' : 'Not enabled'}</p>
+                    <p className={`text-xs ${isDark ? 'text-white/40' : 'text-black/40'}`}>{twoFactorEnabled ? 'Enabled' : 'Not enabled'}</p>
                   </div>
                 </div>
-                <div className={`px-2 py-1 rounded-full text-xs font-medium ${user?.twoFactorEnabled ? 'bg-green-500/20 text-green-400' : isDark ? 'bg-white/10 text-white/40' : 'bg-black/10 text-black/40'}`}>
-                  {user?.twoFactorEnabled ? 'Active' : 'Off'}
+                <div className={`px-2 py-1 rounded-full text-xs font-medium ${twoFactorEnabled ? 'bg-green-500/20 text-green-400' : isDark ? 'bg-white/10 text-white/40' : 'bg-black/10 text-black/40'}`}>
+                  {twoFactorEnabled ? 'Active' : 'Off'}
                 </div>
               </div>
 
@@ -966,7 +976,7 @@ export function LandingPage() {
               )}
 
               {/* Private Key Section */}
-              {user?.id && (
+              {currentUser && (
                 <div className="p-4 rounded-xl bg-red-500/5 border border-red-500/20">
                   <div className="flex items-center gap-3 mb-3">
                     <Key className="h-5 w-5 text-red-400" />
