@@ -273,7 +273,7 @@ export function LandingPage() {
   const [candles, setCandles] = useState<OHLCVCandle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [timeframe, setTimeframe] = useState<Timeframe>("1m");
-  const [isChartHovered, setIsChartHovered] = useState(false);
+  // const [isChartHovered, setIsChartHovered] = useState(false); // Commented out with ticker
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [copied, setCopied] = useState(false);
@@ -716,8 +716,6 @@ export function LandingPage() {
             {/* Right Column - Featured Chart */}
             <div
               className="relative rounded-2xl overflow-hidden group"
-              onMouseEnter={() => setIsChartHovered(true)}
-              onMouseLeave={() => setIsChartHovered(false)}
             >
               {/* Chart container - base layer */}
               <div className="relative flex flex-col h-[640px]">
@@ -856,18 +854,23 @@ export function LandingPage() {
               </div>
             </Link>
 
-            {/* Ready to trade Card - Coral accent */}
+            {/* Ready to trade Card - Coral accent with line draw animation */}
             <Link
               href="/dashboard"
               className="group rounded-2xl bg-[#FF6B4A] p-5 hover:scale-[1.02] transition-all relative overflow-hidden"
             >
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
-              <div className="relative flex items-center justify-between">
-                <div>
-                  <div className="text-lg font-bold text-white">Ready to trade?</div>
-                  <div className="text-white/70 text-sm">Launch the app</div>
+              <div className="relative flex flex-col justify-between h-full min-h-[60px]">
+                <div className="text-lg font-bold text-white">Ready to trade?</div>
+                <div className="flex items-center gap-0 mt-2">
+                  {/* "Launch the app" text - moves left on hover to make room for line */}
+                  <span className="text-black text-sm font-medium transition-all duration-500 ease-out group-hover:-translate-x-2">
+                    Launch the app
+                  </span>
+                  {/* Animated line - draws from left to right on hover */}
+                  <div className="relative h-[1px] flex-1 ml-3 overflow-hidden">
+                    <div className="absolute inset-y-0 left-0 w-full bg-black origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out" />
+                  </div>
                 </div>
-                <ChevronRight className="w-6 h-6 text-white group-hover:translate-x-1 transition-transform" />
               </div>
             </Link>
 
