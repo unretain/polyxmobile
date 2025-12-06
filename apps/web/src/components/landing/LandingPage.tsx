@@ -592,8 +592,8 @@ export function LandingPage() {
             </p>
           </div>
 
-          {/* Two Column Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-10">
+          {/* Two Column Layout - Left panel wider like reference */}
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-8">
             {/* Left Column - Cards */}
             <div className="space-y-5">
               {/* Token Preview Card */}
@@ -825,11 +825,12 @@ export function LandingPage() {
           </div>
 
           {/* Bottom Row - CTA Cards - matching reference layout */}
-          <div className="grid grid-cols-2 md:grid-cols-[1fr_1.5fr_0.8fr_0.8fr] gap-4 mt-8">
-            {/* View Pulse Card with iOS cylinder rotation */}
+          {/* Grid matches the two-column layout above: left card under left panel, 3 cards under chart */}
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-8 mt-6">
+            {/* Left: View Pulse Card - aligned under left panel */}
             <Link
               href="/pulse"
-              className={`group rounded-2xl border p-5 card-shine hover:scale-[1.02] transition-all flex items-center gap-4 ${
+              className={`group rounded-2xl border py-6 px-5 card-shine hover:scale-[1.02] transition-all flex items-center gap-4 ${
                 isDark ? 'bg-[#1a1a1a] hover:bg-[#252525] border-transparent' : 'bg-white hover:bg-gray-100 border-transparent'
               }`}
             >
@@ -854,97 +855,100 @@ export function LandingPage() {
               </div>
             </Link>
 
-            {/* Ready to trade Card - Coral accent with line draw animation */}
-            <Link
-              href="/dashboard"
-              className="group rounded-2xl bg-[#FF6B4A] p-5 hover:scale-[1.02] transition-all relative overflow-hidden"
-            >
-              <div className="relative flex flex-col justify-between h-full min-h-[60px]">
-                <div className="text-lg font-bold text-white">Ready to trade?</div>
-                <div className="flex items-center gap-0 mt-2">
-                  {/* "Launch the app" text - moves left on hover to make room for line */}
-                  <span className="text-black text-sm font-medium transition-all duration-500 ease-out group-hover:-translate-x-2">
-                    Launch the app
-                  </span>
-                  {/* Animated line - draws from left to right on hover */}
-                  <div className="relative h-[1px] flex-1 ml-3 overflow-hidden">
-                    <div className="absolute inset-y-0 left-0 w-full bg-black origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out" />
+            {/* Right: 3 cards under chart */}
+            <div className="grid grid-cols-3 gap-4">
+              {/* Ready to trade Card - Coral accent with line draw animation */}
+              <Link
+                href="/dashboard"
+                className="group rounded-2xl bg-[#FF6B4A] py-6 px-5 hover:scale-[1.02] transition-all relative overflow-hidden"
+              >
+                <div className="relative flex flex-col justify-between h-full">
+                  <div className="text-lg font-bold text-white">Ready to trade?</div>
+                  <div className="flex items-center gap-0 mt-3">
+                    {/* "Launch the app" text - moves left on hover to make room for line */}
+                    <span className="text-black text-sm font-medium transition-all duration-500 ease-out group-hover:-translate-x-2">
+                      Launch the app
+                    </span>
+                    {/* Animated line - draws from left to right on hover */}
+                    <div className="relative h-[1px] flex-1 ml-3 overflow-hidden">
+                      <div className="absolute inset-y-0 left-0 w-full bg-black origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out" />
+                    </div>
                   </div>
                 </div>
-              </div>
-            </Link>
+              </Link>
 
-            {/* Docs Card with iOS cylinder rotation */}
-            <Link
-              href="/docs"
-              className={`group rounded-2xl border p-5 card-shine hover:scale-[1.02] transition-all flex items-center justify-between relative overflow-hidden ${
-                isDark ? 'bg-[#1a1a1a] hover:bg-[#252525] border-transparent' : 'bg-white hover:bg-gray-100 border-transparent'
-              }`}
-            >
-              <div className="absolute top-0 left-0 right-0 h-px animated-line" />
-              <div className="flex items-center gap-3">
-                <svg className={`w-5 h-5 ${isDark ? 'text-white/60' : 'text-black/60'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="16" y1="13" x2="8" y2="13" />
-                  <line x1="16" y1="17" x2="8" y2="17" />
-                  <polyline points="10 9 9 9 8 9" />
-                </svg>
-                {/* iOS Cylinder rotation text */}
-                <div className="ios-cylinder">
+              {/* Docs Card with iOS cylinder rotation */}
+              <Link
+                href="/docs"
+                className={`group rounded-2xl border py-6 px-5 card-shine hover:scale-[1.02] transition-all flex items-center justify-between relative overflow-hidden ${
+                  isDark ? 'bg-[#1a1a1a] hover:bg-[#252525] border-transparent' : 'bg-white hover:bg-gray-100 border-transparent'
+                }`}
+              >
+                <div className="absolute top-0 left-0 right-0 h-px animated-line" />
+                <div className="flex items-center gap-3">
+                  <svg className={`w-5 h-5 ${isDark ? 'text-white/60' : 'text-black/60'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                    <polyline points="10 9 9 9 8 9" />
+                  </svg>
+                  {/* iOS Cylinder rotation text */}
+                  <div className="ios-cylinder">
+                    <div className="ios-cylinder-inner">
+                      <div className="ios-cylinder-face ios-cylinder-front">
+                        <span className="font-medium text-[#FF6B4A]">The docs</span>
+                      </div>
+                      <div className="ios-cylinder-face ios-cylinder-bottom">
+                        <span className="font-medium text-[#FF6B4A]">Read now</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {/* Diagonal arrow that animates with iOS cylinder */}
+                <div className="ios-cylinder" style={{ width: "24px" }}>
                   <div className="ios-cylinder-inner">
-                    <div className="ios-cylinder-face ios-cylinder-front">
-                      <span className="font-medium text-[#FF6B4A]">Read now</span>
+                    <div className="ios-cylinder-face ios-cylinder-front flex justify-end">
+                      <svg className={`w-5 h-5 ${isDark ? 'text-white/40' : 'text-black/40'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="7" y1="17" x2="17" y2="7" />
+                        <polyline points="7 7 17 7 17 17" />
+                      </svg>
                     </div>
-                    <div className="ios-cylinder-face ios-cylinder-bottom">
-                      <span className="font-medium text-[#FF6B4A]">The docs</span>
+                    <div className="ios-cylinder-face ios-cylinder-bottom flex justify-end">
+                      <svg className="w-5 h-5 text-[#FF6B4A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="7" y1="17" x2="17" y2="7" />
+                        <polyline points="7 7 17 7 17 17" />
+                      </svg>
                     </div>
                   </div>
                 </div>
-              </div>
-              {/* Diagonal arrow that animates with iOS cylinder */}
-              <div className="ios-cylinder" style={{ width: "24px" }}>
-                <div className="ios-cylinder-inner">
-                  <div className="ios-cylinder-face ios-cylinder-front flex justify-end">
-                    <svg className={`w-5 h-5 ${isDark ? 'text-white/40' : 'text-black/40'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <line x1="7" y1="17" x2="17" y2="7" />
-                      <polyline points="7 7 17 7 17 17" />
-                    </svg>
-                  </div>
-                  <div className="ios-cylinder-face ios-cylinder-bottom flex justify-end">
-                    <svg className="w-5 h-5 text-[#FF6B4A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <line x1="7" y1="17" x2="17" y2="7" />
-                      <polyline points="7 7 17 7 17 17" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-            </Link>
+              </Link>
 
-            {/* Trade Markets Card with iOS cylinder rotation - no arrow */}
-            <Link
-              href="/markets"
-              className={`group rounded-2xl border p-5 card-shine hover:scale-[1.02] transition-all flex items-center relative overflow-hidden ${
-                isDark ? 'bg-[#1a1a1a] hover:bg-[#252525] border-transparent' : 'bg-white hover:bg-gray-100 border-transparent'
-              }`}
-            >
-              <div className="flex items-center gap-3">
-                <svg className={`w-5 h-5 ${isDark ? 'text-white/60' : 'text-black/60'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-                </svg>
-                {/* iOS Cylinder rotation text */}
-                <div className="ios-cylinder" style={{ width: "110px" }}>
-                  <div className="ios-cylinder-inner">
-                    <div className="ios-cylinder-face ios-cylinder-front">
-                      <span className="font-medium">Trade markets</span>
-                    </div>
-                    <div className="ios-cylinder-face ios-cylinder-bottom">
-                      <span className="font-medium text-[#FF6B4A]">Explore</span>
+              {/* Trade Markets Card with iOS cylinder rotation - no arrow */}
+              <Link
+                href="/markets"
+                className={`group rounded-2xl border py-6 px-5 card-shine hover:scale-[1.02] transition-all flex items-center relative overflow-hidden ${
+                  isDark ? 'bg-[#1a1a1a] hover:bg-[#252525] border-transparent' : 'bg-white hover:bg-gray-100 border-transparent'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <svg className={`w-5 h-5 ${isDark ? 'text-white/60' : 'text-black/60'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                  </svg>
+                  {/* iOS Cylinder rotation text */}
+                  <div className="ios-cylinder" style={{ width: "110px" }}>
+                    <div className="ios-cylinder-inner">
+                      <div className="ios-cylinder-face ios-cylinder-front">
+                        <span className="font-medium">Trade markets</span>
+                      </div>
+                      <div className="ios-cylinder-face ios-cylinder-bottom">
+                        <span className="font-medium text-[#FF6B4A]">Explore</span>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </Link>
+              </Link>
+            </div>
           </div>
         </div>
       </main>
