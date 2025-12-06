@@ -128,7 +128,26 @@ class BirdeyeService {
         });
 
       // Sort by timestamp ascending (oldest first, newest last)
-      const sorted = ohlcv.sort((a: OHLCV, b: OHLCV) => a.timestamp - b.timestamp);
+      let sorted = ohlcv.sort((a: OHLCV, b: OHLCV) => a.timestamp - b.timestamp);
+
+      // Filter out extreme price outliers (likely bad data from Birdeye)
+      // If a candle's high is more than 100x the median price, it's probably bad data
+      if (sorted.length > 5) {
+        const closePrices = sorted.map((c: OHLCV) => c.close).sort((a: number, b: number) => a - b);
+        const medianPrice = closePrices[Math.floor(closePrices.length / 2)];
+        const maxReasonablePrice = medianPrice * 100; // 100x median is likely bad data
+        const minReasonablePrice = medianPrice / 100; // 1/100 of median is also suspicious
+
+        const beforeFilter = sorted.length;
+        sorted = sorted.filter((candle: OHLCV) =>
+          candle.high <= maxReasonablePrice &&
+          candle.low >= minReasonablePrice
+        );
+
+        if (sorted.length < beforeFilter) {
+          console.log(`⚠️ Filtered ${beforeFilter - sorted.length} outlier candles (median: $${medianPrice.toFixed(2)}, max allowed: $${maxReasonablePrice.toFixed(2)})`);
+        }
+      }
 
       console.log(`📊 Birdeye OHLCV: ${address} ${timeframe} - ${data.data.items.length} raw, ${sorted.length} valid candles`);
 
