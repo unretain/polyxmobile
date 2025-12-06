@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import { prisma } from "@/lib/prisma";
+import { SubscriptionPlan, SubscriptionStatus } from "@prisma/client";
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
@@ -8,6 +10,23 @@ const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY, {
   apiVersion: "2025-11-17.clover",
 }) : null;
+
+// Map Stripe plan metadata to our enum
+function mapPlan(plan: string | undefined): SubscriptionPlan {
+  if (plan === "BUSINESS") return "BUSINESS";
+  if (plan === "PRO") return "PRO";
+  return "FREE";
+}
+
+// Map Stripe subscription status to our enum
+function mapStatus(stripeStatus: string): SubscriptionStatus {
+  switch (stripeStatus) {
+    case "active": return "ACTIVE";
+    case "past_due": return "PAST_DUE";
+    case "canceled": return "CANCELED";
+    default: return "EXPIRED";
+  }
+}
 
 // This webhook handles Stripe events for subscription management
 // Events handled:
@@ -77,28 +96,39 @@ export async function POST(req: NextRequest) {
         const stripeCustomerId = session.customer as string;
         const stripeSubscriptionId = session.subscription as string;
 
+        if (!email) {
+          console.error("No email found in checkout session");
+          break;
+        }
+
         console.log(`New subscription: ${email} - Plan: ${plan}`);
-        console.log(`Customer ID: ${stripeCustomerId}`);
-        console.log(`Subscription ID: ${stripeSubscriptionId}`);
 
-        // TODO: Create/update subscription in database when DB is connected
-        // await prisma.subscription.upsert({
-        //   where: { email },
-        //   create: {
-        //     email,
-        //     plan,
-        //     status: "ACTIVE",
-        //     stripeCustomerId,
-        //     stripeSubscriptionId,
-        //   },
-        //   update: {
-        //     plan,
-        //     status: "ACTIVE",
-        //     stripeCustomerId,
-        //     stripeSubscriptionId,
-        //   },
-        // });
+        // Find user by email (if they have an account)
+        const user = await prisma.user.findUnique({
+          where: { email },
+        });
 
+        // Create or update subscription in database
+        await prisma.subscription.upsert({
+          where: { email },
+          create: {
+            email,
+            plan: mapPlan(plan),
+            status: "ACTIVE",
+            stripeCustomerId,
+            stripeSubscriptionId,
+            userId: user?.id,
+          },
+          update: {
+            plan: mapPlan(plan),
+            status: "ACTIVE",
+            stripeCustomerId,
+            stripeSubscriptionId,
+            userId: user?.id,
+          },
+        });
+
+        console.log(`Subscription saved for ${email}`);
         break;
       }
 
@@ -106,18 +136,16 @@ export async function POST(req: NextRequest) {
         const subscription = event.data.object as Stripe.Subscription;
         console.log("Subscription updated:", subscription.id);
 
-        const status = subscription.status === "active" ? "ACTIVE" :
-                       subscription.status === "past_due" ? "PAST_DUE" :
-                       subscription.status === "canceled" ? "CANCELED" : "EXPIRED";
+        const status = mapStatus(subscription.status);
+        const plan = mapPlan(subscription.metadata?.plan);
 
-        console.log(`Subscription ${subscription.id} status: ${status}`);
+        // Update subscription status in database
+        await prisma.subscription.updateMany({
+          where: { stripeSubscriptionId: subscription.id },
+          data: { status, plan },
+        });
 
-        // TODO: Update subscription status in database
-        // await prisma.subscription.update({
-        //   where: { stripeSubscriptionId: subscription.id },
-        //   data: { status },
-        // });
-
+        console.log(`Subscription ${subscription.id} updated: ${status}`);
         break;
       }
 
@@ -125,15 +153,16 @@ export async function POST(req: NextRequest) {
         const subscription = event.data.object as Stripe.Subscription;
         console.log("Subscription canceled:", subscription.id);
 
-        // TODO: Mark subscription as canceled in database
-        // await prisma.subscription.update({
-        //   where: { stripeSubscriptionId: subscription.id },
-        //   data: {
-        //     status: "CANCELED",
-        //     plan: "FREE",
-        //   },
-        // });
+        // Mark subscription as canceled and downgrade to free
+        await prisma.subscription.updateMany({
+          where: { stripeSubscriptionId: subscription.id },
+          data: {
+            status: "CANCELED",
+            plan: "FREE",
+          },
+        });
 
+        console.log(`Subscription ${subscription.id} canceled`);
         break;
       }
 
@@ -141,11 +170,11 @@ export async function POST(req: NextRequest) {
         const invoice = event.data.object as Stripe.Invoice;
         console.log("Payment failed for invoice:", invoice.id);
 
-        // TODO: Update subscription status and notify customer
-        // await prisma.subscription.update({
-        //   where: { stripeCustomerId: invoice.customer as string },
-        //   data: { status: "PAST_DUE" },
-        // });
+        // Update subscription status to past due
+        await prisma.subscription.updateMany({
+          where: { stripeCustomerId: invoice.customer as string },
+          data: { status: "PAST_DUE" },
+        });
 
         break;
       }

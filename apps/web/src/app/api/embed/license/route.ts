@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import Stripe from "stripe";
 import crypto from "crypto";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const LICENSE_SECRET = process.env.LICENSE_SECRET;
-
-// Note: LICENSE_SECRET should be set in production environment variables
-const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: "2025-11-17.clover",
-}) : null;
 
 // Always allowed domains (your own domains) - EXACT MATCH ONLY
 const ALWAYS_ALLOWED = new Set([
@@ -19,10 +14,10 @@ const ALWAYS_ALLOWED = new Set([
   "polyx.vercel.app",
 ]);
 
-// Rate limiting for license generation (in-memory, use Redis in production)
+// Rate limiting for license validation (in-memory, use Redis in production)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
-const RATE_LIMIT_MAX = 10; // 10 requests per minute
+const RATE_LIMIT_MAX = 60; // 60 requests per minute for embed validation
 
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
@@ -41,25 +36,12 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
-// Validate email format
-function isValidEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email) && email.length <= 254;
-}
-
-// Validate domain format
-function isValidDomain(domain: string): boolean {
-  if (domain === "*") return true;
-  const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-_.]*[a-zA-Z0-9]$|^[a-zA-Z0-9]$/;
-  return domainRegex.test(domain) && domain.length <= 253;
-}
-
 // SECURITY: Check if domain is EXACTLY in allowed list (no partial matches)
 function isAllowedDomain(domain: string): boolean {
   return ALWAYS_ALLOWED.has(domain.toLowerCase());
 }
 
-// Generate a license key for a domain using HMAC for better security
+// Generate a license key for a domain using HMAC
 function generateLicenseKey(email: string, domain: string, plan: string): string {
   const secret = LICENSE_SECRET || "dev-secret-not-for-production";
   const data = `${email}:${domain}:${plan}`;
@@ -69,12 +51,12 @@ function generateLicenseKey(email: string, domain: string, plan: string): string
 // Verify a license key
 function verifyLicenseKey(key: string, email: string, domain: string, plan: string): boolean {
   const expectedKey = generateLicenseKey(email, domain, plan);
-  // Use timing-safe comparison to prevent timing attacks
+  if (key.length !== expectedKey.length) return false;
   return crypto.timingSafeEqual(Buffer.from(key), Buffer.from(expectedKey));
 }
 
-// POST /api/embed/license - Validate embed request
-// Called by the embed page to check if domain is authorized
+// POST /api/embed/license - Validate embed request (called by embed iframe)
+// This endpoint is public - it validates license keys for embedded charts
 export async function POST(req: NextRequest) {
   try {
     // Rate limiting
@@ -104,7 +86,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // SECURITY: Only allow EXACT domain matches (prevents evil-polyx.xyz bypass)
+    // SECURITY: Only allow EXACT domain matches for our domains
     if (checkDomain && isAllowedDomain(checkDomain)) {
       return NextResponse.json({
         valid: true,
@@ -120,7 +102,7 @@ export async function POST(req: NextRequest) {
     // If no license key provided, return free tier (with watermark)
     if (!licenseKey) {
       return NextResponse.json({
-        valid: true, // Still allow, but with watermark
+        valid: true,
         plan: "FREE",
         domain: checkDomain || "unknown",
         features: {
@@ -131,45 +113,25 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Validate license key against Stripe subscriptions
-    // License key format: {email}:{key}
-    const [email, key] = licenseKey.split(":");
-
-    if (!email || !key) {
+    // Validate license key format: {email}:{key}
+    const parts = licenseKey.split(":");
+    if (parts.length < 2) {
       return NextResponse.json({
         valid: false,
         error: "Invalid license key format",
       }, { status: 400 });
     }
 
-    if (!stripe) {
-      return NextResponse.json({
-        valid: false,
-        error: "Payment service not configured",
-      }, { status: 500 });
-    }
+    const email = parts[0];
+    const key = parts.slice(1).join(":"); // Handle emails with colons
 
-    // Find customer and check subscription
-    const customers = await stripe.customers.list({ email, limit: 1 });
-
-    if (customers.data.length === 0) {
-      return NextResponse.json({
-        valid: true,
-        plan: "FREE",
-        domain: checkDomain,
-        features: { watermark: true, whiteLabel: false },
-        message: "No subscription found - using free tier",
-      });
-    }
-
-    const customer = customers.data[0];
-    const subscriptions = await stripe.subscriptions.list({
-      customer: customer.id,
-      status: "active",
-      limit: 1,
+    // Look up subscription in database
+    const subscription = await prisma.subscription.findUnique({
+      where: { email },
+      include: { domains: true },
     });
 
-    if (subscriptions.data.length === 0) {
+    if (!subscription || subscription.status !== "ACTIVE" || subscription.plan === "FREE") {
       return NextResponse.json({
         valid: true,
         plan: "FREE",
@@ -179,29 +141,44 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const subscription = subscriptions.data[0];
-    const plan = subscription.metadata?.plan || "PRO";
+    const plan = subscription.plan;
 
     // Verify the license key matches
     const isValidKey = verifyLicenseKey(key, email, checkDomain || "*", plan);
+    const isWildcardValid = !isValidKey && verifyLicenseKey(key, email, "*", plan);
 
-    if (!isValidKey) {
-      // SECURITY: Reject invalid license keys - don't just log a warning
-      // Check if they have a wildcard license as fallback
-      const isWildcardValid = verifyLicenseKey(key, email, "*", plan);
+    if (!isValidKey && !isWildcardValid) {
+      return NextResponse.json({
+        valid: false,
+        error: "Invalid license key for this domain",
+        plan: "FREE",
+        features: {
+          watermark: true,
+          whiteLabel: false,
+        },
+      }, { status: 403 });
+    }
 
-      if (!isWildcardValid) {
+    // Check if domain is registered (if not wildcard)
+    if (checkDomain && subscription.domains.length > 0) {
+      const isRegistered = subscription.domains.some(d =>
+        d.domain === checkDomain || d.domain === "*"
+      );
+      if (!isRegistered && !isWildcardValid) {
         return NextResponse.json({
           valid: false,
-          error: "Invalid license key for this domain",
+          error: "Domain not registered for this license",
           plan: "FREE",
-          features: {
-            watermark: true,
-            whiteLabel: false,
-          },
+          features: { watermark: true, whiteLabel: false },
         }, { status: 403 });
       }
     }
+
+    // Track embed view
+    await prisma.subscription.update({
+      where: { email },
+      data: { embedViews: { increment: 1 } },
+    });
 
     return NextResponse.json({
       valid: true,
@@ -211,12 +188,6 @@ export async function POST(req: NextRequest) {
         watermark: plan === "FREE",
         whiteLabel: plan === "BUSINESS",
         customThemes: plan !== "FREE",
-      },
-      subscription: {
-        status: subscription.status,
-        currentPeriodEnd: (subscription as any).current_period_end
-          ? new Date((subscription as any).current_period_end * 1000).toISOString()
-          : null,
       },
     });
 
@@ -229,65 +200,45 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET /api/embed/license?email=xxx - Generate license key for subscriber
+// GET /api/embed/license - Generate license key for authenticated user
+// Requires authentication - uses session to get user's subscription
 export async function GET(req: NextRequest) {
-  const email = req.nextUrl.searchParams.get("email");
-  const domain = req.nextUrl.searchParams.get("domain");
-
-  if (!email) {
-    return NextResponse.json(
-      { error: "Email is required" },
-      { status: 400 }
-    );
-  }
-
-  // TESTING MODE: If Stripe is not configured, generate a test license
-  if (!stripe) {
-    console.log(`[TEST MODE] Generating test PRO license for ${email}`);
-    const targetDomain = domain || "*";
-    const key = generateLicenseKey(email, targetDomain, "PRO");
-    const licenseKey = `${email}:${key}`;
-
-    return NextResponse.json({
-      licenseKey,
-      email,
-      domain: targetDomain,
-      plan: "PRO",
-      testMode: true,
-      usage: `Add ?license=${encodeURIComponent(licenseKey)} to your embed URL`,
-      example: `<iframe src="https://polyx.xyz/embed/TOKEN_ADDRESS?license=${encodeURIComponent(licenseKey)}"></iframe>`,
-    });
-  }
-
   try {
-    // Verify the user has an active subscription
-    const customers = await stripe.customers.list({ email, limit: 1 });
+    // Get authenticated session
+    const session = await auth();
 
-    if (customers.data.length === 0) {
+    if (!session?.user?.email) {
       return NextResponse.json(
-        { error: "No subscription found for this email" },
-        { status: 404 }
+        { error: "Authentication required. Please sign in." },
+        { status: 401 }
       );
     }
 
-    const customer = customers.data[0];
-    const subscriptions = await stripe.subscriptions.list({
-      customer: customer.id,
-      status: "active",
-      limit: 1,
+    const email = session.user.email;
+    const domain = req.nextUrl.searchParams.get("domain");
+
+    // Get subscription from database
+    const subscription = await prisma.subscription.findUnique({
+      where: { email },
     });
 
-    if (subscriptions.data.length === 0) {
-      return NextResponse.json(
-        { error: "No active subscription found" },
-        { status: 404 }
-      );
+    // If no subscription or free tier, they can't generate license keys
+    if (!subscription || subscription.plan === "FREE") {
+      return NextResponse.json({
+        error: "Active Pro or Business subscription required to generate license keys",
+        plan: "FREE",
+        upgradeUrl: "/solutions#pricing",
+      }, { status: 403 });
     }
 
-    const subscription = subscriptions.data[0];
-    const plan = subscription.metadata?.plan || "PRO";
+    if (subscription.status !== "ACTIVE") {
+      return NextResponse.json({
+        error: "Your subscription is not active. Please update your payment method.",
+        status: subscription.status,
+      }, { status: 403 });
+    }
 
-    // Generate license key for this domain (or wildcard)
+    const plan = subscription.plan;
     const targetDomain = domain || "*";
     const key = generateLicenseKey(email, targetDomain, plan);
     const licenseKey = `${email}:${key}`;
