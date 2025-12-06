@@ -301,10 +301,6 @@ function ChartScene({
   );
 }
 
-// Global WebGL context counter to prevent "too many active WebGL contexts"
-let activeContexts = 0;
-const MAX_CONTEXTS = 8; // Browser limit is usually 8-16
-
 export function Mini3DChart({
   data,
   isLoading,
@@ -313,33 +309,12 @@ export function Mini3DChart({
 }: Mini3DChartProps) {
   const { isDark } = useThemeStore();
   const [isMounted, setIsMounted] = useState(false);
-  const [canRender, setCanRender] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Ensure component is mounted before rendering Canvas to prevent HMR issues
   useEffect(() => {
     setIsMounted(true);
     return () => setIsMounted(false);
   }, []);
-
-  // Manage WebGL context allocation
-  useEffect(() => {
-    if (!isMounted) return;
-
-    // Check if we can allocate a new context
-    if (activeContexts < MAX_CONTEXTS) {
-      activeContexts++;
-      setCanRender(true);
-    } else {
-      setCanRender(false);
-    }
-
-    return () => {
-      if (canRender) {
-        activeContexts = Math.max(0, activeContexts - 1);
-      }
-    };
-  }, [isMounted, canRender]);
 
   // Generate mock data if no real data (for new tokens with no trades yet)
   const displayData = useMemo(() => {
@@ -381,20 +356,15 @@ export function Mini3DChart({
         </div>
         <div className={`absolute inset-0 ${isDark ? 'bg-[#0a0a0a]/40' : 'bg-white/40'}`} />
       </div>
-      {isMounted && canRender && (
+      {isMounted && (
         <Canvas
           gl={{
-            antialias: false, // Disable for better performance
+            antialias: false,
             alpha: true,
             powerPreference: 'low-power',
             preserveDrawingBuffer: false,
-            failIfMajorPerformanceCaveat: true,
           }}
-          dpr={[1, 1.5]} // Limit pixel ratio for performance
-          onCreated={({ gl }) => {
-            // Store canvas reference for cleanup
-            canvasRef.current = gl.domElement;
-          }}
+          dpr={[1, 1.5]}
         >
           <Suspense fallback={null}>
             <ChartScene
@@ -403,13 +373,6 @@ export function Mini3DChart({
             />
           </Suspense>
         </Canvas>
-      )}
-      {isMounted && !canRender && (
-        <div className={`h-full w-full flex items-center justify-center text-xs ${
-          isDark ? 'text-white/30' : 'text-gray-400'
-        }`}>
-          Chart queued...
-        </div>
       )}
     </div>
   );
