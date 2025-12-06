@@ -34,6 +34,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // TESTING MODE: Pro plan is free - bypass Stripe checkout
+    if (plan === "PRO") {
+      console.log(`[TEST MODE] Activating free PRO subscription for ${email}`);
+      // Redirect directly to success page without payment
+      return NextResponse.json({
+        checkoutUrl: successUrl || `${APP_URL}/solutions?success=true&plan=PRO&email=${encodeURIComponent(email)}`,
+        sessionId: "test_free_pro",
+      });
+    }
+
     const priceId = PRICE_IDS[plan];
     if (!priceId) {
       return NextResponse.json(
