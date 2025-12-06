@@ -125,6 +125,32 @@ function aggregateToMonthly(dailyCandles: any[]): any[] {
 // Native SOL token address (wrapped SOL)
 const SOL_ADDRESS = "So11111111111111111111111111111111111111112";
 
+// Popular tokens to always include (beyond Birdeye trending limit of 20)
+const POPULAR_TOKENS = [
+  // Major tokens
+  { address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", symbol: "USDC", name: "USD Coin", decimals: 6 },
+  { address: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", symbol: "USDT", name: "Tether USD", decimals: 6 },
+  { address: "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs", symbol: "WETH", name: "Wrapped Ether", decimals: 8 },
+  { address: "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So", symbol: "mSOL", name: "Marinade staked SOL", decimals: 9 },
+  { address: "7dHbWXmci3dT8UFYWYZweBLXgycu7Y3iL6trKn1Y7ARj", symbol: "stSOL", name: "Lido Staked SOL", decimals: 9 },
+  { address: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", symbol: "BONK", name: "Bonk", decimals: 5 },
+  { address: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN", symbol: "JUP", name: "Jupiter", decimals: 6 },
+  { address: "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm", symbol: "WIF", name: "dogwifhat", decimals: 6 },
+  { address: "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3", symbol: "PYTH", name: "Pyth Network", decimals: 6 },
+  { address: "RLBxxFkseAZ4RgJH3Sqn8jXxhmGoz9jWxDNJMh8pL7a", symbol: "RLB", name: "Rollbit Coin", decimals: 2 },
+  // Meme tokens
+  { address: "A8C3xuqscfmyLrte3VmTqrAq8kgMASius9AFNANwpump", symbol: "FWOG", name: "Fwog", decimals: 6 },
+  { address: "ED5nyyWEzpPPiWimP8vYm7sD7TD3LAt3Q3gRTWHzPJBY", symbol: "MOODENG", name: "Moo Deng", decimals: 6 },
+  { address: "ukHH6c7mMyiWCf1b9pnWe25TSpkDDt3H5pQZgZ74J82", symbol: "BOME", name: "Book of Meme", decimals: 6 },
+  { address: "DriFtupJYLTosbwoN8koMbEYSx54aFAVLddWsbksjwg7", symbol: "DRIFT", name: "Drift", decimals: 6 },
+  { address: "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R", symbol: "RAY", name: "Raydium", decimals: 6 },
+  { address: "SRMuApVNdxXokk5GT7XD5cUUgXMBCoAz2LHeuAoKWRt", symbol: "SRM", name: "Serum", decimals: 6 },
+  { address: "orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE", symbol: "ORCA", name: "Orca", decimals: 6 },
+  { address: "MNDEFzGvMt87ueuHvVU9VcTqsAP5b3fTGPsHuuPA5ey", symbol: "MNDE", name: "Marinade", decimals: 9 },
+  { address: "MEW1gQWJ3nEXg2qgERiKu7FAFj79PHvQVREQUzScPP5", symbol: "MEW", name: "cat in a dogs world", decimals: 5 },
+  { address: "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr", symbol: "POPCAT", name: "Popcat", decimals: 9 },
+];
+
 // Sync tokens from Birdeye to database
 async function syncTokensFromBirdeye() {
   console.log("📊 Syncing tokens from Birdeye...");
@@ -185,8 +211,65 @@ async function syncTokensFromBirdeye() {
       console.error("Failed to add SOL token:", solError);
     }
 
-    console.log(`✅ Synced ${topTokens.length} tokens from Birdeye`);
-    return topTokens.length;
+    // Add popular tokens with fresh data from Birdeye
+    console.log("📊 Adding popular tokens...");
+    let addedPopular = 0;
+    for (const token of POPULAR_TOKENS) {
+      try {
+        // Try to get fresh data from Birdeye
+        const freshData = await birdeyeService.getTokenData(token.address);
+
+        if (freshData) {
+          await prisma.token.upsert({
+            where: { address: token.address },
+            update: {
+              price: freshData.price,
+              priceChange24h: freshData.priceChange24h,
+              volume24h: freshData.volume24h,
+              marketCap: freshData.marketCap,
+              liquidity: freshData.liquidity,
+              logoUri: freshData.logoURI,
+            },
+            create: {
+              address: token.address,
+              symbol: freshData.symbol || token.symbol,
+              name: freshData.name || token.name,
+              decimals: freshData.decimals || token.decimals,
+              logoUri: freshData.logoURI,
+              price: freshData.price,
+              priceChange24h: freshData.priceChange24h,
+              volume24h: freshData.volume24h,
+              marketCap: freshData.marketCap,
+              liquidity: freshData.liquidity,
+            },
+          });
+          addedPopular++;
+        } else {
+          // Add with basic info if Birdeye doesn't have data
+          await prisma.token.upsert({
+            where: { address: token.address },
+            update: {},
+            create: {
+              address: token.address,
+              symbol: token.symbol,
+              name: token.name,
+              decimals: token.decimals,
+              price: 0,
+              volume24h: 0,
+              marketCap: 0,
+            },
+          });
+          addedPopular++;
+        }
+      } catch (err) {
+        // Continue with other tokens if one fails
+        console.warn(`Failed to add ${token.symbol}:`, err instanceof Error ? err.message : err);
+      }
+    }
+    console.log(`✅ Added/updated ${addedPopular} popular tokens`);
+
+    console.log(`✅ Synced ${topTokens.length} trending + ${addedPopular} popular tokens`);
+    return topTokens.length + addedPopular;
   } catch (error) {
     console.error("Error syncing tokens from Birdeye:", error);
     throw error;
