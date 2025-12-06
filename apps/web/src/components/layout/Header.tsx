@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { LogOut, User, Shield, Copy, Check, Key, ChevronDown, Sun, Moon } from "lucide-react";
+import { LogOut, User, Shield, Copy, Check, Key, ChevronDown, Sun, Moon, CreditCard } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 import { useAuthStore } from "@/stores/authStore";
 import { useThemeStore } from "@/stores/themeStore";
@@ -217,6 +217,18 @@ export function Header() {
 
                     {/* Menu Items */}
                     <div className="py-1">
+                      <Link
+                        href="/dashboard/license"
+                        onClick={() => setShowDropdown(false)}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                          isDark
+                            ? 'text-white/70 hover:text-white hover:bg-white/5'
+                            : 'text-black/70 hover:text-black hover:bg-black/5'
+                        }`}
+                      >
+                        <CreditCard className="h-4 w-4" />
+                        License & Billing
+                      </Link>
                       <button
                         onClick={handleOpenSecurity}
                         className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
