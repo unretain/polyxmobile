@@ -810,7 +810,7 @@ export function LandingPage() {
                 </div>
               </div>
 
-              {/* Vertical token ticker overlay - behind chart content, positioned to avoid toolbar */}
+              {/* Vertical token ticker overlay - commented out for now
               <div
                 className={`absolute top-0 bottom-0 flex items-center pointer-events-none select-none z-[1] transition-transform duration-500 ease-out ${isChartHovered ? 'translate-x-[20%]' : 'translate-x-0'}`}
                 style={{ left: '15%' }}
@@ -822,6 +822,7 @@ export function LandingPage() {
                   ${currentToken.symbol}
                 </span>
               </div>
+              */}
             </div>
           </div>
 
