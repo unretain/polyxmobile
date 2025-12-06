@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
 
 interface User {
   id: string;
@@ -18,6 +18,9 @@ interface AuthState {
   checkAuth: () => void;
   setUser: (user: User) => void;
 }
+
+// Storage key constant
+const AUTH_STORAGE_KEY = "polyx-auth";
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -43,6 +46,11 @@ export const useAuthStore = create<AuthState>()(
 
       logout: () => {
         set({ user: null, isAuthenticated: false, isLoading: false });
+        // Clear persisted storage to prevent rehydration after logout
+        if (typeof window !== "undefined") {
+          sessionStorage.removeItem(AUTH_STORAGE_KEY);
+          localStorage.removeItem(AUTH_STORAGE_KEY); // Clear legacy localStorage too
+        }
       },
 
       checkAuth: () => {
@@ -55,7 +63,16 @@ export const useAuthStore = create<AuthState>()(
       },
     }),
     {
-      name: "polyx-auth",
+      name: AUTH_STORAGE_KEY,
+      // Use sessionStorage instead of localStorage for security
+      // Session ends when browser closes
+      storage: createJSONStorage(() =>
+        typeof window !== "undefined" ? sessionStorage : {
+          getItem: () => null,
+          setItem: () => {},
+          removeItem: () => {},
+        }
+      ),
       onRehydrateStorage: () => (state) => {
         if (state) {
           state.isLoading = false;
