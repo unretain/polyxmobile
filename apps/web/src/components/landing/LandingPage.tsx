@@ -12,7 +12,6 @@ import { useSession, signOut } from "next-auth/react";
 import { useAuthStore } from "@/stores/authStore";
 import { useThemeStore } from "@/stores/themeStore";
 import { shortenAddress } from "@/lib/wallet";
-import { getUserById } from "@/lib/userDb";
 
 // Dynamic import for Chart3D
 const Chart3D = dynamic(
@@ -301,12 +300,9 @@ export function LandingPage() {
 
   const handleOpenSecurity = () => {
     setShowDropdown(false);
-    if (user?.id) {
-      const storedUser = getUserById(user.id);
-      if (storedUser?.wallet?.encryptedSecretKey) {
-        setPrivateKey(atob(storedUser.wallet.encryptedSecretKey).replace(/.*/, storedUser.wallet.encryptedSecretKey));
-      }
-    }
+    // Private key is now stored server-side - would need authenticated API call to retrieve
+    // For security, we don't expose the private key directly in the client
+    setPrivateKey(null);
     setShowSecurityModal(true);
   };
 

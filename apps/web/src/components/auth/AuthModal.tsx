@@ -5,22 +5,6 @@ import { useRouter } from "next/navigation";
 import { X, Mail, Shield, Wallet, Check, ArrowLeft, Eye, EyeOff, AlertCircle, KeyRound } from "lucide-react";
 import { signIn } from "next-auth/react";
 import { useAuthStore } from "@/stores/authStore";
-import {
-  createUser,
-  getUserByEmail,
-  verifyEmail,
-  verifyPassword,
-  enableTwoFactor,
-  setUserWallet,
-  resendVerificationCode,
-  encryptSecretKey,
-  generatePasswordResetCode,
-  verifyResetCode,
-  resetPassword,
-  type StoredUser,
-} from "@/lib/userDb";
-import { generateTOTPSecret, verifyTOTPToken } from "@/lib/totp";
-import { generateSolanaWallet, shortenAddress } from "@/lib/wallet";
 import QRCode from "qrcode";
 
 interface AuthModalProps {
@@ -29,8 +13,16 @@ interface AuthModalProps {
   mode?: "signin" | "signup";
 }
 
-type SignUpStep = "form" | "verify-email" | "setup-2fa" | "verify-2fa" | "generate-wallet";
+type SignUpStep = "form" | "verify-email" | "setup-2fa" | "verify-2fa" | "complete";
 type SignInStep = "form" | "verify-2fa" | "forgot-password" | "verify-reset-code" | "new-password";
+
+interface PendingUser {
+  id: string;
+  email: string;
+  name?: string;
+  walletAddress?: string;
+  twoFactorEnabled: boolean;
+}
 
 export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: AuthModalProps) {
   const router = useRouter();
@@ -61,7 +53,7 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
   const [totpQrUrl, setTotpQrUrl] = useState("");
 
   // State
-  const [pendingUser, setPendingUser] = useState<StoredUser | null>(null);
+  const [pendingUser, setPendingUser] = useState<PendingUser | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
@@ -167,31 +159,31 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
     }
 
     try {
-      // Check if user already exists in database
-      const checkResponse = await fetch("/api/auth/check-email", {
+      // Create user via API
+      const response = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.toLowerCase().trim() }),
+        body: JSON.stringify({ email, password }),
       });
-      const { exists, hasPassword } = await checkResponse.json();
 
-      if (exists) {
-        if (hasPassword) {
-          setError("An account with this email already exists. Please sign in instead.");
-        } else {
-          setError("This email is linked to a Google account. Please sign in with Google.");
-        }
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Failed to create account");
         setIsSubmitting(false);
         return;
       }
 
-      // Create the user in localStorage (for verification flow)
-      const { user, verificationCode: code } = await createUser(email, password);
-      setPendingUser(user);
-      setDisplayedCode(code);
+      // Store pending user info
+      setPendingUser({
+        id: data.userId,
+        email: email.toLowerCase().trim(),
+        twoFactorEnabled: false,
+      });
+      setDisplayedCode(data.verificationCode);
 
       // Send verification email
-      await sendVerificationEmail(email, code, "verification");
+      await sendVerificationEmail(email, data.verificationCode, "verification");
 
       setSignUpStep("verify-email");
     } catch {
@@ -217,13 +209,24 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
       return;
     }
 
-    const verified = verifyEmail(pendingUser.id, verificationCode);
-    if (verified) {
-      const user = getUserByEmail(pendingUser.email);
-      if (user) setPendingUser(user);
+    try {
+      const response = await fetch("/api/auth/verify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: pendingUser.id, code: verificationCode }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Verification failed");
+        setIsSubmitting(false);
+        return;
+      }
+
       setSignUpStep("setup-2fa");
-    } else {
-      setError("Invalid or expired verification code");
+    } catch {
+      setError("Verification failed. Please try again.");
     }
     setIsSubmitting(false);
   }
@@ -231,13 +234,26 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
   async function handleResendCode() {
     if (!pendingUser) return;
     setIsSendingEmail(true);
-    const code = resendVerificationCode(pendingUser.id);
-    if (code) {
-      setDisplayedCode(code);
-      setVerificationCode("");
-      setError("");
-      await sendVerificationEmail(pendingUser.email, code, "verification");
+    setError("");
+
+    try {
+      const response = await fetch("/api/auth/resend-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: pendingUser.id }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setDisplayedCode(data.verificationCode);
+        setVerificationCode("");
+        await sendVerificationEmail(pendingUser.email, data.verificationCode, "verification");
+      }
+    } catch (err) {
+      console.error("Failed to resend code:", err);
     }
+    setIsSendingEmail(false);
   }
 
   async function handleEnable2FA() {
@@ -251,10 +267,23 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
     }
 
     try {
-      const { secret, otpauthUrl } = generateTOTPSecret(pendingUser.email);
-      setTotpSecret(secret);
+      const response = await fetch("/api/auth/setup-2fa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: pendingUser.id }),
+      });
 
-      const qrDataUrl = await QRCode.toDataURL(otpauthUrl, {
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Failed to set up 2FA");
+        setIsSubmitting(false);
+        return;
+      }
+
+      setTotpSecret(data.secret);
+
+      const qrDataUrl = await QRCode.toDataURL(data.otpauthUrl, {
         width: 200,
         margin: 2,
         color: { dark: "#FFFFFF", light: "#00000000" },
@@ -268,7 +297,7 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
   }
 
   function handleSkip2FA() {
-    setSignUpStep("generate-wallet");
+    completeSignUp();
   }
 
   async function handleVerify2FASetup(e: React.FormEvent) {
@@ -276,7 +305,7 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
     setError("");
     setIsSubmitting(true);
 
-    if (!pendingUser || !totpSecret) {
+    if (!pendingUser) {
       setError("Session expired. Please start over.");
       setIsSubmitting(false);
       return;
@@ -288,49 +317,56 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
       return;
     }
 
-    const valid = verifyTOTPToken(totpCode, totpSecret);
-    if (valid) {
-      enableTwoFactor(pendingUser.id, totpSecret);
-      const user = getUserByEmail(pendingUser.email);
-      if (user) setPendingUser(user);
-      setSignUpStep("generate-wallet");
-    } else {
-      setError("Invalid code. Please check your authenticator app and try again.");
+    try {
+      const response = await fetch("/api/auth/verify-2fa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: pendingUser.id, code: totpCode, enable: true }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Invalid code");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Update pending user state
+      setPendingUser({ ...pendingUser, twoFactorEnabled: true });
+      completeSignUp();
+    } catch {
+      setError("Verification failed. Please try again.");
     }
     setIsSubmitting(false);
   }
 
-  function handleGenerateWalletAndComplete() {
+  async function completeSignUp() {
     if (!pendingUser) {
       setError("Session expired. Please start over.");
       return;
     }
 
-    // Generate wallet
-    const wallet = generateSolanaWallet();
+    // Sign in with NextAuth
+    const result = await signIn("credentials", {
+      email: pendingUser.email,
+      password,
+      redirect: false,
+    });
 
-    // For Phantom users, use their passwordHash as encryption key (it's the phantom pubkey hash)
-    // For email users, use their actual password
-    const isPhantomUser = pendingUser.email.endsWith("@phantom");
-    const encryptionKey = isPhantomUser ? pendingUser.passwordHash : password;
+    if (result?.error) {
+      setError("Failed to complete sign up. Please try signing in.");
+      return;
+    }
 
-    // Store encrypted wallet
-    const encrypted = encryptSecretKey(wallet.secretKey, encryptionKey);
-    setUserWallet(pendingUser.id, wallet.publicKey, encrypted);
-
-    // Set user in auth store and complete
+    // Set user in auth store
     setUser({
       id: pendingUser.id,
       email: pendingUser.email,
       name: pendingUser.name,
-      wallet: wallet.publicKey,
+      wallet: pendingUser.walletAddress,
       twoFactorEnabled: pendingUser.twoFactorEnabled,
     });
-
-    // Also sign in with NextAuth for session (skip for Phantom users)
-    if (!isPhantomUser) {
-      signIn("credentials", { email: pendingUser.email, password, redirect: false }).catch(() => {});
-    }
 
     handleSuccess();
   }
@@ -355,43 +391,50 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
     }
 
     try {
-      const user = getUserByEmail(email);
-      if (!user) {
-        setError("No account found with this email. Please sign up first.");
+      // Check credentials and 2FA status via API
+      const response = await fetch("/api/auth/signin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Sign in failed");
         setIsSubmitting(false);
         return;
       }
 
-      const validPassword = await verifyPassword(password, user.passwordHash);
-      if (!validPassword) {
-        setError("Incorrect password. Please try again.");
+      // Handle email verification needed
+      if (data.needsEmailVerification) {
+        setPendingUser({
+          id: data.userId,
+          email: email.toLowerCase().trim(),
+          twoFactorEnabled: false,
+        });
+        setDisplayedCode(data.verificationCode);
+        setMode("signup");
+        setSignUpStep("verify-email");
+        await sendVerificationEmail(email, data.verificationCode, "verification");
         setIsSubmitting(false);
         return;
       }
 
-      if (!user.emailVerified) {
-        // Email not verified - send to verification
-        const code = resendVerificationCode(user.id);
-        if (code) {
-          setPendingUser(user);
-          setDisplayedCode(code);
-          setMode("signup");
-          setSignUpStep("verify-email");
-          setIsSubmitting(false);
-          return;
-        }
-      }
-
-      setPendingUser(user);
-
-      // Check if 2FA is enabled
-      if (user.twoFactorEnabled && user.twoFactorSecret) {
-        setTotpSecret(user.twoFactorSecret);
+      // Handle 2FA needed
+      if (data.needs2FA) {
+        setPendingUser({
+          id: data.userId,
+          email: email.toLowerCase().trim(),
+          twoFactorEnabled: true,
+        });
         setSignInStep("verify-2fa");
-      } else {
-        // Complete login directly
-        completeSignIn(user);
+        setIsSubmitting(false);
+        return;
       }
+
+      // No 2FA, complete login
+      await completeSignIn(data.user);
     } catch {
       setError("Sign in failed. Please try again.");
     }
@@ -403,7 +446,7 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
     setError("");
     setIsSubmitting(true);
 
-    if (!pendingUser || !totpSecret) {
+    if (!pendingUser) {
       setError("Session expired. Please start over.");
       setIsSubmitting(false);
       return;
@@ -415,25 +458,56 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
       return;
     }
 
-    const valid = verifyTOTPToken(totpCode, totpSecret);
-    if (valid) {
-      completeSignIn(pendingUser);
-    } else {
-      setError("Invalid 2FA code. Please try again.");
+    try {
+      const response = await fetch("/api/auth/verify-2fa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: pendingUser.id, code: totpCode }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Invalid code");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // 2FA verified, complete sign in
+      await completeSignIn({
+        id: pendingUser.id,
+        email: pendingUser.email,
+        name: pendingUser.name,
+        walletAddress: pendingUser.walletAddress,
+        twoFactorEnabled: true,
+      });
+    } catch {
+      setError("Verification failed. Please try again.");
     }
     setIsSubmitting(false);
   }
 
-  function completeSignIn(user: StoredUser) {
+  async function completeSignIn(user: { id: string; email: string; name?: string; walletAddress?: string; twoFactorEnabled: boolean }) {
+    // Sign in with NextAuth
+    const result = await signIn("credentials", {
+      email: user.email,
+      password,
+      redirect: false,
+    });
+
+    if (result?.error) {
+      setError("Sign in failed. Please try again.");
+      return;
+    }
+
     setUser({
       id: user.id,
       email: user.email,
       name: user.name,
-      wallet: user.wallet?.publicKey,
+      wallet: user.walletAddress,
       twoFactorEnabled: user.twoFactorEnabled,
     });
 
-    signIn("credentials", { email: user.email, password, redirect: false }).catch(() => {});
     handleSuccess();
   }
 
@@ -451,26 +525,26 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
       return;
     }
 
-    const user = getUserByEmail(emailToReset);
-    if (!user) {
-      setError("No account found with this email address");
-      setIsSubmitting(false);
-      return;
-    }
+    try {
+      const response = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailToReset }),
+      });
 
-    if (user.email.endsWith("@phantom")) {
-      setError("Phantom wallet accounts cannot reset password");
-      setIsSubmitting(false);
-      return;
-    }
+      const data = await response.json();
 
-    const code = generatePasswordResetCode(emailToReset);
-    if (code) {
+      if (!response.ok) {
+        setError(data.error || "Failed to send reset code");
+        setIsSubmitting(false);
+        return;
+      }
+
       setResetEmail(emailToReset);
-      await sendVerificationEmail(emailToReset, code, "reset");
+      await sendVerificationEmail(emailToReset, data.resetCode, "reset");
       setSignInStep("verify-reset-code");
-    } else {
-      setError("Failed to generate reset code. Please try again.");
+    } catch {
+      setError("Failed to send reset code. Please try again.");
     }
     setIsSubmitting(false);
   }
@@ -486,24 +560,33 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
       return;
     }
 
-    const valid = verifyResetCode(resetEmail, resetCode);
-    if (valid) {
-      setSignInStep("new-password");
-    } else {
-      setError("Invalid or expired code. Please try again.");
-    }
+    // Just move to new password step - actual verification happens on submit
+    setSignInStep("new-password");
     setIsSubmitting(false);
   }
 
   async function handleResendResetCode() {
     if (!resetEmail) return;
     setIsSendingEmail(true);
-    const code = generatePasswordResetCode(resetEmail);
-    if (code) {
-      setResetCode("");
-      setError("");
-      await sendVerificationEmail(resetEmail, code, "reset");
+    setError("");
+
+    try {
+      const response = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: resetEmail }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setResetCode("");
+        await sendVerificationEmail(resetEmail, data.resetCode, "reset");
+      }
+    } catch (err) {
+      console.error("Failed to resend code:", err);
     }
+    setIsSendingEmail(false);
   }
 
   async function handleSetNewPassword(e: React.FormEvent) {
@@ -523,8 +606,21 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
       return;
     }
 
-    const success = await resetPassword(resetEmail, resetCode, newPassword);
-    if (success) {
+    try {
+      const response = await fetch("/api/auth/reset-password", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: resetEmail, code: resetCode, newPassword }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Failed to reset password");
+        setIsSubmitting(false);
+        return;
+      }
+
       // Reset was successful, go back to sign in
       setSignInStep("form");
       setEmail(resetEmail);
@@ -537,7 +633,7 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
       // Show success message briefly
       setEmailSent(true);
       setTimeout(() => setEmailSent(false), 3000);
-    } else {
+    } catch {
       setError("Failed to reset password. Please try again.");
     }
     setIsSubmitting(false);
@@ -567,47 +663,23 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
         const response = await phantom.connect();
         const phantomPublicKey = response.publicKey.toString();
 
-        // Check if this Phantom user already exists with a wallet
-        const phantomEmail = `${shortenAddress(phantomPublicKey)}@phantom`;
-        const existingUser = getUserByEmail(phantomEmail);
+        // For Phantom, we'll use a special email format and sign in directly
+        // The backend handles wallet generation
+        const phantomEmail = `${phantomPublicKey.slice(0, 8)}@phantom`;
 
-        if (existingUser && existingUser.wallet?.publicKey) {
-          // User already has a generated wallet, log them in
-          setUser({
-            id: existingUser.id,
-            email: existingUser.email,
-            name: existingUser.name,
-            wallet: existingUser.wallet.publicKey,
-            twoFactorEnabled: existingUser.twoFactorEnabled,
-          });
-          handleSuccess();
-        } else {
-          // New Phantom user - create user and generate wallet immediately
-          let user = existingUser;
+        const result = await signIn("credentials", {
+          email: phantomEmail,
+          password: phantomPublicKey, // Use public key as password for Phantom users
+          redirect: false,
+        });
 
-          if (!user) {
-            const result = await createUser(phantomEmail, phantomPublicKey, true);
-            user = result.user;
-          }
-
-          // Generate a new wallet for the user
-          const wallet = generateSolanaWallet();
-
-          // Use the phantom pubkey hash as encryption key
-          const encrypted = encryptSecretKey(wallet.secretKey, user.passwordHash);
-          setUserWallet(user.id, wallet.publicKey, encrypted);
-
-          // Set user in auth store and complete
-          setUser({
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            wallet: wallet.publicKey,
-            twoFactorEnabled: user.twoFactorEnabled,
-          });
-
-          handleSuccess();
+        if (result?.error) {
+          setError("Failed to connect wallet");
+          setIsSubmitting(false);
+          return;
         }
+
+        handleSuccess();
       } catch (err: unknown) {
         const error = err as { code?: number };
         if (error.code === 4001) {
@@ -742,7 +814,7 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
                 <h3 className="text-xl font-semibold text-white mb-2">Check your email</h3>
                 <p className="text-white/60">
                   We sent a verification code to<br />
-                  <span className="text-white font-medium">{email}</span>
+                  <span className="text-white font-medium">{pendingUser?.email || email}</span>
                 </p>
               </div>
 
@@ -882,30 +954,23 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
             </div>
           );
 
-        case "generate-wallet":
+        case "complete":
           return (
             <div className="space-y-4">
               <div className="text-center py-4">
                 <Wallet className="w-16 h-16 text-[#FF6B4A] mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-white mb-2">Create your wallet</h3>
+                <h3 className="text-xl font-semibold text-white mb-2">Account Created!</h3>
                 <p className="text-white/60">
-                  We&apos;ll generate a secure Solana wallet for your account
+                  Your account and Solana wallet are ready
                 </p>
               </div>
 
               <button
-                onClick={handleGenerateWalletAndComplete}
+                onClick={handleSuccess}
                 className="w-full bg-[#FF6B4A] hover:bg-[#FF8F6B] text-white font-semibold py-3 rounded-lg transition-colors"
               >
-                Complete Sign Up
+                Go to Dashboard
               </button>
-
-              <div className="bg-white/5 border border-white/10 rounded-lg p-4 flex gap-3">
-                <AlertCircle className="w-5 h-5 text-white/40 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-white/50">
-                  Your wallet&apos;s private key will be encrypted and stored securely. You can access it anytime from your account settings.
-                </p>
-              </div>
             </div>
           );
       }
@@ -1250,7 +1315,7 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
       if (signUpStep === "form") return "Create Account";
       if (signUpStep === "verify-email") return "Verify Email";
       if (signUpStep === "setup-2fa" || signUpStep === "verify-2fa") return "Two-Factor Authentication";
-      if (signUpStep === "generate-wallet") return "Your Wallet";
+      if (signUpStep === "complete") return "Welcome!";
     }
     if (mode === "signin") {
       if (signInStep === "form") return "Welcome Back";

@@ -75,6 +75,14 @@ model User {
   image         String?
   emailVerified DateTime?
 
+  // Email verification
+  verificationCode   String?
+  verificationExpiry DateTime?
+
+  // Two-factor authentication
+  twoFactorEnabled Boolean  @default(false)
+  twoFactorSecret  String?  // TOTP secret (encrypted)
+
   // Solana wallet (generated on first sign-in)
   walletAddress    String?   @unique  // Public key
   walletEncrypted  String?   @db.Text // Encrypted private key
