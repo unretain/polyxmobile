@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Key, Copy, Check, RefreshCw, Globe, Eye, AlertCircle, Plus, Trash2, ExternalLink, BarChart3, Loader2 } from "lucide-react";
+import { Key, Copy, Check, RefreshCw, Globe, Eye, AlertCircle, Plus, Trash2, ExternalLink, BarChart3, Loader2, CreditCard } from "lucide-react";
 
 interface SubscriptionStatus {
   email: string;
@@ -136,6 +136,22 @@ export default function LicenseDashboard() {
     }
   }, [selectedDomain, subscription?.hasSubscription]);
 
+  // Open billing portal
+  const openBillingPortal = async () => {
+    try {
+      const response = await fetch("/api/billing/portal", { method: "POST" });
+      const data = await response.json();
+
+      if (response.ok && data.url) {
+        window.location.href = data.url;
+      } else {
+        setError(data.error || "Failed to open billing portal");
+      }
+    } catch (err) {
+      setError("Failed to open billing portal");
+    }
+  };
+
   // Loading state
   if (sessionStatus === "loading" || (sessionStatus === "authenticated" && isLoading)) {
     return (
@@ -247,7 +263,7 @@ export default function LicenseDashboard() {
                 </div>
               </div>
 
-              {!subscription.hasSubscription && (
+              {!subscription.hasSubscription ? (
                 <Link
                   href="/solutions#pricing"
                   className="mt-6 w-full flex items-center justify-center gap-2 px-6 py-3 bg-[#FF6B4A] text-white font-medium rounded-lg hover:bg-[#FF6B4A]/90 transition-colors"
@@ -255,6 +271,14 @@ export default function LicenseDashboard() {
                   Upgrade to Pro
                   <ExternalLink className="h-4 w-4" />
                 </Link>
+              ) : (
+                <button
+                  onClick={openBillingPortal}
+                  className="mt-6 w-full flex items-center justify-center gap-2 px-6 py-3 border border-white/20 text-white font-medium rounded-lg hover:bg-white/10 transition-colors"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  Manage Subscription
+                </button>
               )}
             </div>
 

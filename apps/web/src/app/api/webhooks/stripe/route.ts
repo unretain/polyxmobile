@@ -28,10 +28,10 @@ function mapStatus(stripeStatus: string): SubscriptionStatus {
   }
 }
 
-// This webhook handles Stripe events for subscription management
+// This webhook handles Stripe events for payment/subscription management
 // Events handled:
-// - checkout.session.completed: New subscription created
-// - customer.subscription.updated: Plan changed or renewed
+// - checkout.session.completed: Payment completed (one-time or subscription)
+// - customer.subscription.updated: Subscription plan changed or renewed
 // - customer.subscription.deleted: Subscription canceled
 // - invoice.payment_failed: Payment failed
 
@@ -89,19 +89,21 @@ export async function POST(req: NextRequest) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
         console.log("Checkout completed:", session.id);
+        console.log("Payment mode:", session.mode);
 
         // Extract customer info
         const email = session.customer_email || session.metadata?.email;
         const plan = session.metadata?.plan || "PRO";
         const stripeCustomerId = session.customer as string;
-        const stripeSubscriptionId = session.subscription as string;
+        // For one-time payments, there's no subscription ID
+        const stripeSubscriptionId = session.subscription as string | null;
 
         if (!email) {
           console.error("No email found in checkout session");
           break;
         }
 
-        console.log(`New subscription: ${email} - Plan: ${plan}`);
+        console.log(`New ${session.mode === "payment" ? "purchase" : "subscription"}: ${email} - Plan: ${plan}`);
 
         // Find user by email (if they have an account)
         const user = await prisma.user.findUnique({
@@ -109,6 +111,7 @@ export async function POST(req: NextRequest) {
         });
 
         // Create or update subscription in database
+        // For one-time payments, we still create a "subscription" record but without stripeSubscriptionId
         await prisma.subscription.upsert({
           where: { email },
           create: {
@@ -116,19 +119,19 @@ export async function POST(req: NextRequest) {
             plan: mapPlan(plan),
             status: "ACTIVE",
             stripeCustomerId,
-            stripeSubscriptionId,
+            stripeSubscriptionId: stripeSubscriptionId || null,
             userId: user?.id,
           },
           update: {
             plan: mapPlan(plan),
             status: "ACTIVE",
             stripeCustomerId,
-            stripeSubscriptionId,
+            stripeSubscriptionId: stripeSubscriptionId || undefined,
             userId: user?.id,
           },
         });
 
-        console.log(`Subscription saved for ${email}`);
+        console.log(`Plan activated for ${email}`);
         break;
       }
 

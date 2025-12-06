@@ -50,9 +50,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create Stripe checkout session
+    // Create Stripe checkout session (one-time payment for Pro)
     const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
+      mode: "payment", // One-time payment instead of subscription
       payment_method_types: ["card"],
       customer_email: email,
       line_items: [
@@ -66,12 +66,6 @@ export async function POST(req: NextRequest) {
       metadata: {
         plan,
         email,
-      },
-      subscription_data: {
-        metadata: {
-          plan,
-          email,
-        },
       },
       allow_promotion_codes: true,
     });
