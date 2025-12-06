@@ -167,15 +167,25 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
     }
 
     try {
-      // Check if user already exists
-      const existing = getUserByEmail(email);
-      if (existing) {
-        setError("An account with this email already exists. Please sign in instead.");
+      // Check if user already exists in database
+      const checkResponse = await fetch("/api/auth/check-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.toLowerCase().trim() }),
+      });
+      const { exists, hasPassword } = await checkResponse.json();
+
+      if (exists) {
+        if (hasPassword) {
+          setError("An account with this email already exists. Please sign in instead.");
+        } else {
+          setError("This email is linked to a Google account. Please sign in with Google.");
+        }
         setIsSubmitting(false);
         return;
       }
 
-      // Create the user
+      // Create the user in localStorage (for verification flow)
       const { user, verificationCode: code } = await createUser(email, password);
       setPendingUser(user);
       setDisplayedCode(code);
