@@ -810,13 +810,13 @@ export function LandingPage() {
                 </div>
               </div>
 
-              {/* Large vertical token ticker overlay - like $STAR reference */}
+              {/* Vertical token ticker overlay - like $STAR reference */}
               <div
-                className={`absolute inset-0 flex items-center justify-center pointer-events-none select-none z-10 transition-transform duration-700 ease-out ${isChartHovered ? '-translate-y-6' : 'translate-y-0'}`}
+                className={`absolute left-0 top-0 bottom-0 flex items-center pointer-events-none select-none z-10 transition-transform duration-500 ease-out ${isChartHovered ? 'translate-x-4' : 'translate-x-0'}`}
               >
                 <span
-                  className={`text-[250px] md:text-[320px] font-black tracking-tighter leading-none uppercase ${isDark ? 'text-white/[0.06]' : 'text-black/[0.06]'}`}
-                  style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)' }}
+                  className={`text-[120px] md:text-[150px] font-black tracking-tight leading-none uppercase ${isDark ? 'text-white/[0.08]' : 'text-black/[0.08]'}`}
+                  style={{ writingMode: 'vertical-lr', transform: 'rotate(180deg)' }}
                 >
                   ${currentToken.symbol}
                 </span>
