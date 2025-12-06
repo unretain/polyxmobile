@@ -49,6 +49,7 @@ interface Chart3DProps {
   showDrawingTools?: boolean; // Whether to show the drawing toolbar (default: true)
   renderToolbar?: (props: DrawingToolbarRenderProps) => React.ReactNode; // Custom toolbar renderer
   showWatermark?: boolean; // Show embedded watermark in the 3D scene (for free tier)
+  theme?: "dark" | "light"; // Override global theme (for embed previews)
 }
 
 // 3D Watermark component rendered in Three.js scene
@@ -126,8 +127,10 @@ function Watermark3D({ chartWidth, chartHeight }: { chartWidth: number; chartHei
   );
 }
 
-export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLoadMore, hasMoreData = true, isLoadingMore = false, showDrawingTools = true, renderToolbar, showWatermark = false }: Chart3DProps) {
-  const { isDark } = useThemeStore();
+export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLoadMore, hasMoreData = true, isLoadingMore = false, showDrawingTools = true, renderToolbar, showWatermark = false, theme }: Chart3DProps) {
+  const { isDark: globalIsDark } = useThemeStore();
+  // Allow theme prop to override global theme
+  const isDark = theme ? theme === "dark" : globalIsDark;
   // Debug: log when component receives new data
   console.log('[Chart3D] Render - data.length:', data.length, 'isLoading:', isLoading);
 

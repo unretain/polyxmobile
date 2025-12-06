@@ -530,37 +530,38 @@ function SolutionsPageContent() {
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Chart Preview */}
             <div className="lg:col-span-2">
-              <div className={`border overflow-hidden ${isDark ? 'border-white/10' : 'border-black/10'}`}>
-                <div className={`flex items-center justify-between px-4 py-3 border-b ${isDark ? 'border-white/10' : 'border-black/10'}`}>
+              <div className={`border overflow-hidden ${embedTheme === 'dark' ? 'border-white/10 bg-[#0a0a0a]' : 'border-black/10 bg-white'}`}>
+                <div className={`flex items-center justify-between px-4 py-3 border-b ${embedTheme === 'dark' ? 'border-white/10' : 'border-black/10'}`}>
                   <div className="flex items-center gap-3">
                     <div className="flex gap-1.5">
                       <div className="w-3 h-3 rounded-full bg-red-500" />
                       <div className="w-3 h-3 rounded-full bg-yellow-500" />
                       <div className="w-3 h-3 rounded-full bg-green-500" />
                     </div>
-                    <span className={`text-sm font-mono ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
+                    <span className={`text-sm font-mono ${embedTheme === 'dark' ? 'text-white/40' : 'text-gray-500'}`}>
                       {selectedToken.symbol} 3D Chart
                     </span>
                   </div>
                   <button
                     onClick={() => setIsPlaying(!isPlaying)}
                     className={`p-1.5 rounded transition-colors ${
-                      isDark ? 'hover:bg-white/10' : 'hover:bg-black/10'
+                      embedTheme === 'dark' ? 'hover:bg-white/10 text-white' : 'hover:bg-black/10 text-black'
                     }`}
                   >
                     {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                   </button>
                 </div>
-                <div className="h-[500px]">
+                <div style={{ height: `${Math.min(Math.max(parseInt(embedHeight) || 500, 200), 800)}px` }}>
                   {candles.length > 0 ? (
                     <Chart3D
                       data={candles}
                       isLoading={isLoading}
                       price={tokenPrice || undefined}
                       showDrawingTools={true}
+                      theme={embedTheme}
                     />
                   ) : (
-                    <div className={`w-full h-full flex items-center justify-center ${isDark ? 'bg-[#0a0a0a]' : 'bg-gray-50'}`}>
+                    <div className={`w-full h-full flex items-center justify-center ${embedTheme === 'dark' ? 'bg-[#0a0a0a]' : 'bg-gray-50'}`}>
                       <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#FF6B4A] border-t-transparent" />
                     </div>
                   )}
