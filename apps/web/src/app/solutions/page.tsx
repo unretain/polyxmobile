@@ -399,8 +399,8 @@ function SolutionsPageContent() {
                   ))}
                 </ul>
 
-                <Link
-                  href="/dashboard"
+                <button
+                  onClick={scrollToEmbedCode}
                   className={`w-full py-3 font-medium border transition-colors flex items-center justify-center ${
                     isDark
                       ? 'border-white/20 text-white hover:bg-white/10'
@@ -408,7 +408,7 @@ function SolutionsPageContent() {
                   }`}
                 >
                   Get Started Free
-                </Link>
+                </button>
               </div>
 
               {/* Pro Plan */}
