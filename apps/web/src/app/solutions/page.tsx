@@ -831,16 +831,27 @@ function SolutionsPageContent() {
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500/20 flex items-center justify-center">
               <Check className="w-8 h-8 text-green-400" />
             </div>
-            <h2 className="text-2xl font-bold mb-2">Subscription Active!</h2>
+            <h2 className="text-2xl font-bold mb-2">Pro Plan Activated!</h2>
             <p className={`mb-6 ${isDark ? 'text-white/60' : 'text-gray-600'}`}>
-              Thank you for subscribing. Your account is now active and you can start using all premium features.
+              Your Pro subscription is now active. Get your license key to start embedding charts on your website.
             </p>
-            <button
-              onClick={() => setShowSuccessMessage(false)}
-              className="px-6 py-3 bg-[#FF6B4A] text-white font-medium hover:bg-[#FF5A36] transition-colors"
-            >
-              Get Started
-            </button>
+            <div className="space-y-3">
+              <Link
+                href="/dashboard/license"
+                className="block w-full px-6 py-3 bg-[#FF6B4A] text-white font-medium hover:bg-[#FF5A36] transition-colors"
+                onClick={() => setShowSuccessMessage(false)}
+              >
+                Get Your License Key →
+              </Link>
+              <button
+                onClick={() => setShowSuccessMessage(false)}
+                className={`w-full px-6 py-3 font-medium transition-colors ${
+                  isDark ? 'text-white/60 hover:text-white' : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Maybe Later
+              </button>
+            </div>
           </div>
         </div>
       )}
