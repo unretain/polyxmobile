@@ -592,8 +592,8 @@ export function LandingPage() {
             </p>
           </div>
 
-          {/* Two Column Layout - Chart (right) is wider like reference */}
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1fr)] gap-6">
+          {/* Two Column Layout - Chart (right) 80%, left panel 20% */}
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,4fr)] gap-6">
             {/* Left Column - Cards */}
             <div className="space-y-5">
               {/* Token Preview Card */}
@@ -826,7 +826,7 @@ export function LandingPage() {
 
           {/* Bottom Row - CTA Cards - matching reference layout */}
           {/* Grid matches the two-column layout above: left card under left panel, 3 cards under chart */}
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1fr)] gap-6 mt-6">
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,4fr)] gap-6 mt-6">
             {/* Left: View Pulse Card - aligned under left panel */}
             <Link
               href="/pulse"
