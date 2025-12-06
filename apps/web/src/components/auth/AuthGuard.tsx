@@ -3,7 +3,6 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { useAuthStore } from "@/stores/authStore";
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -12,16 +11,10 @@ interface AuthGuardProps {
 export function AuthGuard({ children }: AuthGuardProps) {
   const router = useRouter();
   const { data: session, status } = useSession();
-  const { isAuthenticated, isLoading: zustandLoading, checkAuth } = useAuthStore();
 
-  useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
-
-  // Check both NextAuth session and Zustand auth store
-  const isNextAuthLoading = status === "loading";
-  const isLoggedIn = session?.user || isAuthenticated;
-  const isLoading = isNextAuthLoading || zustandLoading;
+  // Auth is now handled entirely by NextAuth cookies
+  const isLoading = status === "loading";
+  const isLoggedIn = !!session?.user;
 
   useEffect(() => {
     if (!isLoading && !isLoggedIn) {

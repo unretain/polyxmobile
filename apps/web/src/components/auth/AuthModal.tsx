@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { X, Mail, Shield, Wallet, Check, ArrowLeft, Eye, EyeOff, AlertCircle, KeyRound } from "lucide-react";
 import { signIn } from "next-auth/react";
-import { useAuthStore } from "@/stores/authStore";
 import QRCode from "qrcode";
 
 interface AuthModalProps {
@@ -26,7 +25,6 @@ interface PendingUser {
 
 export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: AuthModalProps) {
   const router = useRouter();
-  const { setUser } = useAuthStore();
   const [mode, setMode] = useState<"signin" | "signup">(initialMode);
   const [signUpStep, setSignUpStep] = useState<SignUpStep>("form");
   const [signInStep, setSignInStep] = useState<SignInStep>("form");
@@ -347,7 +345,7 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
       return;
     }
 
-    // Sign in with NextAuth
+    // Sign in with NextAuth - this sets the session cookie
     const result = await signIn("credentials", {
       email: pendingUser.email,
       password,
@@ -359,15 +357,7 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
       return;
     }
 
-    // Set user in auth store
-    setUser({
-      id: pendingUser.id,
-      email: pendingUser.email,
-      name: pendingUser.name,
-      wallet: pendingUser.walletAddress,
-      twoFactorEnabled: pendingUser.twoFactorEnabled,
-    });
-
+    // Auth is now handled by NextAuth cookies - no need for separate store
     handleSuccess();
   }
 
@@ -488,7 +478,7 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
   }
 
   async function completeSignIn(user: { id: string; email: string; name?: string; walletAddress?: string; twoFactorEnabled: boolean }) {
-    // Sign in with NextAuth
+    // Sign in with NextAuth - this sets the session cookie
     const result = await signIn("credentials", {
       email: user.email,
       password,
@@ -500,14 +490,7 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
       return;
     }
 
-    setUser({
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      wallet: user.walletAddress,
-      twoFactorEnabled: user.twoFactorEnabled,
-    });
-
+    // Auth is now handled by NextAuth cookies - no need for separate store
     handleSuccess();
   }
 
