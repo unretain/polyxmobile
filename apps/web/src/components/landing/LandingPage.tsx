@@ -811,12 +811,14 @@ export function LandingPage() {
               </div>
 
               {/* Vertical token ticker overlay - like $STAR reference */}
+              {/* Text is half-clipped off left edge, moves right on hover */}
               <div
-                className={`absolute left-0 top-0 bottom-0 flex items-center pointer-events-none select-none z-10 transition-transform duration-500 ease-out ${isChartHovered ? 'translate-x-4' : 'translate-x-0'}`}
+                className={`absolute top-0 bottom-0 flex items-center pointer-events-none select-none z-10 transition-transform duration-500 ease-out ${isChartHovered ? '-translate-x-[30%]' : '-translate-x-[60%]'}`}
+                style={{ left: 0 }}
               >
                 <span
-                  className={`text-[120px] md:text-[150px] font-black tracking-tight leading-none uppercase ${isDark ? 'text-white/[0.08]' : 'text-black/[0.08]'}`}
-                  style={{ writingMode: 'vertical-lr', transform: 'rotate(180deg)' }}
+                  className={`text-[140px] md:text-[180px] font-black tracking-tight leading-none uppercase ${isDark ? 'text-white/[0.08]' : 'text-black/[0.08]'}`}
+                  style={{ writingMode: 'vertical-rl' }}
                 >
                   ${currentToken.symbol}
                 </span>
