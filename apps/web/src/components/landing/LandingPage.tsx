@@ -864,15 +864,16 @@ export function LandingPage() {
               >
                 <div className="relative flex flex-col justify-between h-full">
                   <div className="text-lg font-bold text-white">Ready to trade?</div>
-                  <div className="flex items-center gap-0 mt-3">
-                    {/* "Launch the app" text - moves left on hover to make room for line */}
-                    <span className="text-black text-sm font-medium transition-all duration-500 ease-out group-hover:-translate-x-2">
+                  {/* Line draws from right to left, text slides left with it */}
+                  <div className="flex items-center mt-3">
+                    {/* Animated line - draws from right to left on hover */}
+                    <div className="relative h-[1px] flex-1 mr-3 overflow-hidden">
+                      <div className="absolute inset-y-0 right-0 w-full bg-black origin-right scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out" />
+                    </div>
+                    {/* "Launch the app" text - starts on right, slides left on hover */}
+                    <span className="text-black text-sm font-medium transition-all duration-500 ease-out group-hover:-translate-x-4">
                       Launch the app
                     </span>
-                    {/* Animated line - draws from left to right on hover */}
-                    <div className="relative h-[1px] flex-1 ml-3 overflow-hidden">
-                      <div className="absolute inset-y-0 left-0 w-full bg-black origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out" />
-                    </div>
                   </div>
                 </div>
               </Link>
@@ -897,7 +898,7 @@ export function LandingPage() {
                   <div className="ios-cylinder">
                     <div className="ios-cylinder-inner">
                       <div className="ios-cylinder-face ios-cylinder-front">
-                        <span className="font-medium text-[#FF6B4A]">The docs</span>
+                        <span className={`font-medium ${isDark ? 'text-white' : 'text-black'}`}>The docs</span>
                       </div>
                       <div className="ios-cylinder-face ios-cylinder-bottom">
                         <span className="font-medium text-[#FF6B4A]">Read now</span>
