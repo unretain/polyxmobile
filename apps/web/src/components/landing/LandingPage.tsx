@@ -598,7 +598,7 @@ export function LandingPage() {
             <div className="space-y-4">
               {/* Token Preview Card */}
               <div className={`rounded-2xl border p-4 card-shine ${
-                isDark ? 'bg-[#1a1a1a] border-white/10' : 'bg-white border-black/10'
+                isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
               }`}>
                 <div className="flex items-center gap-4">
                   <TokenLogo token={currentToken} size={48} />
@@ -612,7 +612,7 @@ export function LandingPage() {
 
               {/* Event Card */}
               <div className={`rounded-2xl border p-4 card-shine ${
-                isDark ? 'bg-[#1a1a1a] border-white/10' : 'bg-white border-black/10'
+                isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
               }`}>
                 <div className="flex items-center gap-4">
                   <div className={`text-center px-3 py-2 rounded-xl ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
@@ -634,7 +634,7 @@ export function LandingPage() {
 
               {/* Info Section */}
               <div className={`rounded-2xl border p-6 card-shine ${
-                isDark ? 'bg-[#1a1a1a] border-white/10' : 'bg-white border-black/10'
+                isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
               }`}>
                 <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
                   Solana Memecoins
@@ -832,7 +832,7 @@ export function LandingPage() {
             <Link
               href="/pulse"
               className={`group rounded-2xl border p-4 card-shine hover:scale-[1.02] transition-all flex items-center gap-3 ${
-                isDark ? 'bg-[#1a1a1a] border-white/10' : 'bg-white border-black/10'
+                isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
               }`}
             >
               <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
@@ -875,7 +875,7 @@ export function LandingPage() {
             <Link
               href="/docs"
               className={`group rounded-2xl border p-4 card-shine hover:scale-[1.02] transition-all flex items-center justify-between relative overflow-hidden ${
-                isDark ? 'bg-[#1a1a1a] border-white/10' : 'bg-white border-black/10'
+                isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
               }`}
             >
               <div className="absolute top-0 left-0 right-0 h-px animated-line" />
@@ -937,7 +937,7 @@ export function LandingPage() {
       {showSecurityModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowSecurityModal(false)} />
-          <div className={`relative w-full max-w-md border rounded-2xl shadow-2xl ${isDark ? 'bg-[#1a1a1a] border-white/10' : 'bg-white border-black/10'}`}>
+          <div className={`relative w-full max-w-md border rounded-2xl shadow-2xl ${isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'}`}>
             <div className={`p-6 border-b ${isDark ? 'border-white/10' : 'border-black/10'}`}>
               <h2 className={`text-xl font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-black'}`}>
                 <Shield className="h-5 w-5 text-[#FF6B4A]" />
