@@ -177,14 +177,15 @@ async function syncDashboardTokens() {
         const freshData = await birdeyeService.getTokenData(token.address);
 
         if (freshData) {
+          console.log(`📈 ${token.symbol}: price=$${freshData.price?.toFixed(6)}, vol=$${freshData.volume24h?.toLocaleString()}, mc=$${freshData.marketCap?.toLocaleString()}`);
           await prisma.token.upsert({
             where: { address: token.address },
             update: {
-              price: freshData.price,
-              priceChange24h: freshData.priceChange24h,
-              volume24h: freshData.volume24h,
-              marketCap: freshData.marketCap,
-              liquidity: freshData.liquidity,
+              price: freshData.price || 0,
+              priceChange24h: freshData.priceChange24h || 0,
+              volume24h: freshData.volume24h || 0,
+              marketCap: freshData.marketCap || 0,
+              liquidity: freshData.liquidity || 0,
               logoUri: freshData.logoURI,
             },
             create: {
@@ -193,11 +194,11 @@ async function syncDashboardTokens() {
               name: freshData.name || token.name,
               decimals: freshData.decimals || token.decimals,
               logoUri: freshData.logoURI,
-              price: freshData.price,
-              priceChange24h: freshData.priceChange24h,
-              volume24h: freshData.volume24h,
-              marketCap: freshData.marketCap,
-              liquidity: freshData.liquidity,
+              price: freshData.price || 0,
+              priceChange24h: freshData.priceChange24h || 0,
+              volume24h: freshData.volume24h || 0,
+              marketCap: freshData.marketCap || 0,
+              liquidity: freshData.liquidity || 0,
             },
           });
           added++;
