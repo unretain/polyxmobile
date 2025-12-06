@@ -185,9 +185,9 @@ export async function POST(req: NextRequest) {
       plan,
       domain: checkDomain,
       features: {
-        watermark: plan === "FREE",
+        watermark: false, // Paid plans never have watermark
         whiteLabel: plan === "BUSINESS",
-        customThemes: plan !== "FREE",
+        customThemes: true, // Paid plans always have custom themes
       },
     });
 
