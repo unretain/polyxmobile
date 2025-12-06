@@ -160,6 +160,9 @@ const POPULAR_TOKENS = [
   { address: "nosXBVoaCTtYdLvKY6Csb4AC8JCdQKKAaWYtx2ZMoo7", symbol: "NOS", name: "Nosana", decimals: 6 },
 ];
 
+// Track if initial sync has run (to avoid running multiple times per server start)
+let initialSyncComplete = false;
+
 // Sync tokens from Birdeye to database
 async function syncTokensFromBirdeye() {
   console.log("📊 Syncing tokens from Birdeye...");
@@ -298,33 +301,39 @@ tokenRoutes.get("/", async (req, res) => {
       return res.json(JSON.parse(cached));
     }
 
-    // Check if database is empty, if so try to sync from Birdeye
+    // Sync tokens on first request after server start (or if DB is empty)
     const count = await prisma.token.count();
-    if (count === 0) {
+    if (count === 0 || !initialSyncComplete) {
+      console.log(`🔄 Token sync needed: count=${count}, initialSyncComplete=${initialSyncComplete}`);
       try {
         await syncTokensFromBirdeye();
+        initialSyncComplete = true;
+        console.log("✅ Initial token sync complete");
       } catch (syncError) {
-        console.warn("Failed to sync from Birdeye, adding fallback SOL token:", syncError);
+        console.warn("Failed to sync from Birdeye:", syncError);
+        initialSyncComplete = true; // Don't retry on every request
         // Add at least SOL as a fallback so the app isn't completely empty
-        try {
-          const solPrice = await solPriceService.getPrice();
-          await prisma.token.upsert({
-            where: { address: SOL_ADDRESS },
-            update: { price: solPrice },
-            create: {
-              address: SOL_ADDRESS,
-              symbol: "SOL",
-              name: "Solana",
-              decimals: 9,
-              logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png",
-              price: solPrice,
-              priceChange24h: 0,
-              volume24h: 2_000_000_000,
-              marketCap: solPrice * 400_000_000,
-            },
-          });
-        } catch (solError) {
-          console.error("Failed to add fallback SOL token:", solError);
+        if (count === 0) {
+          try {
+            const solPrice = await solPriceService.getPrice();
+            await prisma.token.upsert({
+              where: { address: SOL_ADDRESS },
+              update: { price: solPrice },
+              create: {
+                address: SOL_ADDRESS,
+                symbol: "SOL",
+                name: "Solana",
+                decimals: 9,
+                logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png",
+                price: solPrice,
+                priceChange24h: 0,
+                volume24h: 2_000_000_000,
+                marketCap: solPrice * 400_000_000,
+              },
+            });
+          } catch (solError) {
+            console.error("Failed to add fallback SOL token:", solError);
+          }
         }
       }
     }
