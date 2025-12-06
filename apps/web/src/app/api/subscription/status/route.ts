@@ -1,117 +1,96 @@
-import { NextRequest, NextResponse } from "next/server";
-import Stripe from "stripe";
+import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+// Plan limits configuration
+const PLAN_LIMITS = {
+  FREE: {
+    domains: 1,
+    viewsPerMonth: 1000,
+    watermark: true,
+    whiteLabel: false,
+  },
+  PRO: {
+    domains: 3,
+    viewsPerMonth: 50000,
+    watermark: false,
+    whiteLabel: false,
+  },
+  BUSINESS: {
+    domains: -1, // unlimited
+    viewsPerMonth: -1, // unlimited
+    watermark: false,
+    whiteLabel: true,
+  },
+};
 
-const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY, {
-  apiVersion: "2025-11-17.clover",
-}) : null;
+// GET /api/subscription/status
+// Returns the current user's subscription status from database
+// Requires authentication - no email guessing allowed
+export async function GET() {
+  try {
+    // Get authenticated session
+    const session = await auth();
 
-// GET /api/subscription/status?email=user@example.com
-// Check subscription status for a given email
-export async function GET(req: NextRequest) {
-  const email = req.nextUrl.searchParams.get("email");
+    if (!session?.user?.email) {
+      return NextResponse.json(
+        { error: "Authentication required. Please sign in." },
+        { status: 401 }
+      );
+    }
 
-  if (!email) {
-    return NextResponse.json(
-      { error: "Email parameter is required" },
-      { status: 400 }
-    );
-  }
+    const email = session.user.email;
 
-  // TESTING MODE: If Stripe is not configured, simulate a Pro subscription
-  if (!stripe) {
-    console.log(`[TEST MODE] Simulating PRO subscription for ${email}`);
-    return NextResponse.json({
-      email,
-      plan: "PRO",
-      status: "active",
-      hasSubscription: true,
-      testMode: true,
-      features: {
-        domains: 3,
-        viewsPerMonth: 50000,
-        watermark: false,
-        whiteLabel: false,
+    // Get subscription from database
+    const subscription = await prisma.subscription.findUnique({
+      where: { email },
+      include: {
+        domains: true,
       },
     });
-  }
 
-  try {
-    // Find customer by email
-    const customers = await stripe.customers.list({
-      email: email,
-      limit: 1,
-    });
-
-    if (customers.data.length === 0) {
-      // No customer found - return free tier
+    // If no subscription record, return free tier
+    if (!subscription) {
       return NextResponse.json({
         email,
         plan: "FREE",
-        status: "active",
+        status: "ACTIVE",
         hasSubscription: false,
-        features: {
-          domains: 1,
-          viewsPerMonth: 1000,
-          watermark: true,
+        features: PLAN_LIMITS.FREE,
+        domains: [],
+        usage: {
+          embedViews: 0,
+          limit: PLAN_LIMITS.FREE.viewsPerMonth,
+          resetAt: getNextMonthReset(),
         },
       });
     }
 
-    const customer = customers.data[0];
+    const plan = subscription.plan;
+    const features = PLAN_LIMITS[plan];
 
-    // Get active subscriptions for this customer
-    const subscriptions = await stripe.subscriptions.list({
-      customer: customer.id,
-      status: "active",
-      limit: 1,
-    });
-
-    if (subscriptions.data.length === 0) {
-      // Customer exists but no active subscription
-      return NextResponse.json({
-        email,
-        plan: "FREE",
-        status: "active",
-        hasSubscription: false,
-        customerId: customer.id,
-        features: {
-          domains: 1,
-          viewsPerMonth: 1000,
-          watermark: true,
-        },
-      });
-    }
-
-    const subscription = subscriptions.data[0];
-    const plan = subscription.metadata?.plan || "PRO";
-
-    // Determine features based on plan
-    const features = plan === "BUSINESS" ? {
-      domains: -1,
-      viewsPerMonth: -1,
-      watermark: false,
-      whiteLabel: true,
-    } : {
-      domains: 3,
-      viewsPerMonth: 50000,
-      watermark: false,
-      whiteLabel: false,
-    };
+    // Calculate usage
+    const viewsLimit = features.viewsPerMonth;
+    const viewsUsed = subscription.embedViews;
+    const viewsRemaining = viewsLimit === -1 ? -1 : Math.max(0, viewsLimit - viewsUsed);
 
     return NextResponse.json({
       email,
       plan,
       status: subscription.status,
-      hasSubscription: true,
-      customerId: customer.id,
-      subscriptionId: subscription.id,
-      currentPeriodEnd: (subscription as any).current_period_end
-        ? new Date((subscription as any).current_period_end * 1000).toISOString()
-        : null,
-      cancelAtPeriodEnd: (subscription as any).cancel_at_period_end,
+      hasSubscription: plan !== "FREE",
+      subscriptionId: subscription.stripeSubscriptionId,
       features,
+      domains: subscription.domains.map(d => ({
+        domain: d.domain,
+        isVerified: d.isVerified,
+      })),
+      usage: {
+        embedViews: viewsUsed,
+        limit: viewsLimit,
+        remaining: viewsRemaining,
+        resetAt: subscription.embedViewsResetAt.toISOString(),
+      },
     });
 
   } catch (error) {
@@ -121,4 +100,11 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// Helper to get next month reset date
+function getNextMonthReset(): string {
+  const now = new Date();
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return nextMonth.toISOString();
 }
