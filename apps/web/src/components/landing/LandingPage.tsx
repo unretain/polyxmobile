@@ -390,8 +390,8 @@ export function LandingPage() {
       <StarBackground isDark={isDark} />
 
       {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center relative">
+      <header className="fixed top-0 left-0 right-0 z-50 px-6 md:px-10 lg:px-16 py-5">
+        <div className="max-w-[1600px] mx-auto flex items-center relative">
           {/* Left - Logo */}
           <Link href="/" className={`flex items-center px-4 py-2 rounded-full border backdrop-blur-sm ${
             isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
@@ -578,44 +578,44 @@ export function LandingPage() {
       </header>
 
       {/* Main Content */}
-      <main className="relative z-10 pt-24 pb-16 px-4 md:px-8 lg:px-12">
+      <main className="relative z-10 pt-28 pb-20 px-6 md:px-10 lg:px-16">
         <div className="max-w-[1600px] mx-auto">
           {/* Large Title */}
-          <div className="text-center mb-12">
+          <div className="text-center mb-16">
             <h1 className="text-6xl md:text-8xl lg:text-9xl font-bold font-inter tracking-normal">
               <span className={isDark ? 'text-white' : 'text-black'}>[poly</span>
               <span className="text-[#FF6B4A]">x</span>
               <span className={isDark ? 'text-white' : 'text-black'}>]</span>
             </h1>
-            <p className={`mt-4 text-lg ${isDark ? 'text-white/50' : 'text-black/50'}`}>
+            <p className={`mt-6 text-lg ${isDark ? 'text-white/50' : 'text-black/50'}`}>
               3D Trading Charts for Solana
             </p>
           </div>
 
           {/* Two Column Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] gap-10 mb-16">
             {/* Left Column - Cards */}
-            <div className="space-y-4">
+            <div className="space-y-5">
               {/* Token Preview Card */}
-              <div className={`rounded-2xl border p-4 card-shine ${
+              <div className={`rounded-2xl border p-5 card-shine ${
                 isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
               }`}>
                 <div className="flex items-center gap-4">
-                  <TokenLogo token={currentToken} size={48} />
+                  <TokenLogo token={currentToken} size={52} />
                   <div className="flex-1">
                     <div className={`text-xs font-mono ${isDark ? 'text-white/40' : 'text-black/40'}`}>${currentToken.symbol}</div>
-                    <div className="text-lg font-bold">${tokenPrice?.toFixed(2) || "..."}</div>
+                    <div className="text-xl font-bold">${tokenPrice?.toFixed(2) || "..."}</div>
                   </div>
-                  <Sparkline data={priceHistory.slice(-30)} positive={isPositive} width={100} height={35} />
+                  <Sparkline data={priceHistory.slice(-30)} positive={isPositive} width={110} height={40} />
                 </div>
               </div>
 
               {/* Event Card */}
-              <div className={`rounded-2xl border p-4 card-shine ${
+              <div className={`rounded-2xl border p-5 card-shine ${
                 isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
               }`}>
                 <div className="flex items-center gap-4">
-                  <div className={`text-center px-3 py-2 rounded-xl ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
+                  <div className={`text-center px-4 py-3 rounded-xl ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
                     <div className="text-2xl font-bold">3D</div>
                     <div className={`text-xs uppercase ${isDark ? 'text-white/40' : 'text-black/40'}`}>Charts</div>
                   </div>
@@ -623,7 +623,7 @@ export function LandingPage() {
                     <div className={`text-xs uppercase tracking-wider ${isDark ? 'text-white/40' : 'text-black/40'}`}>[POLYX]</div>
                     <div className="font-medium">Immersive Trading</div>
                   </div>
-                  <div className={`w-8 h-8 rounded-full border flex items-center justify-center ${isDark ? 'border-white/10' : 'border-black/10'}`}>
+                  <div className={`w-9 h-9 rounded-full border flex items-center justify-center ${isDark ? 'border-white/10' : 'border-black/10'}`}>
                     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <circle cx="12" cy="12" r="10" />
                       <path d="M12 8v8M8 12h8" />
@@ -633,38 +633,38 @@ export function LandingPage() {
               </div>
 
               {/* Info Section */}
-              <div className={`rounded-2xl border p-6 card-shine ${
+              <div className={`rounded-2xl border p-7 card-shine ${
                 isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
               }`}>
-                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                <h3 className="text-xl font-bold mb-5 flex items-center gap-2">
                   Solana Memecoins
                   <span className={`w-16 h-px ${isDark ? 'bg-white/20' : 'bg-black/20'}`} />
                 </h3>
 
-                <div className="mb-4">
-                  <div className={`text-xs uppercase tracking-wider mb-2 ${isDark ? 'text-white/40' : 'text-black/40'}`}>
+                <div className="mb-5">
+                  <div className={`text-xs uppercase tracking-wider mb-3 ${isDark ? 'text-white/40' : 'text-black/40'}`}>
                     Created with real time OHLCV data
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`px-2 py-1 rounded text-xs font-mono ${isDark ? 'bg-white/5 text-white/60' : 'bg-black/5 text-black/60'}`}>Open</span>
-                    <span className={`px-2 py-1 rounded text-xs font-mono ${isDark ? 'bg-white/5 text-white/60' : 'bg-black/5 text-black/60'}`}>High</span>
-                    <span className={`px-2 py-1 rounded text-xs font-mono ${isDark ? 'bg-white/5 text-white/60' : 'bg-black/5 text-black/60'}`}>Low</span>
-                    <span className={`px-2 py-1 rounded text-xs font-mono ${isDark ? 'bg-white/5 text-white/60' : 'bg-black/5 text-black/60'}`}>Close</span>
-                    <span className={`px-2 py-1 rounded text-xs font-mono ${isDark ? 'bg-white/5 text-white/60' : 'bg-black/5 text-black/60'}`}>Volume</span>
+                    <span className={`px-3 py-1.5 rounded text-xs font-mono ${isDark ? 'bg-white/5 text-white/60' : 'bg-black/5 text-black/60'}`}>Open</span>
+                    <span className={`px-3 py-1.5 rounded text-xs font-mono ${isDark ? 'bg-white/5 text-white/60' : 'bg-black/5 text-black/60'}`}>High</span>
+                    <span className={`px-3 py-1.5 rounded text-xs font-mono ${isDark ? 'bg-white/5 text-white/60' : 'bg-black/5 text-black/60'}`}>Low</span>
+                    <span className={`px-3 py-1.5 rounded text-xs font-mono ${isDark ? 'bg-white/5 text-white/60' : 'bg-black/5 text-black/60'}`}>Close</span>
+                    <span className={`px-3 py-1.5 rounded text-xs font-mono ${isDark ? 'bg-white/5 text-white/60' : 'bg-black/5 text-black/60'}`}>Volume</span>
                   </div>
                 </div>
 
-                <div className="mb-4">
-                  <div className={`text-xs uppercase tracking-wider mb-2 ${isDark ? 'text-white/40' : 'text-black/40'}`}>Team</div>
+                <div className="mb-5">
+                  <div className={`text-xs uppercase tracking-wider mb-3 ${isDark ? 'text-white/40' : 'text-black/40'}`}>Team</div>
                   <div className="space-y-3">
                     {/* Polyx Twitter */}
                     <a
                       href="https://x.com/polyx"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className={`flex items-center gap-3 p-2 rounded-xl transition-colors ${isDark ? 'hover:bg-white/5' : 'hover:bg-black/5'}`}
+                      className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${isDark ? 'hover:bg-white/5' : 'hover:bg-black/5'}`}
                     >
-                      <div className="w-10 h-10 rounded-xl bg-[#FF6B4A] flex items-center justify-center">
+                      <div className="w-11 h-11 rounded-xl bg-[#FF6B4A] flex items-center justify-center">
                         <span className="text-white font-bold text-sm">[x]</span>
                       </div>
                       <div className="flex-1">
@@ -682,9 +682,9 @@ export function LandingPage() {
                       href="https://x.com/unretains"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className={`flex items-center gap-3 p-2 rounded-xl transition-colors ${isDark ? 'hover:bg-white/5' : 'hover:bg-black/5'}`}
+                      className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${isDark ? 'hover:bg-white/5' : 'hover:bg-black/5'}`}
                     >
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isDark ? 'bg-white/10' : 'bg-black/10'}`}>
+                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${isDark ? 'bg-white/10' : 'bg-black/10'}`}>
                         <span className="text-lg">👨‍💻</span>
                       </div>
                       <div className="flex-1">
@@ -701,7 +701,7 @@ export function LandingPage() {
 
                 <Link
                   href="/dashboard"
-                  className={`flex items-center justify-between w-full px-4 py-3 rounded-xl border transition-colors ${
+                  className={`flex items-center justify-between w-full px-5 py-4 rounded-xl border transition-colors ${
                     isDark
                       ? 'bg-white/5 border-white/10 hover:bg-white/10'
                       : 'bg-black/5 border-black/10 hover:bg-black/10'
@@ -720,9 +720,9 @@ export function LandingPage() {
               onMouseLeave={() => setIsChartHovered(false)}
             >
               {/* Chart container - base layer */}
-              <div className="relative flex flex-col h-[600px]">
+              <div className="relative flex flex-col h-[640px]">
                 {/* Top bar with token info and timeframe */}
-                <div className="relative z-20 flex items-center justify-between p-4">
+                <div className="relative z-20 flex items-center justify-between p-5">
                   <div className="flex items-center gap-4">
                     <TokenLogo token={currentToken} size={48} />
                     <div className="flex items-center gap-3">
@@ -760,7 +760,7 @@ export function LandingPage() {
                 </div>
 
                 {/* Token info bar at bottom - outside chart area */}
-                <div className="relative z-20 flex items-center justify-between p-4 border-t border-white/5">
+                <div className="relative z-20 flex items-center justify-between p-5 border-t border-white/5">
                   <div className="flex items-center gap-6">
                     <div className="text-3xl font-bold lowercase">{currentToken.symbol}</div>
                     <div className="flex items-center gap-6 text-sm">
@@ -827,16 +827,16 @@ export function LandingPage() {
           </div>
 
           {/* Bottom Row - CTA Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
             {/* View Pulse Card with iOS cylinder rotation */}
             <Link
               href="/pulse"
-              className={`group rounded-2xl border p-4 card-shine hover:scale-[1.02] transition-all flex items-center gap-3 ${
+              className={`group rounded-2xl border p-5 card-shine hover:scale-[1.02] transition-all flex items-center gap-4 ${
                 isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
               }`}
             >
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
                   <line x1="16" y1="2" x2="16" y2="6" />
                   <line x1="8" y1="2" x2="8" y2="6" />
@@ -859,7 +859,7 @@ export function LandingPage() {
             {/* Ready to trade Card - Coral accent */}
             <Link
               href="/dashboard"
-              className="group rounded-2xl bg-[#FF6B4A] p-4 hover:scale-[1.02] transition-all relative overflow-hidden"
+              className="group rounded-2xl bg-[#FF6B4A] p-5 hover:scale-[1.02] transition-all relative overflow-hidden"
             >
               <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
               <div className="relative flex items-center justify-between">
@@ -874,13 +874,13 @@ export function LandingPage() {
             {/* Docs Card with iOS cylinder rotation */}
             <Link
               href="/docs"
-              className={`group rounded-2xl border p-4 card-shine hover:scale-[1.02] transition-all flex items-center justify-between relative overflow-hidden ${
+              className={`group rounded-2xl border p-5 card-shine hover:scale-[1.02] transition-all flex items-center justify-between relative overflow-hidden ${
                 isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
               }`}
             >
               <div className="absolute top-0 left-0 right-0 h-px animated-line" />
-              <div className="flex items-center gap-2">
-                <svg className={`w-4 h-4 ${isDark ? 'text-white/60' : 'text-black/60'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <div className="flex items-center gap-3">
+                <svg className={`w-5 h-5 ${isDark ? 'text-white/60' : 'text-black/60'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                   <polyline points="14 2 14 8 20 8" />
                   <line x1="16" y1="13" x2="8" y2="13" />
@@ -899,18 +899,18 @@ export function LandingPage() {
                   </div>
                 </div>
               </div>
-              <ChevronRight className={`w-4 h-4 transition-colors ${isDark ? 'text-white/40 group-hover:text-[#FF6B4A]' : 'text-black/40 group-hover:text-[#FF6B4A]'}`} />
+              <ChevronRight className={`w-5 h-5 transition-colors ${isDark ? 'text-white/40 group-hover:text-[#FF6B4A]' : 'text-black/40 group-hover:text-[#FF6B4A]'}`} />
             </Link>
 
             {/* Trade Markets Card with iOS cylinder rotation */}
             <Link
               href="/markets"
-              className={`group rounded-2xl border p-4 card-shine hover:scale-[1.02] transition-all flex items-center justify-between relative overflow-hidden ${
+              className={`group rounded-2xl border p-5 card-shine hover:scale-[1.02] transition-all flex items-center justify-between relative overflow-hidden ${
                 isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
               }`}
             >
-              <div className="flex items-center gap-2">
-                <svg className={`w-4 h-4 ${isDark ? 'text-white/60' : 'text-black/60'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <div className="flex items-center gap-3">
+                <svg className={`w-5 h-5 ${isDark ? 'text-white/60' : 'text-black/60'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                 </svg>
                 {/* iOS Cylinder rotation text */}
@@ -925,15 +925,15 @@ export function LandingPage() {
                   </div>
                 </div>
               </div>
-              <ChevronRight className={`w-4 h-4 transition-colors ${isDark ? 'text-white/40 group-hover:text-[#FF6B4A]' : 'text-black/40 group-hover:text-[#FF6B4A]'}`} />
+              <ChevronRight className={`w-5 h-5 transition-colors ${isDark ? 'text-white/40 group-hover:text-[#FF6B4A]' : 'text-black/40 group-hover:text-[#FF6B4A]'}`} />
             </Link>
           </div>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className={`relative z-10 border-t py-4 px-6 ${isDark ? 'border-white/5' : 'border-black/10'}`}>
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <footer className={`relative z-10 border-t py-5 px-6 md:px-10 lg:px-16 ${isDark ? 'border-white/5' : 'border-black/10'}`}>
+        <div className="max-w-[1600px] mx-auto flex items-center justify-between">
           <div className={`flex items-center gap-4 text-sm ${isDark ? 'text-white/40' : 'text-black/40'}`}>
             <span className="flex items-center gap-1">
               <span className={isDark ? 'text-white/20' : 'text-black/20'}>≡</span>
