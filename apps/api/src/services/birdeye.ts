@@ -18,7 +18,8 @@ class BirdeyeService {
   // Get token market data
   async getTokenData(address: string): Promise<BirdeyeTokenData | null> {
     if (!this.apiKey) {
-      throw new Error("BIRDEYE_API_KEY not configured");
+      console.warn("BIRDEYE_API_KEY not configured");
+      return null;
     }
 
     try {
@@ -64,7 +65,8 @@ class BirdeyeService {
     options?: { from?: number; to?: number; limit?: number }
   ): Promise<OHLCV[]> {
     if (!this.apiKey) {
-      throw new Error("BIRDEYE_API_KEY not configured");
+      console.warn("BIRDEYE_API_KEY not configured - returning empty OHLCV");
+      return [];
     }
 
     try {
@@ -142,7 +144,8 @@ class BirdeyeService {
     const prices = new Map<string, number>();
 
     if (!this.apiKey) {
-      throw new Error("BIRDEYE_API_KEY not configured");
+      console.warn("BIRDEYE_API_KEY not configured");
+      return prices;
     }
 
     if (addresses.length === 0) {
@@ -177,7 +180,8 @@ class BirdeyeService {
   // Get trending tokens - using the correct endpoint
   async getTopTokens(limit: number = 20): Promise<BirdeyeTokenData[]> {
     if (!this.apiKey) {
-      throw new Error("BIRDEYE_API_KEY not configured");
+      console.warn("BIRDEYE_API_KEY not configured - returning empty token list");
+      return [];
     }
 
     try {

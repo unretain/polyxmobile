@@ -206,10 +206,35 @@ tokenRoutes.get("/", async (req, res) => {
       return res.json(JSON.parse(cached));
     }
 
-    // Check if database is empty, if so sync from Birdeye
+    // Check if database is empty, if so try to sync from Birdeye
     const count = await prisma.token.count();
     if (count === 0) {
-      await syncTokensFromBirdeye();
+      try {
+        await syncTokensFromBirdeye();
+      } catch (syncError) {
+        console.warn("Failed to sync from Birdeye, adding fallback SOL token:", syncError);
+        // Add at least SOL as a fallback so the app isn't completely empty
+        try {
+          const solPrice = await solPriceService.getPrice();
+          await prisma.token.upsert({
+            where: { address: SOL_ADDRESS },
+            update: { price: solPrice },
+            create: {
+              address: SOL_ADDRESS,
+              symbol: "SOL",
+              name: "Solana",
+              decimals: 9,
+              logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png",
+              price: solPrice,
+              priceChange24h: 0,
+              volume24h: 2_000_000_000,
+              marketCap: solPrice * 400_000_000,
+            },
+          });
+        } catch (solError) {
+          console.error("Failed to add fallback SOL token:", solError);
+        }
+      }
     }
 
     const where = search
