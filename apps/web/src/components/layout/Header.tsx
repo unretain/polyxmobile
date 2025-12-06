@@ -25,7 +25,8 @@ export function Header() {
 
   // Use Zustand user first (has wallet info), fallback to NextAuth session
   const currentUser = user || session?.user;
-  const walletAddress = user?.wallet;
+  // Get wallet from Zustand first, fallback to session (from database)
+  const walletAddress = user?.wallet || (session?.user as { walletAddress?: string })?.walletAddress;
 
   // Close dropdown when clicking outside
   useEffect(() => {

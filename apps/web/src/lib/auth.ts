@@ -139,8 +139,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.provider = "google";
       }
 
-      // Fetch wallet address on sign-in or session update
-      if ((trigger === "signIn" || trigger === "update") && token.id) {
+      // Fetch wallet address on sign-in, update, or if missing from token
+      if (token.id && (trigger === "signIn" || trigger === "update" || !token.walletAddress)) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.id as string },
           select: { walletAddress: true },
