@@ -578,8 +578,8 @@ export function LandingPage() {
       </header>
 
       {/* Main Content */}
-      <main className="relative z-10 pt-24 pb-16 px-6">
-        <div className="max-w-7xl mx-auto">
+      <main className="relative z-10 pt-24 pb-16 px-4 md:px-8 lg:px-12">
+        <div className="max-w-[1600px] mx-auto">
           {/* Large Title */}
           <div className="text-center mb-12">
             <h1 className="text-6xl md:text-8xl lg:text-9xl font-bold font-inter tracking-normal">
@@ -593,7 +593,7 @@ export function LandingPage() {
           </div>
 
           {/* Two Column Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
             {/* Left Column - Cards */}
             <div className="space-y-4">
               {/* Token Preview Card */}
@@ -827,7 +827,7 @@ export function LandingPage() {
           </div>
 
           {/* Bottom Row - CTA Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {/* View Pulse Card with iOS cylinder rotation */}
             <Link
               href="/pulse"
@@ -895,6 +895,32 @@ export function LandingPage() {
                     </div>
                     <div className="ios-cylinder-face ios-cylinder-bottom">
                       <span className="font-medium text-[#FF6B4A]">Read now</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <ChevronRight className={`w-4 h-4 transition-colors ${isDark ? 'text-white/40 group-hover:text-[#FF6B4A]' : 'text-black/40 group-hover:text-[#FF6B4A]'}`} />
+            </Link>
+
+            {/* Trade Markets Card with iOS cylinder rotation */}
+            <Link
+              href="/markets"
+              className={`group rounded-2xl border p-4 card-shine hover:scale-[1.02] transition-all flex items-center justify-between relative overflow-hidden ${
+                isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <svg className={`w-4 h-4 ${isDark ? 'text-white/60' : 'text-black/60'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                </svg>
+                {/* iOS Cylinder rotation text */}
+                <div className="ios-cylinder">
+                  <div className="ios-cylinder-inner">
+                    <div className="ios-cylinder-face ios-cylinder-front">
+                      <span className="font-medium">Trade markets</span>
+                    </div>
+                    <div className="ios-cylinder-face ios-cylinder-bottom">
+                      <span className="font-medium text-[#FF6B4A]">Explore</span>
                     </div>
                   </div>
                 </div>
