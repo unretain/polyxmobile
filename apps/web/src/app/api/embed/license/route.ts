@@ -241,11 +241,22 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // TESTING MODE: If Stripe is not configured, generate a test license
   if (!stripe) {
-    return NextResponse.json(
-      { error: "Payment service not configured" },
-      { status: 500 }
-    );
+    console.log(`[TEST MODE] Generating test PRO license for ${email}`);
+    const targetDomain = domain || "*";
+    const key = generateLicenseKey(email, targetDomain, "PRO");
+    const licenseKey = `${email}:${key}`;
+
+    return NextResponse.json({
+      licenseKey,
+      email,
+      domain: targetDomain,
+      plan: "PRO",
+      testMode: true,
+      usage: `Add ?license=${encodeURIComponent(licenseKey)} to your embed URL`,
+      example: `<iframe src="https://polyx.xyz/embed/TOKEN_ADDRESS?license=${encodeURIComponent(licenseKey)}"></iframe>`,
+    });
   }
 
   try {

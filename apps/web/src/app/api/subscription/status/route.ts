@@ -19,11 +19,22 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // TESTING MODE: If Stripe is not configured, simulate a Pro subscription
   if (!stripe) {
-    return NextResponse.json(
-      { error: "Payment service not configured" },
-      { status: 500 }
-    );
+    console.log(`[TEST MODE] Simulating PRO subscription for ${email}`);
+    return NextResponse.json({
+      email,
+      plan: "PRO",
+      status: "active",
+      hasSubscription: true,
+      testMode: true,
+      features: {
+        domains: 3,
+        viewsPerMonth: 50000,
+        watermark: false,
+        whiteLabel: false,
+      },
+    });
   }
 
   try {
