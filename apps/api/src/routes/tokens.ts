@@ -125,110 +125,37 @@ function aggregateToMonthly(dailyCandles: any[]): any[] {
 // Native SOL token address (wrapped SOL)
 const SOL_ADDRESS = "So11111111111111111111111111111111111111112";
 
-// Popular tokens to always include (beyond Birdeye trending limit of 20)
-const POPULAR_TOKENS = [
-  // Core tokens (SOL is added separately)
-  { address: "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn", symbol: "JitoSOL", name: "Jito Staked SOL", decimals: 9 },
-  { address: "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs", symbol: "WETH", name: "Wrapped Ether", decimals: 8 },
+// Curated tokens list - ONLY these tokens will appear on dashboard
+const DASHBOARD_TOKENS = [
   { address: "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh", symbol: "WBTC", name: "Wrapped BTC (Wormhole)", decimals: 8 },
-  // Political/Trending
-  { address: "6p6xgHyF7AeE6TZkSmFsko444wqoP15icUSqi2jfGiPN", symbol: "TRUMP", name: "Official Trump", decimals: 6 },
-  // Meme tokens
-  { address: "9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump", symbol: "FARTCOIN", name: "Fartcoin", decimals: 6 },
   { address: "FUAfBo2jgks6gB4Z4LfZkqSZgzNucisEHqnNebaRxM1P", symbol: "ZEC", name: "Zcash", decimals: 8 },
-  { address: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", symbol: "BONK", name: "Bonk", decimals: 5 },
-  { address: "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm", symbol: "WIF", name: "dogwifhat", decimals: 6 },
-  { address: "7GCihgDB8fe6KNjn2MYtkzZcRjQy3t9GHdC8uHYmW2hr", symbol: "POPCAT", name: "Popcat", decimals: 9 },
-  { address: "MEW1gQWJ3nEXg2qgERiKu7FAFj79PHvQVREQUzScPP5", symbol: "MEW", name: "cat in a dogs world", decimals: 5 },
-  { address: "A8C3xuqscfmyLrte3VmTqrAq8kgMASius9AFNANwpump", symbol: "FWOG", name: "Fwog", decimals: 6 },
-  { address: "ED5nyyWEzpPPiWimP8vYm7sD7TD3LAt3Q3gRTWHzPJBY", symbol: "MOODENG", name: "Moo Deng", decimals: 6 },
-  // DeFi tokens
-  { address: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN", symbol: "JUP", name: "Jupiter", decimals: 6 },
-  { address: "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R", symbol: "RAY", name: "Raydium", decimals: 6 },
-  { address: "orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE", symbol: "ORCA", name: "Orca", decimals: 6 },
-  { address: "METAewgxyPbgwsseH8T16a39CQ5VyVxZi9zXiDPY18m", symbol: "MPLX", name: "Metaplex", decimals: 6 },
-  { address: "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3", symbol: "PYTH", name: "Pyth Network", decimals: 6 },
-  { address: "DriFtupJYLTosbwoN8koMbEYSx54aFAVLddWsbksjwg7", symbol: "DRIFT", name: "Drift", decimals: 6 },
-  // Stablecoins
-  { address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", symbol: "USDC", name: "USD Coin", decimals: 6 },
-  { address: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", symbol: "USDT", name: "Tether USD", decimals: 6 },
-  // AI tokens
-  { address: "Grass7B4RdKfBCjTKgSqnXkqjwiGvQyFbuSCUJr3XXjs", symbol: "GRASS", name: "Grass", decimals: 9 },
-  { address: "rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof", symbol: "RENDER", name: "Render Token", decimals: 8 },
-  // Gaming
-  { address: "BZLbGTNCSFfoth2GYDtwr7e4imWzpR5jqcUuGEwr646K", symbol: "IO", name: "io.net", decimals: 8 },
-  { address: "nosXBVoaCTtYdLvKY6Csb4AC8JCdQKKAaWYtx2ZMoo7", symbol: "NOS", name: "Nosana", decimals: 6 },
+  { address: "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn", symbol: "PUMP", name: "Pump", decimals: 6 },
 ];
 
 // Track if initial sync has run (to avoid running multiple times per server start)
 let initialSyncComplete = false;
 
-// Sync tokens from Birdeye to database
-async function syncTokensFromBirdeye() {
-  console.log("📊 Syncing tokens from Birdeye...");
+// Sync ONLY curated dashboard tokens - deletes all others
+async function syncDashboardTokens() {
+  console.log("📊 Syncing curated dashboard tokens...");
   try {
-    const topTokens = await birdeyeService.getTopTokens(100);
+    // Get the addresses we want to keep
+    const allowedAddresses = DASHBOARD_TOKENS.map(t => t.address);
 
-    for (const token of topTokens) {
-      await prisma.token.upsert({
-        where: { address: token.address },
-        update: {
-          price: token.price,
-          priceChange24h: token.priceChange24h,
-          volume24h: token.volume24h,
-          marketCap: token.marketCap,
-          liquidity: token.liquidity,
-          logoUri: token.logoURI,
+    // Delete ALL tokens that are not in our curated list
+    const deleted = await prisma.token.deleteMany({
+      where: {
+        address: {
+          notIn: allowedAddresses,
         },
-        create: {
-          address: token.address,
-          symbol: token.symbol,
-          name: token.name,
-          decimals: token.decimals,
-          logoUri: token.logoURI,
-          price: token.price,
-          priceChange24h: token.priceChange24h,
-          volume24h: token.volume24h,
-          marketCap: token.marketCap,
-          liquidity: token.liquidity,
-        },
-      });
-    }
+      },
+    });
+    console.log(`🗑️ Deleted ${deleted.count} tokens not in curated list`);
 
-    // Always add/update SOL
-    try {
-      const solPrice = await solPriceService.getPrice();
-      // SOL market cap: ~$60B, volume: ~$2B daily (rough estimates)
-      const solMarketCap = solPrice * 400_000_000; // ~400M circulating supply
-      await prisma.token.upsert({
-        where: { address: SOL_ADDRESS },
-        update: {
-          price: solPrice,
-          volume24h: 2_000_000_000, // Placeholder high volume to rank it well
-        },
-        create: {
-          address: SOL_ADDRESS,
-          symbol: "SOL",
-          name: "Solana",
-          decimals: 9,
-          logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png",
-          price: solPrice,
-          priceChange24h: 0,
-          volume24h: 2_000_000_000,
-          marketCap: solMarketCap,
-        },
-      });
-      console.log(`✅ Added/updated SOL token at $${solPrice.toFixed(2)}`);
-    } catch (solError) {
-      console.error("Failed to add SOL token:", solError);
-    }
-
-    // Add popular tokens with fresh data from Birdeye
-    console.log("📊 Adding popular tokens...");
-    let addedPopular = 0;
-    for (const token of POPULAR_TOKENS) {
+    // Add/update only the curated tokens with fresh data from Birdeye
+    let added = 0;
+    for (const token of DASHBOARD_TOKENS) {
       try {
-        // Try to get fresh data from Birdeye
         const freshData = await birdeyeService.getTokenData(token.address);
 
         if (freshData) {
@@ -255,7 +182,8 @@ async function syncTokensFromBirdeye() {
               liquidity: freshData.liquidity,
             },
           });
-          addedPopular++;
+          added++;
+          console.log(`✅ Added ${token.symbol}`);
         } else {
           // Add with basic info if Birdeye doesn't have data
           await prisma.token.upsert({
@@ -271,19 +199,18 @@ async function syncTokensFromBirdeye() {
               marketCap: 0,
             },
           });
-          addedPopular++;
+          added++;
+          console.log(`✅ Added ${token.symbol} (no Birdeye data)`);
         }
       } catch (err) {
-        // Continue with other tokens if one fails
         console.warn(`Failed to add ${token.symbol}:`, err instanceof Error ? err.message : err);
       }
     }
-    console.log(`✅ Added/updated ${addedPopular} popular tokens`);
 
-    console.log(`✅ Synced ${topTokens.length} trending + ${addedPopular} popular tokens`);
-    return topTokens.length + addedPopular;
+    console.log(`✅ Dashboard now has exactly ${added} curated tokens`);
+    return added;
   } catch (error) {
-    console.error("Error syncing tokens from Birdeye:", error);
+    console.error("Error syncing dashboard tokens:", error);
     throw error;
   }
 }
@@ -301,40 +228,16 @@ tokenRoutes.get("/", async (req, res) => {
       return res.json(JSON.parse(cached));
     }
 
-    // Sync tokens on first request after server start (or if DB is empty)
-    const count = await prisma.token.count();
-    if (count === 0 || !initialSyncComplete) {
-      console.log(`🔄 Token sync needed: count=${count}, initialSyncComplete=${initialSyncComplete}`);
+    // Sync curated tokens on first request after server start
+    if (!initialSyncComplete) {
+      console.log("🔄 Initial token sync needed...");
       try {
-        await syncTokensFromBirdeye();
+        await syncDashboardTokens();
         initialSyncComplete = true;
         console.log("✅ Initial token sync complete");
       } catch (syncError) {
-        console.warn("Failed to sync from Birdeye:", syncError);
+        console.warn("Failed to sync tokens:", syncError);
         initialSyncComplete = true; // Don't retry on every request
-        // Add at least SOL as a fallback so the app isn't completely empty
-        if (count === 0) {
-          try {
-            const solPrice = await solPriceService.getPrice();
-            await prisma.token.upsert({
-              where: { address: SOL_ADDRESS },
-              update: { price: solPrice },
-              create: {
-                address: SOL_ADDRESS,
-                symbol: "SOL",
-                name: "Solana",
-                decimals: 9,
-                logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png",
-                price: solPrice,
-                priceChange24h: 0,
-                volume24h: 2_000_000_000,
-                marketCap: solPrice * 400_000_000,
-              },
-            });
-          } catch (solError) {
-            console.error("Failed to add fallback SOL token:", solError);
-          }
-        }
       }
     }
 
@@ -379,7 +282,7 @@ tokenRoutes.get("/", async (req, res) => {
 // POST /api/tokens/sync - Force sync tokens from Birdeye
 tokenRoutes.post("/sync", async (req, res) => {
   try {
-    const synced = await syncTokensFromBirdeye();
+    const synced = await syncDashboardTokens();
     res.json({ success: true, synced });
   } catch (error) {
     console.error("Error syncing tokens:", error);
