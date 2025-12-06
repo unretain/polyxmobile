@@ -830,7 +830,7 @@ export function LandingPage() {
             <Link
               href="/pulse"
               className={`group rounded-2xl border p-5 card-shine hover:scale-[1.02] transition-all flex items-center gap-4 ${
-                isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
+                isDark ? 'bg-[#1a1a1a] hover:bg-[#252525] border-transparent' : 'bg-white hover:bg-gray-100 border-transparent'
               }`}
             >
               <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
@@ -878,7 +878,7 @@ export function LandingPage() {
             <Link
               href="/docs"
               className={`group rounded-2xl border p-5 card-shine hover:scale-[1.02] transition-all flex items-center justify-between relative overflow-hidden ${
-                isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
+                isDark ? 'bg-[#1a1a1a] hover:bg-[#252525] border-transparent' : 'bg-white hover:bg-gray-100 border-transparent'
               }`}
             >
               <div className="absolute top-0 left-0 right-0 h-px animated-line" />
@@ -894,22 +894,38 @@ export function LandingPage() {
                 <div className="ios-cylinder">
                   <div className="ios-cylinder-inner">
                     <div className="ios-cylinder-face ios-cylinder-front">
-                      <span className="font-medium">The docs</span>
+                      <span className="font-medium text-[#FF6B4A]">Read now</span>
                     </div>
                     <div className="ios-cylinder-face ios-cylinder-bottom">
-                      <span className="font-medium text-[#FF6B4A]">Read now</span>
+                      <span className="font-medium text-[#FF6B4A]">The docs</span>
                     </div>
                   </div>
                 </div>
               </div>
-              <ChevronRight className={`w-5 h-5 transition-colors ${isDark ? 'text-white/40 group-hover:text-[#FF6B4A]' : 'text-black/40 group-hover:text-[#FF6B4A]'}`} />
+              {/* Diagonal arrow that animates with iOS cylinder */}
+              <div className="ios-cylinder" style={{ width: "24px" }}>
+                <div className="ios-cylinder-inner">
+                  <div className="ios-cylinder-face ios-cylinder-front flex justify-end">
+                    <svg className={`w-5 h-5 ${isDark ? 'text-white/40' : 'text-black/40'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="7" y1="17" x2="17" y2="7" />
+                      <polyline points="7 7 17 7 17 17" />
+                    </svg>
+                  </div>
+                  <div className="ios-cylinder-face ios-cylinder-bottom flex justify-end">
+                    <svg className="w-5 h-5 text-[#FF6B4A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="7" y1="17" x2="17" y2="7" />
+                      <polyline points="7 7 17 7 17 17" />
+                    </svg>
+                  </div>
+                </div>
+              </div>
             </Link>
 
-            {/* Trade Markets Card with iOS cylinder rotation */}
+            {/* Trade Markets Card with iOS cylinder rotation - no arrow */}
             <Link
               href="/markets"
-              className={`group rounded-2xl border p-5 card-shine hover:scale-[1.02] transition-all flex items-center justify-between relative overflow-hidden ${
-                isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
+              className={`group rounded-2xl border p-5 card-shine hover:scale-[1.02] transition-all flex items-center relative overflow-hidden ${
+                isDark ? 'bg-[#1a1a1a] hover:bg-[#252525] border-transparent' : 'bg-white hover:bg-gray-100 border-transparent'
               }`}
             >
               <div className="flex items-center gap-3">
@@ -917,7 +933,7 @@ export function LandingPage() {
                   <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                 </svg>
                 {/* iOS Cylinder rotation text */}
-                <div className="ios-cylinder">
+                <div className="ios-cylinder" style={{ width: "110px" }}>
                   <div className="ios-cylinder-inner">
                     <div className="ios-cylinder-face ios-cylinder-front">
                       <span className="font-medium">Trade markets</span>
@@ -928,7 +944,6 @@ export function LandingPage() {
                   </div>
                 </div>
               </div>
-              <ChevronRight className={`w-5 h-5 transition-colors ${isDark ? 'text-white/40 group-hover:text-[#FF6B4A]' : 'text-black/40 group-hover:text-[#FF6B4A]'}`} />
             </Link>
           </div>
         </div>
