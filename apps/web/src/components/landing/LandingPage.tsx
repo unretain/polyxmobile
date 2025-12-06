@@ -719,24 +719,7 @@ export function LandingPage() {
               onMouseEnter={() => setIsChartHovered(true)}
               onMouseLeave={() => setIsChartHovered(false)}
             >
-              {/* Coral/Orange swirling accent blur background */}
-              <div className="absolute inset-0 overflow-hidden">
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px]">
-                  <div className="absolute inset-0 bg-gradient-conic from-[#FF6B4A]/40 via-[#FF8F6B]/20 via-[#FF6B4A]/30 to-[#FF6B4A]/40 blur-[80px] animate-slow-spin" />
-                </div>
-                <div className={`absolute inset-0 ${isDark ? 'bg-[#0a0a0a]/60' : 'bg-white/60'}`} />
-              </div>
-
-              {/* Vertical token text behind chart */}
-              <div
-                className={`absolute top-0 bottom-0 left-8 flex items-center justify-center pointer-events-none transition-transform duration-500 ease-out ${isChartHovered ? 'translate-x-4' : 'translate-x-0'}`}
-              >
-                <span className={`text-[180px] font-bold tracking-tighter leading-none ${isDark ? 'text-white/[0.03]' : 'text-black/[0.03]'}`} style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
-                  {currentToken.symbol}
-                </span>
-              </div>
-
-              {/* Chart container */}
+              {/* Chart container - base layer */}
               <div className="relative flex flex-col h-[600px]">
                 {/* Top bar with token info and timeframe */}
                 <div className="relative z-20 flex items-center justify-between p-4">
@@ -818,6 +801,25 @@ export function LandingPage() {
                     </button>
                   </div>
                 </div>
+              </div>
+
+              {/* Coral/Orange glow overlay - on top of chart, pointer-events-none */}
+              <div className="absolute inset-0 overflow-hidden pointer-events-none z-10">
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px]">
+                  <div className="absolute inset-0 bg-gradient-radial from-[#FF6B4A]/30 via-[#FF6B4A]/10 to-transparent blur-[60px]" />
+                </div>
+              </div>
+
+              {/* Large vertical token ticker overlay - like $STAR reference */}
+              <div
+                className={`absolute inset-0 flex items-center justify-center pointer-events-none select-none z-10 transition-transform duration-700 ease-out ${isChartHovered ? '-translate-y-6' : 'translate-y-0'}`}
+              >
+                <span
+                  className={`text-[250px] md:text-[320px] font-black tracking-tighter leading-none uppercase ${isDark ? 'text-white/[0.06]' : 'text-black/[0.06]'}`}
+                  style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', transform: 'rotate(180deg)' }}
+                >
+                  ${currentToken.symbol}
+                </span>
               </div>
             </div>
           </div>
