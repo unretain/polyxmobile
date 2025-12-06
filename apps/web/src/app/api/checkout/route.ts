@@ -51,10 +51,12 @@ export async function POST(req: NextRequest) {
     }
 
     // Create Stripe checkout session (one-time payment for Pro)
+    // Use customer_creation: "always" to ensure we get a customer ID for billing portal
     const session = await stripe.checkout.sessions.create({
       mode: "payment", // One-time payment instead of subscription
       payment_method_types: ["card"],
       customer_email: email,
+      customer_creation: "always", // Always create a customer for billing portal access
       line_items: [
         {
           price: priceId,
