@@ -9,7 +9,6 @@ import { useAuthStore } from "@/stores/authStore";
 import { useThemeStore } from "@/stores/themeStore";
 import { useState, useRef, useEffect } from "react";
 import { shortenAddress } from "@/lib/wallet";
-import { getUserById } from "@/lib/userDb";
 
 export function Header() {
   const router = useRouter();
@@ -48,14 +47,9 @@ export function Header() {
 
   const handleOpenSecurity = () => {
     setShowDropdown(false);
-    // Get the stored user to retrieve the encrypted private key
-    if (user?.id) {
-      const storedUser = getUserById(user.id);
-      if (storedUser?.wallet?.encryptedSecretKey) {
-        // For demo, we'll show the encrypted key (in production, you'd decrypt it)
-        setPrivateKey(atob(storedUser.wallet.encryptedSecretKey).replace(/.*/, storedUser.wallet.encryptedSecretKey));
-      }
-    }
+    // Private key is now stored server-side - would need authenticated API call to retrieve
+    // For security, we don't expose the private key directly in the client
+    setPrivateKey(null);
     setShowSecurityModal(true);
   };
 
