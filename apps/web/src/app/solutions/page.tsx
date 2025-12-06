@@ -139,7 +139,7 @@ function SolutionsPageContent() {
   const [candles, setCandles] = useState<OHLCVCandle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [tokenPrice, setTokenPrice] = useState<number | null>(null);
-  const [embedWidth, setEmbedWidth] = useState("100%");
+  const [embedWidth, setEmbedWidth] = useState("800");
   const [embedHeight, setEmbedHeight] = useState("500");
   const [embedTheme, setEmbedTheme] = useState<"dark" | "light">("dark");
   const [embedTimeframe, setEmbedTimeframe] = useState("1h");
@@ -235,7 +235,7 @@ function SolutionsPageContent() {
   const embedCode = `<iframe
   src="${SITE_URL}/embed/${selectedToken.address}?theme=${embedTheme}&timeframe=${embedTimeframe}"
   width="${embedWidth}"
-  height="${embedHeight}px"
+  height="${embedHeight}"
   frameborder="0"
   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope"
   style="border: none; border-radius: 8px;"
@@ -250,10 +250,15 @@ function SolutionsPageContent() {
     token: '${selectedToken.address}',
     theme: '${embedTheme}',
     timeframe: '${embedTimeframe}',
-    width: '${embedWidth}',
+    width: ${embedWidth},
     height: ${embedHeight}
   });
 </script>`;
+
+  // Scroll to embed code section
+  const scrollToEmbedCode = () => {
+    document.getElementById('embed-code')?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   return (
     <div className={`min-h-screen transition-colors duration-300 ${isDark ? 'bg-[#0a0a0a] text-white' : 'bg-[#f5f5f5] text-black'}`}>
@@ -625,37 +630,38 @@ function SolutionsPageContent() {
                   </select>
                 </div>
 
-                {/* Width */}
-                <div>
-                  <label className={`text-sm mb-2 block ${isDark ? 'text-white/60' : 'text-gray-600'}`}>Width</label>
-                  <input
-                    type="text"
-                    value={embedWidth}
-                    onChange={(e) => setEmbedWidth(e.target.value)}
-                    placeholder="100% or 800px"
-                    className={`w-full py-2 px-3 text-sm border ${
-                      isDark
-                        ? 'bg-white/5 border-white/10 text-white placeholder:text-white/30'
-                        : 'bg-black/5 border-black/10 text-black placeholder:text-black/30'
-                    }`}
-                  />
-                </div>
-
-                {/* Height */}
-                <div>
-                  <label className={`text-sm mb-2 block ${isDark ? 'text-white/60' : 'text-gray-600'}`}>Height (px)</label>
-                  <input
-                    type="number"
-                    value={embedHeight}
-                    onChange={(e) => setEmbedHeight(e.target.value)}
-                    min={200}
-                    max={1000}
-                    className={`w-full py-2 px-3 text-sm border ${
-                      isDark
-                        ? 'bg-white/5 border-white/10 text-white'
-                        : 'bg-black/5 border-black/10 text-black'
-                    }`}
-                  />
+                {/* Dimensions */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={`text-sm mb-2 block ${isDark ? 'text-white/60' : 'text-gray-600'}`}>Width (px)</label>
+                    <input
+                      type="number"
+                      value={embedWidth}
+                      onChange={(e) => setEmbedWidth(e.target.value)}
+                      min={300}
+                      max={1920}
+                      className={`w-full py-2 px-3 text-sm border ${
+                        isDark
+                          ? 'bg-white/5 border-white/10 text-white'
+                          : 'bg-black/5 border-black/10 text-black'
+                      }`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`text-sm mb-2 block ${isDark ? 'text-white/60' : 'text-gray-600'}`}>Height (px)</label>
+                    <input
+                      type="number"
+                      value={embedHeight}
+                      onChange={(e) => setEmbedHeight(e.target.value)}
+                      min={200}
+                      max={1000}
+                      className={`w-full py-2 px-3 text-sm border ${
+                        isDark
+                          ? 'bg-white/5 border-white/10 text-white'
+                          : 'bg-black/5 border-black/10 text-black'
+                      }`}
+                    />
+                  </div>
                 </div>
 
                 {/* Token Address */}
@@ -672,6 +678,15 @@ function SolutionsPageContent() {
                     }`}
                   />
                 </div>
+
+                {/* Generate Button */}
+                <button
+                  onClick={scrollToEmbedCode}
+                  className="w-full py-3 mt-2 font-medium bg-[#FF6B4A] text-white hover:bg-[#FF5A36] transition-colors flex items-center justify-center gap-2"
+                >
+                  <Code className="w-4 h-4" />
+                  Generate Embed Code
+                </button>
               </div>
             </div>
           </div>
@@ -679,7 +694,7 @@ function SolutionsPageContent() {
       </section>
 
       {/* Embed Code Section */}
-      <section className="py-16 px-6">
+      <section id="embed-code" className="py-16 px-6 scroll-mt-24">
         <div className="max-w-7xl mx-auto">
           <h2 className="text-3xl font-bold mb-8">Embed Code</h2>
 
