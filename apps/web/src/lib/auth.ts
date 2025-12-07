@@ -6,8 +6,8 @@ import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 import { generateWalletForUser } from "./wallet";
 
-// Get wallet encryption secret from env
-const WALLET_ENCRYPTION_SECRET = process.env.NEXTAUTH_SECRET || "fallback-secret-change-in-production";
+// Get wallet encryption secret from env (AUTH_SECRET is the NextAuth v5 standard)
+const WALLET_ENCRYPTION_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "fallback-secret-change-in-production";
 
 /**
  * Generate a Solana wallet for a user if they don't have one
