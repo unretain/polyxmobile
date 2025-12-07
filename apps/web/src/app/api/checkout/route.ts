@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import { prisma } from "@/lib/prisma";
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
@@ -50,13 +51,55 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create Stripe checkout session (one-time payment for Pro)
-    // Use customer_creation: "always" to ensure we get a customer ID for billing portal
+    // Check if user has an existing subscription (for upgrades)
+    const existingSubscription = await prisma.subscription.findUnique({
+      where: { email },
+    });
+
+    // If user has an active subscription with Stripe, upgrade it instead of creating new checkout
+    if (existingSubscription?.stripeSubscriptionId && existingSubscription.status === "ACTIVE") {
+      try {
+        // Get the current subscription from Stripe
+        const stripeSubscription = await stripe.subscriptions.retrieve(existingSubscription.stripeSubscriptionId);
+
+        if (stripeSubscription.status === "active") {
+          // Upgrade the subscription by changing the price
+          await stripe.subscriptions.update(existingSubscription.stripeSubscriptionId, {
+            items: [{
+              id: stripeSubscription.items.data[0].id,
+              price: priceId,
+            }],
+            proration_behavior: "create_prorations",
+            metadata: {
+              plan,
+              email,
+            },
+          });
+
+          // Update our database
+          await prisma.subscription.update({
+            where: { email },
+            data: { plan: plan as "PRO" | "BUSINESS" },
+          });
+
+          return NextResponse.json({
+            upgraded: true,
+            message: `Successfully upgraded to ${plan}!`,
+            redirectUrl: "/dashboard/license",
+          });
+        }
+      } catch (err) {
+        console.error("Upgrade error:", err);
+        // Fall through to create new checkout session
+      }
+    }
+
+    // Create Stripe checkout session for new subscriptions
+    // Use subscription mode for recurring payments (Pro/Business plans)
     const session = await stripe.checkout.sessions.create({
-      mode: "payment", // One-time payment instead of subscription
+      mode: "subscription",
       payment_method_types: ["card"],
       customer_email: email,
-      customer_creation: "always", // Always create a customer for billing portal access
       line_items: [
         {
           price: priceId,

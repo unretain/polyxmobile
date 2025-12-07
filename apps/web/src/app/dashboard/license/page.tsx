@@ -113,19 +113,52 @@ export default function LicenseDashboard() {
   };
 
   // Add a new domain
-  const addDomain = () => {
-    if (newDomain && !domains.includes(newDomain)) {
-      const updated = [...domains, newDomain];
-      setDomains(updated);
+  const addDomain = async () => {
+    if (!newDomain || domains.includes(newDomain)) return;
+
+    try {
+      const response = await fetch("/api/subscription/domains", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domain: newDomain }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Failed to add domain");
+        return;
+      }
+
+      setDomains([...domains, newDomain]);
       setNewDomain("");
+      setError(null);
+    } catch {
+      setError("Failed to add domain");
     }
   };
 
   // Remove a domain
-  const removeDomain = (domain: string) => {
-    setDomains(domains.filter((d) => d !== domain));
-    if (selectedDomain === domain) {
-      setSelectedDomain("*");
+  const removeDomain = async (domain: string) => {
+    try {
+      const response = await fetch(`/api/subscription/domains?domain=${encodeURIComponent(domain)}`, {
+        method: "DELETE",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Failed to remove domain");
+        return;
+      }
+
+      setDomains(domains.filter((d) => d !== domain));
+      if (selectedDomain === domain) {
+        setSelectedDomain("*");
+      }
+      setError(null);
+    } catch {
+      setError("Failed to remove domain");
     }
   };
 
