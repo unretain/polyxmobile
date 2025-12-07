@@ -170,6 +170,9 @@ model Subscription {
   stripeCustomerId     String?            @unique
   stripeSubscriptionId String?            @unique
 
+  // License key (encrypted format for embed validation)
+  licenseKey           String?            @unique
+
   // Domain licensing
   domains              Domain[]
 
@@ -183,6 +186,7 @@ model Subscription {
   @@index([email])
   @@index([stripeCustomerId])
   @@index([userId])
+  @@index([licenseKey])
 }
 
 model Domain {
