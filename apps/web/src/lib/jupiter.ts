@@ -74,14 +74,32 @@ export class JupiterService {
     // Platform fee disabled - requires Jupiter referral program
     // url.searchParams.set("platformFeeBps", PLATFORM_FEE_BPS.toString());
 
-    const response = await fetch(url.toString());
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Jupiter quote failed: ${error}`);
+      const response = await fetch(url.toString(), {
+        method: "GET",
+        headers: {
+          "Accept": "application/json",
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Jupiter quote failed (${response.status}): ${error}`);
+      }
+
+      return response.json();
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error("Jupiter API timeout - please try again");
+      }
+      throw error;
     }
-
-    return response.json();
   }
 
   /**
@@ -91,28 +109,44 @@ export class JupiterService {
     quoteResponse: JupiterQuote,
     userPublicKey: string
   ): Promise<VersionedTransaction> {
-    const response = await fetch(`${JUPITER_QUOTE_API}/swap`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        quoteResponse,
-        userPublicKey,
-        wrapAndUnwrapSol: true,
-        dynamicComputeUnitLimit: true,
-        prioritizationFeeLamports: "auto",
-        // Fee account disabled - requires Jupiter referral program setup
-        // feeAccount: PLATFORM_FEE_WALLET,
-      }),
-    });
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Jupiter swap transaction failed: ${error}`);
+      const response = await fetch(`${JUPITER_QUOTE_API}/swap`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
+        body: JSON.stringify({
+          quoteResponse,
+          userPublicKey,
+          wrapAndUnwrapSol: true,
+          dynamicComputeUnitLimit: true,
+          prioritizationFeeLamports: "auto",
+          // Fee account disabled - requires Jupiter referral program setup
+          // feeAccount: PLATFORM_FEE_WALLET,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Jupiter swap transaction failed (${response.status}): ${error}`);
+      }
+
+      const { swapTransaction } = await response.json();
+      const txBuffer = Buffer.from(swapTransaction, "base64");
+      return VersionedTransaction.deserialize(txBuffer);
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error("Jupiter API timeout - please try again");
+      }
+      throw error;
     }
-
-    const { swapTransaction } = await response.json();
-    const txBuffer = Buffer.from(swapTransaction, "base64");
-    return VersionedTransaction.deserialize(txBuffer);
   }
 
   /**
