@@ -74,6 +74,9 @@ export class JupiterService {
     // Platform fee disabled - requires Jupiter referral program
     // url.searchParams.set("platformFeeBps", PLATFORM_FEE_BPS.toString());
 
+    console.log(`[JUPITER] Fetching quote from: ${url.toString().substring(0, 100)}...`);
+    const startTime = Date.now();
+
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
@@ -87,16 +90,25 @@ export class JupiterService {
       });
 
       clearTimeout(timeout);
+      console.log(`[JUPITER] Response status: ${response.status} in ${Date.now() - startTime}ms`);
 
       if (!response.ok) {
         const error = await response.text();
+        console.error(`[JUPITER] Error response: ${error}`);
         throw new Error(`Jupiter quote failed (${response.status}): ${error}`);
       }
 
-      return response.json();
+      const data = await response.json();
+      console.log(`[JUPITER] Quote received: outAmount=${data.outAmount}`);
+      return data;
     } catch (error) {
+      console.error(`[JUPITER] Fetch error after ${Date.now() - startTime}ms:`, error);
       if (error instanceof Error && error.name === "AbortError") {
         throw new Error("Jupiter API timeout - please try again");
+      }
+      // Re-throw with more context
+      if (error instanceof Error) {
+        throw new Error(`Jupiter fetch failed: ${error.message}`);
       }
       throw error;
     }
