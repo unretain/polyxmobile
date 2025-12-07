@@ -864,14 +864,14 @@ export function LandingPage() {
               >
                 <div className="relative flex flex-col justify-between h-full">
                   <div className="text-lg font-bold text-white">Ready to trade?</div>
-                  {/* Text on right, line draws from left edge of text going further left */}
-                  <div className="flex items-center justify-end mt-3 overflow-hidden">
-                    {/* Line grows to the LEFT of the text, pushing text left as it expands */}
-                    <div className="h-[2px] w-0 group-hover:w-24 bg-black transition-all duration-500 ease-out origin-right" />
+                  {/* Text with line to the RIGHT that draws leftward, pushing text left */}
+                  <div className="flex items-center justify-end mt-3">
                     {/* "Launch the app" text - same style as Ready to trade but black */}
-                    <span className="text-lg font-bold text-black whitespace-nowrap ml-0 group-hover:ml-3 transition-all duration-500 ease-out">
+                    <span className="text-lg font-bold text-black whitespace-nowrap transition-transform duration-500 ease-out group-hover:-translate-x-6">
                       Launch the app
                     </span>
+                    {/* Line appears to the RIGHT of text, grows leftward */}
+                    <div className="h-[2px] w-0 group-hover:w-20 bg-black transition-all duration-500 ease-out ml-2" />
                   </div>
                 </div>
               </Link>
