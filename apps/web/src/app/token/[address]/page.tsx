@@ -23,6 +23,7 @@ import { Line3DChart } from "@/components/charts/Line3DChart";
 import { ChartControls } from "@/components/charts/ChartControls";
 import { type ChartType, LINE_PERIODS, CANDLE_PERIODS, PULSE_PERIOD } from "@/stores/chartStore";
 import { BarChart3, LineChart } from "lucide-react";
+import { SwapWidget } from "@/components/trading";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const PUMP_FUN_SUPPLY = 1_000_000_000;
@@ -920,13 +921,23 @@ export default function TokenPage() {
           )}
         </div>
 
-        {/* Pulse tokens: Show Holder Stats | Dashboard tokens: Show Supply Stats */}
+        {/* Pulse tokens: Show Swap Widget + Holder Stats | Dashboard tokens: Show Supply Stats */}
         {fromPulse ? (
-          <div className={`w-64 flex-shrink-0 border backdrop-blur-md p-4 overflow-auto ${
-            isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'
-          }`}>
-            <h3 className={`font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Holder Stats</h3>
-            <HoldersSidebar stats={holderStats} topHolders={topHolders} isLoading={holdersLoading} isDark={isDark} />
+          <div className={`w-80 flex-shrink-0 flex flex-col gap-4 overflow-auto`}>
+            {/* Swap Widget */}
+            <SwapWidget
+              defaultOutputMint={address}
+              outputSymbol={token?.symbol || "TOKEN"}
+              outputDecimals={9}
+            />
+
+            {/* Holder Stats */}
+            <div className={`border backdrop-blur-md p-4 ${
+              isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'
+            }`}>
+              <h3 className={`font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Holder Stats</h3>
+              <HoldersSidebar stats={holderStats} topHolders={topHolders} isLoading={holdersLoading} isDark={isDark} />
+            </div>
           </div>
         ) : (
           <div className={`w-64 flex-shrink-0 border backdrop-blur-md p-4 overflow-auto ${
