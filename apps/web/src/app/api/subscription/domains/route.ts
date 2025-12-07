@@ -14,14 +14,13 @@ export async function POST(req: NextRequest) {
   try {
     const session = await auth();
 
-    if (!session?.user?.email) {
+    if (!session?.user?.id) {
       return NextResponse.json(
         { error: "Authentication required" },
         { status: 401 }
       );
     }
 
-    const email = session.user.email;
     const body = await req.json();
     const { domain } = body;
 
@@ -32,7 +31,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate domain format
+    // Validate domain format (allow *, *.example.com, or example.com)
     const domainRegex = /^(\*\.)?[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/;
     if (!domainRegex.test(domain) && domain !== "*") {
       return NextResponse.json(
@@ -41,9 +40,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get subscription
-    const subscription = await prisma.subscription.findUnique({
-      where: { email },
+    // Get subscription by user ID (works for Phantom users too)
+    const subscription = await prisma.subscription.findFirst({
+      where: { userId: session.user.id },
       include: { domains: true },
     });
 
@@ -103,14 +102,13 @@ export async function DELETE(req: NextRequest) {
   try {
     const session = await auth();
 
-    if (!session?.user?.email) {
+    if (!session?.user?.id) {
       return NextResponse.json(
         { error: "Authentication required" },
         { status: 401 }
       );
     }
 
-    const email = session.user.email;
     const domain = req.nextUrl.searchParams.get("domain");
 
     if (!domain) {
@@ -120,9 +118,9 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
-    // Get subscription
-    const subscription = await prisma.subscription.findUnique({
-      where: { email },
+    // Get subscription by user ID
+    const subscription = await prisma.subscription.findFirst({
+      where: { userId: session.user.id },
       include: { domains: true },
     });
 
