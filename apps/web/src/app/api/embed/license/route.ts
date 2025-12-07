@@ -32,19 +32,71 @@ function checkRateLimit(ip: string): boolean {
 }
 
 // Generate a license key from subscription ID
-// Format: sub_{subscriptionId}_{hmac} - NO EMAIL exposed
+// Format: plx_{encryptedSubId}_{hmac} - subscription ID is NOT exposed
+// Uses AES-256-CBC to encrypt the subscription ID
 function generateLicenseKey(subscriptionId: string): string {
+  // Create a deterministic IV from the subscription ID (so same ID = same key)
+  const ivSeed = crypto.createHash("sha256").update(subscriptionId + LICENSE_SECRET).digest();
+  const iv = ivSeed.subarray(0, 16);
+
+  // Derive encryption key from secret
+  const key = crypto.createHash("sha256").update(LICENSE_SECRET).digest();
+
+  // Encrypt subscription ID
+  const cipher = crypto.createCipheriv("aes-256-cbc", key, iv);
+  let encrypted = cipher.update(subscriptionId, "utf8", "hex");
+  encrypted += cipher.final("hex");
+
+  // Create HMAC for integrity
   const hmac = crypto.createHmac("sha256", LICENSE_SECRET)
-    .update(subscriptionId)
+    .update(encrypted)
     .digest("hex")
-    .substring(0, 16);
-  return `sub_${subscriptionId}_${hmac}`;
+    .substring(0, 8);
+
+  return `plx_${encrypted}_${hmac}`;
 }
 
 // Verify license key and extract subscription ID
 function verifyAndExtractSubscriptionId(licenseKey: string): string | null {
-  if (!licenseKey.startsWith("sub_")) return null;
+  // Support both old (sub_) and new (plx_) formats during migration
+  if (licenseKey.startsWith("sub_")) {
+    return verifyOldFormat(licenseKey);
+  }
 
+  if (!licenseKey.startsWith("plx_")) return null;
+
+  const parts = licenseKey.split("_");
+  if (parts.length !== 3) return null;
+
+  const encrypted = parts[1];
+  const providedHmac = parts[2];
+
+  // Verify HMAC
+  const expectedHmac = crypto.createHmac("sha256", LICENSE_SECRET)
+    .update(encrypted)
+    .digest("hex")
+    .substring(0, 8);
+
+  if (providedHmac.length !== expectedHmac.length) return null;
+  if (!crypto.timingSafeEqual(Buffer.from(providedHmac), Buffer.from(expectedHmac))) {
+    return null;
+  }
+
+  try {
+    // Decrypt subscription ID - we need to try decryption with derived IV
+    const key = crypto.createHash("sha256").update(LICENSE_SECRET).digest();
+
+    // We need to find the correct IV - try each subscription in DB would be slow
+    // Instead, use a lookup table approach: store encrypted -> subscriptionId mapping
+    // For now, iterate through subscriptions (not ideal but works for small scale)
+    return null; // Will be resolved via database lookup below
+  } catch {
+    return null;
+  }
+}
+
+// Legacy format support (sub_{id}_{hmac})
+function verifyOldFormat(licenseKey: string): string | null {
   const parts = licenseKey.split("_");
   if (parts.length !== 3) return null;
 
@@ -62,6 +114,22 @@ function verifyAndExtractSubscriptionId(licenseKey: string): string | null {
   }
 
   return subscriptionId;
+}
+
+// Lookup subscription by license key (for new encrypted format)
+async function lookupSubscriptionByLicenseKey(licenseKey: string): Promise<string | null> {
+  // First check old format
+  const oldFormatId = verifyOldFormat(licenseKey);
+  if (oldFormatId) return oldFormatId;
+
+  if (!licenseKey.startsWith("plx_")) return null;
+
+  // For new format, we store the license key in the subscription record
+  const subscription = await prisma.subscription.findFirst({
+    where: { licenseKey },
+  });
+
+  return subscription?.id || null;
 }
 
 // POST /api/embed/license - Validate embed request (called by embed iframe)
@@ -103,8 +171,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Verify the license key
-    const subscriptionId = verifyAndExtractSubscriptionId(licenseKey);
+    // Verify the license key and look up subscription
+    const subscriptionId = await lookupSubscriptionByLicenseKey(licenseKey);
     if (!subscriptionId) {
       return NextResponse.json({
         valid: false,
@@ -132,7 +200,8 @@ export async function POST(req: NextRequest) {
     // Check domain restrictions (if any domains are registered)
     if (domain && subscription.domains.length > 0) {
       const isAllowed = subscription.domains.some(d => {
-        if (d.domain === "*") return true;
+        // SECURITY: Never allow bare wildcard "*" - only *.example.com patterns
+        if (d.domain === "*") return false;
         if (d.domain === domain) return true;
         // Support wildcard subdomains like *.example.com
         if (d.domain.startsWith("*.") && domain.endsWith(d.domain.slice(1))) return true;
@@ -205,6 +274,15 @@ export async function GET() {
 
     // Generate license key based on subscription ID (not email)
     const licenseKey = generateLicenseKey(subscription.id);
+
+    // Store the license key in the subscription for lookup
+    // This allows us to validate keys without exposing the subscription ID
+    if (subscription.licenseKey !== licenseKey) {
+      await prisma.subscription.update({
+        where: { id: subscription.id },
+        data: { licenseKey },
+      });
+    }
 
     return NextResponse.json({
       licenseKey,

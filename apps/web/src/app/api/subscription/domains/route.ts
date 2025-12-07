@@ -31,9 +31,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate domain format (allow *, *.example.com, or example.com)
+    // SECURITY: Block bare wildcard "*" - it would allow any domain
+    if (domain === "*") {
+      return NextResponse.json(
+        { error: "Bare wildcard '*' is not allowed. Use '*.example.com' for subdomains." },
+        { status: 400 }
+      );
+    }
+
+    // Validate domain format (allow *.example.com or example.com)
     const domainRegex = /^(\*\.)?[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/;
-    if (!domainRegex.test(domain) && domain !== "*") {
+    if (!domainRegex.test(domain)) {
       return NextResponse.json(
         { error: "Invalid domain format" },
         { status: 400 }
