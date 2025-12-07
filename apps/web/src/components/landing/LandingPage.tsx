@@ -864,16 +864,17 @@ export function LandingPage() {
               >
                 <div className="relative flex flex-col justify-between h-full">
                   <div className="text-lg font-bold text-white">Ready to trade?</div>
-                  {/* Line draws from right to left, text slides left with it */}
-                  <div className="flex items-center mt-3">
-                    {/* Animated line - draws from right to left on hover */}
-                    <div className="relative h-[1px] flex-1 mr-3 overflow-hidden">
-                      <div className="absolute inset-y-0 right-0 w-full bg-black origin-right scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out" />
+                  {/* Line draws from text leftward, text slides left with it */}
+                  <div className="flex items-center justify-end mt-3">
+                    {/* Container that slides left on hover - contains line + text together */}
+                    <div className="flex items-center transition-transform duration-500 ease-out group-hover:-translate-x-8">
+                      {/* Animated line - grows from right edge of text going left */}
+                      <div className="relative h-[2px] w-0 group-hover:w-16 bg-black transition-all duration-500 ease-out mr-2" />
+                      {/* "Launch the app" text - same style as Ready to trade but black */}
+                      <span className="text-lg font-bold text-black whitespace-nowrap">
+                        Launch the app
+                      </span>
                     </div>
-                    {/* "Launch the app" text - starts on right, slides left on hover */}
-                    <span className="text-black text-sm font-medium transition-all duration-500 ease-out group-hover:-translate-x-4">
-                      Launch the app
-                    </span>
                   </div>
                 </div>
               </Link>
