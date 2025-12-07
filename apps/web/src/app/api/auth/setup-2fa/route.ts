@@ -2,6 +2,28 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
 
+// SECURITY: Get encryption key from environment
+const ENCRYPTION_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+
+if (!ENCRYPTION_SECRET && process.env.NODE_ENV === "production") {
+  throw new Error("AUTH_SECRET or NEXTAUTH_SECRET must be set in production");
+}
+
+const ENCRYPTION_KEY = ENCRYPTION_SECRET
+  ? crypto.createHash("sha256").update(ENCRYPTION_SECRET).digest()
+  : crypto.createHash("sha256").update("dev-only-secret").digest();
+
+// Encrypt 2FA secret before storing
+function encrypt2FASecret(secret: string): string {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
+  let encrypted = cipher.update(secret, "utf8", "hex");
+  encrypted += cipher.final("hex");
+  const authTag = cipher.getAuthTag().toString("hex");
+  // Format: iv:authTag:encrypted
+  return `${iv.toString("hex")}:${authTag}:${encrypted}`;
+}
+
 // Generate a random base32 secret for TOTP
 function generateTOTPSecret(): string {
   const buffer = crypto.randomBytes(20);
@@ -33,11 +55,14 @@ export async function POST(request: NextRequest) {
     // Generate TOTP secret
     const secret = generateTOTPSecret();
 
-    // Store secret (but don't enable 2FA yet - need to verify first)
+    // Encrypt secret before storing
+    const encryptedSecret = encrypt2FASecret(secret);
+
+    // Store encrypted secret (but don't enable 2FA yet - need to verify first)
     await prisma.user.update({
       where: { id: userId },
       data: {
-        twoFactorSecret: secret,
+        twoFactorSecret: encryptedSecret,
         twoFactorEnabled: false,
       },
     });

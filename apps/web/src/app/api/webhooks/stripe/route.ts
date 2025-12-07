@@ -48,39 +48,30 @@ export async function POST(req: NextRequest) {
 
     let event: Stripe.Event;
 
-    // SECURITY: Always verify webhook signature when secret is configured
-    if (STRIPE_WEBHOOK_SECRET) {
-      if (!signature) {
-        return NextResponse.json(
-          { error: "Missing stripe-signature header" },
-          { status: 400 }
-        );
-      }
-      try {
-        event = stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET);
-      } catch (err) {
-        console.error("Webhook signature verification failed:", err);
-        return NextResponse.json(
-          { error: "Webhook signature verification failed" },
-          { status: 400 }
-        );
-      }
-    } else if (process.env.NODE_ENV === "development") {
-      // Parse without verification (development only when no secret configured)
-      console.warn("DEV MODE: Webhook received without signature verification");
-      try {
-        event = JSON.parse(body) as Stripe.Event;
-      } catch {
-        return NextResponse.json(
-          { error: "Invalid JSON payload" },
-          { status: 400 }
-        );
-      }
-    } else {
-      // SECURITY: Fail closed in production without webhook secret
+    // SECURITY: Always require webhook secret and signature verification
+    // Never skip verification, even in development
+    if (!STRIPE_WEBHOOK_SECRET) {
+      console.error("STRIPE_WEBHOOK_SECRET not configured");
       return NextResponse.json(
         { error: "Webhook secret not configured" },
         { status: 500 }
+      );
+    }
+
+    if (!signature) {
+      return NextResponse.json(
+        { error: "Missing stripe-signature header" },
+        { status: 400 }
+      );
+    }
+
+    try {
+      event = stripe.webhooks.constructEvent(body, signature, STRIPE_WEBHOOK_SECRET);
+    } catch (err) {
+      console.error("Webhook signature verification failed:", err);
+      return NextResponse.json(
+        { error: "Webhook signature verification failed" },
+        { status: 400 }
       );
     }
 
@@ -105,30 +96,46 @@ export async function POST(req: NextRequest) {
 
         console.log(`New ${session.mode === "payment" ? "purchase" : "subscription"}: ${email} - Plan: ${plan}`);
 
-        // Find user by email (if they have an account)
-        const user = await prisma.user.findUnique({
-          where: { email },
-        });
+        // Use transaction with serializable isolation to prevent race conditions
+        await prisma.$transaction(async (tx) => {
+          // Find user by email (if they have an account)
+          const user = await tx.user.findUnique({
+            where: { email },
+          });
 
-        // Create or update subscription in database
-        await prisma.subscription.upsert({
-          where: { email },
-          create: {
-            email,
-            plan: mapPlan(plan),
-            status: "ACTIVE",
-            stripeCustomerId,
-            stripeSubscriptionId: stripeSubscriptionId || null,
-            userId: user?.id,
-          },
-          update: {
-            plan: mapPlan(plan),
-            status: "ACTIVE",
-            stripeCustomerId,
-            // Only update stripeSubscriptionId if we have one (don't overwrite with null)
-            ...(stripeSubscriptionId ? { stripeSubscriptionId } : {}),
-            userId: user?.id,
-          },
+          // Check if subscription already exists
+          const existing = await tx.subscription.findUnique({
+            where: { email },
+          });
+
+          if (existing) {
+            // Update existing subscription
+            await tx.subscription.update({
+              where: { email },
+              data: {
+                plan: mapPlan(plan),
+                status: "ACTIVE",
+                stripeCustomerId,
+                // Only update stripeSubscriptionId if we have one (don't overwrite with null)
+                ...(stripeSubscriptionId ? { stripeSubscriptionId } : {}),
+                userId: user?.id,
+              },
+            });
+          } else {
+            // Create new subscription
+            await tx.subscription.create({
+              data: {
+                email,
+                plan: mapPlan(plan),
+                status: "ACTIVE",
+                stripeCustomerId,
+                stripeSubscriptionId: stripeSubscriptionId || null,
+                userId: user?.id,
+              },
+            });
+          }
+        }, {
+          isolationLevel: "Serializable",
         });
 
         console.log(`Plan activated for ${email}`);
@@ -186,6 +193,57 @@ export async function POST(req: NextRequest) {
         const invoice = event.data.object as Stripe.Invoice;
         console.log("Payment succeeded for invoice:", invoice.id);
         // Subscription renewals are handled here
+        break;
+      }
+
+      case "charge.refunded": {
+        const charge = event.data.object as Stripe.Charge;
+        console.log("Charge refunded:", charge.id);
+
+        // If full refund, downgrade to free
+        if (charge.refunded && charge.amount_refunded === charge.amount) {
+          const customerId = charge.customer as string;
+          if (customerId) {
+            await prisma.subscription.updateMany({
+              where: { stripeCustomerId: customerId },
+              data: {
+                status: "CANCELED",
+                plan: "FREE",
+              },
+            });
+            console.log(`Full refund processed - subscription downgraded for customer ${customerId}`);
+          }
+        }
+        break;
+      }
+
+      case "charge.dispute.created": {
+        const dispute = event.data.object as Stripe.Dispute;
+        console.log("Chargeback/dispute created:", dispute.id);
+
+        // Immediately suspend access on chargeback
+        const chargeId = dispute.charge as string;
+        if (chargeId) {
+          const charge = await stripe.charges.retrieve(chargeId);
+          const customerId = charge.customer as string;
+          if (customerId) {
+            await prisma.subscription.updateMany({
+              where: { stripeCustomerId: customerId },
+              data: {
+                status: "CANCELED",
+                plan: "FREE",
+              },
+            });
+            console.log(`Chargeback received - subscription suspended for customer ${customerId}`);
+          }
+        }
+        break;
+      }
+
+      case "customer.subscription.trial_will_end": {
+        const subscription = event.data.object as Stripe.Subscription;
+        console.log("Trial ending soon:", subscription.id);
+        // Could send email notification here
         break;
       }
 

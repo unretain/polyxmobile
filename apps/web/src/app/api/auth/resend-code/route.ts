@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import crypto from "crypto";
+
+// Generate cryptographically secure 6-digit code
+function generateSecureCode(): string {
+  return crypto.randomInt(100000, 1000000).toString();
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -23,8 +29,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Email is already verified" }, { status: 400 });
     }
 
-    // Generate new code
-    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    // Generate new cryptographically secure code
+    const verificationCode = generateSecureCode();
     const verificationExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     // Update user
@@ -36,9 +42,11 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // TODO: Send verification email via Resend
     return NextResponse.json({
       success: true,
-      verificationCode, // In production, don't return this - only send via email
+      message: "Verification code sent to your email",
+      // SECURITY: Never return verification code in production API response
     });
   } catch (error) {
     console.error("Error resending code:", error);

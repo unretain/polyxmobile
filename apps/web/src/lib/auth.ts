@@ -7,7 +7,15 @@ import { prisma } from "./prisma";
 import { generateWalletForUser } from "./wallet";
 
 // Get wallet encryption secret from env (AUTH_SECRET is the NextAuth v5 standard)
-const WALLET_ENCRYPTION_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "fallback-secret-change-in-production";
+// SECURITY: No fallback - must be configured in production
+const WALLET_ENCRYPTION_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+
+if (!WALLET_ENCRYPTION_SECRET && process.env.NODE_ENV === "production") {
+  throw new Error("AUTH_SECRET or NEXTAUTH_SECRET must be set in production");
+}
+
+// Only use fallback in development
+const WALLET_SECRET = WALLET_ENCRYPTION_SECRET || "dev-only-secret-do-not-use-in-production";
 
 /**
  * Generate a Solana wallet for a user if they don't have one
@@ -23,7 +31,7 @@ async function ensureUserHasWallet(userId: string): Promise<string | null> {
   }
 
   // Generate new wallet
-  const { publicKey, encryptedPrivateKey } = generateWalletForUser(WALLET_ENCRYPTION_SECRET);
+  const { publicKey, encryptedPrivateKey } = generateWalletForUser(WALLET_SECRET);
 
   // Store in database
   await prisma.user.update({
@@ -73,7 +81,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           const passwordHash = await bcrypt.hash(password, 12);
 
           // Generate wallet
-          const { publicKey, encryptedPrivateKey } = generateWalletForUser(WALLET_ENCRYPTION_SECRET);
+          const { publicKey, encryptedPrivateKey } = generateWalletForUser(WALLET_SECRET);
 
           // Create new user with wallet
           const newUser = await prisma.user.create({
