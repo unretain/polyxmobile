@@ -137,7 +137,7 @@ function SolutionsPageContent() {
   const { isDark, toggleTheme } = useThemeStore();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
   const [selectedToken, setSelectedToken] = useState(DEMO_TOKENS[0]);
   const [candles, setCandles] = useState<OHLCVCandle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -188,8 +188,13 @@ function SolutionsPageContent() {
 
   // Handle checkout
   const handleCheckout = async (plan: "PRO" | "BUSINESS") => {
+    // Wait for session to load before deciding
+    if (sessionStatus === "loading") {
+      return; // Don't do anything while session is loading
+    }
+
     // If user is logged in, skip email modal and go directly to Stripe
-    if (session?.user?.email) {
+    if (sessionStatus === "authenticated" && session?.user?.email) {
       setCheckoutLoading(true);
       setCheckoutError("");
 

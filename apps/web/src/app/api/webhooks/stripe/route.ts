@@ -111,7 +111,6 @@ export async function POST(req: NextRequest) {
         });
 
         // Create or update subscription in database
-        // For one-time payments, we still create a "subscription" record but without stripeSubscriptionId
         await prisma.subscription.upsert({
           where: { email },
           create: {
@@ -126,7 +125,8 @@ export async function POST(req: NextRequest) {
             plan: mapPlan(plan),
             status: "ACTIVE",
             stripeCustomerId,
-            stripeSubscriptionId: stripeSubscriptionId || undefined,
+            // Only update stripeSubscriptionId if we have one (don't overwrite with null)
+            ...(stripeSubscriptionId ? { stripeSubscriptionId } : {}),
             userId: user?.id,
           },
         });
