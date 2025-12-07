@@ -7,7 +7,6 @@ import Link from "next/link";
 import { Key, Copy, Check, RefreshCw, Globe, Eye, AlertCircle, Plus, Trash2, ExternalLink, BarChart3, Loader2, CreditCard } from "lucide-react";
 
 interface SubscriptionStatus {
-  email: string;
   plan: "FREE" | "PRO" | "BUSINESS";
   status: string;
   hasSubscription: boolean;
@@ -28,9 +27,12 @@ interface SubscriptionStatus {
 
 interface LicenseData {
   licenseKey: string;
-  email: string;
-  domain: string;
   plan: string;
+  domains: string[];
+  usage: {
+    embedViews: number;
+    limit: number;
+  };
 }
 
 export default function LicenseDashboard() {
@@ -44,7 +46,6 @@ export default function LicenseDashboard() {
   const [domains, setDomains] = useState<string[]>([]);
   const [newDomain, setNewDomain] = useState("");
   const [copied, setCopied] = useState(false);
-  const [selectedDomain, setSelectedDomain] = useState<string>("*");
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -75,9 +76,9 @@ export default function LicenseDashboard() {
       setSubscription(data);
       setDomains(data.domains?.map((d: { domain: string }) => d.domain) || []);
 
-      // If they have an active subscription, generate a license key
+      // If they have an active subscription, get license key
       if (data.hasSubscription) {
-        await generateLicense(selectedDomain);
+        await loadLicense();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
@@ -86,20 +87,19 @@ export default function LicenseDashboard() {
     }
   };
 
-  // Generate license key for a specific domain
-  const generateLicense = async (domain: string = "*") => {
+  // Load license key (single key per subscription, not per domain)
+  const loadLicense = async () => {
     try {
-      const response = await fetch(`/api/embed/license?domain=${encodeURIComponent(domain)}`);
+      const response = await fetch("/api/embed/license");
       const data = await response.json();
 
       if (response.ok) {
         setLicense(data);
       } else if (response.status !== 403) {
-        // 403 is expected for free tier
-        console.error("License generation error:", data.error);
+        console.error("License error:", data.error);
       }
     } catch (err) {
-      console.error("License generation error:", err);
+      console.error("License error:", err);
     }
   };
 
@@ -153,21 +153,11 @@ export default function LicenseDashboard() {
       }
 
       setDomains(domains.filter((d) => d !== domain));
-      if (selectedDomain === domain) {
-        setSelectedDomain("*");
-      }
       setError(null);
     } catch {
       setError("Failed to remove domain");
     }
   };
-
-  // Regenerate license when domain changes
-  useEffect(() => {
-    if (subscription?.hasSubscription) {
-      generateLicense(selectedDomain);
-    }
-  }, [selectedDomain, subscription?.hasSubscription]);
 
   // Open billing portal
   const openBillingPortal = async () => {
@@ -394,20 +384,9 @@ export default function LicenseDashboard() {
                   Your License Key
                 </h2>
 
-                {/* Domain Selection */}
-                <div className="mb-4">
-                  <label className="text-sm text-white/60 block mb-2">Generate for domain:</label>
-                  <select
-                    value={selectedDomain}
-                    onChange={(e) => setSelectedDomain(e.target.value)}
-                    className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#FF6B4A]/50"
-                  >
-                    <option value="*">All domains (wildcard)</option>
-                    {domains.map((domain) => (
-                      <option key={domain} value={domain}>{domain}</option>
-                    ))}
-                  </select>
-                </div>
+                <p className="text-sm text-white/60 mb-4">
+                  Use this license key to embed charts without watermark. Add allowed domains below to restrict where it can be used.
+                </p>
 
                 {/* License Key Display */}
                 <div className="relative">
