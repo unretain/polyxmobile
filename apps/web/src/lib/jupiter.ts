@@ -3,9 +3,10 @@ import { config } from "./config";
 
 const JUPITER_QUOTE_API = "https://quote-api.jup.ag/v6";
 
-// Platform fee wallet
-const PLATFORM_FEE_WALLET = "E1KexcKsZb5Pkz7Uy2tEVqKvWjAq9XbyaUBddsuxePNt";
-const PLATFORM_FEE_BPS = 100; // 1% fee
+// Platform fee - disabled for now (requires referral program setup with Jupiter)
+// To enable: Apply at https://referral.jup.ag/ and get a referral account
+// const PLATFORM_FEE_WALLET = "E1KexcKsZb5Pkz7Uy2tEVqKvWjAq9XbyaUBddsuxePNt";
+// const PLATFORM_FEE_BPS = 100; // 1% fee
 
 // Common token mints
 export const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -70,8 +71,8 @@ export class JupiterService {
     url.searchParams.set("slippageBps", (params.slippageBps || 50).toString()); // Default 0.5%
     url.searchParams.set("onlyDirectRoutes", "false");
     url.searchParams.set("asLegacyTransaction", "false");
-    // Platform fee
-    url.searchParams.set("platformFeeBps", PLATFORM_FEE_BPS.toString());
+    // Platform fee disabled - requires Jupiter referral program
+    // url.searchParams.set("platformFeeBps", PLATFORM_FEE_BPS.toString());
 
     const response = await fetch(url.toString());
 
@@ -99,8 +100,8 @@ export class JupiterService {
         wrapAndUnwrapSol: true,
         dynamicComputeUnitLimit: true,
         prioritizationFeeLamports: "auto",
-        // Fee account for collecting platform fees
-        feeAccount: PLATFORM_FEE_WALLET,
+        // Fee account disabled - requires Jupiter referral program setup
+        // feeAccount: PLATFORM_FEE_WALLET,
       }),
     });
 
