@@ -188,6 +188,50 @@ function SolutionsPageContent() {
 
   // Handle checkout
   const handleCheckout = async (plan: "PRO" | "BUSINESS") => {
+    // If user is logged in, skip email modal and go directly to Stripe
+    if (session?.user?.email) {
+      setCheckoutLoading(true);
+      setCheckoutError("");
+
+      try {
+        const response = await fetch("/api/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            plan,
+            email: session.user.email,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || "Failed to create checkout session");
+        }
+
+        // Handle upgrade response (no checkout needed)
+        if (data.upgraded) {
+          setShowSuccessMessage(true);
+          setUserPlan(plan);
+          setCheckoutLoading(false);
+          return;
+        }
+
+        if (data.checkoutUrl) {
+          window.location.href = data.checkoutUrl;
+        } else if (data.redirectUrl) {
+          router.push(data.redirectUrl);
+        } else {
+          throw new Error("No checkout URL returned");
+        }
+      } catch (err) {
+        setCheckoutError(err instanceof Error ? err.message : "Something went wrong");
+        setCheckoutLoading(false);
+      }
+      return;
+    }
+
+    // Not logged in - show email modal
     setCheckoutPlan(plan);
     setShowCheckoutModal(true);
     setCheckoutError("");
