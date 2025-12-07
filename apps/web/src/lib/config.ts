@@ -29,6 +29,12 @@ const LICENSE_SECRETS = [
   "LICENSE_SECRET",
 ] as const;
 
+// Required for trading functionality
+const TRADING_SECRETS = [
+  "MORALIS_API_KEY",
+  "SOLANA_RPC_URL",
+] as const;
+
 // Validate configuration
 export function validateConfig(): void {
   const missing: string[] = [];
@@ -69,6 +75,13 @@ export function validateConfig(): void {
       } else {
         warnings.push(`${secret} not set - using dev fallback`);
       }
+    }
+  }
+
+  // Check trading secrets
+  for (const secret of TRADING_SECRETS) {
+    if (!process.env[secret]) {
+      warnings.push(`${secret} not set - trading functionality disabled`);
     }
   }
 
@@ -120,7 +133,12 @@ export const config = {
   appUrl: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
   apiUrl: process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001",
 
+  // Trading / Solana
+  moralisApiKey: process.env.MORALIS_API_KEY || "",
+  solanaRpcUrl: process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com",
+
   // Features
   isStripeEnabled: !!process.env.STRIPE_SECRET_KEY,
   isEmailEnabled: !!process.env.RESEND_API_KEY,
+  isTradingEnabled: !!process.env.MORALIS_API_KEY && !!process.env.SOLANA_RPC_URL,
 } as const;
