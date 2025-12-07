@@ -592,8 +592,8 @@ export function LandingPage() {
             </p>
           </div>
 
-          {/* Two Column Layout - Chart (right) 80%, left panel 20% */}
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,4fr)] gap-6">
+          {/* Two Column Layout - Chart (right) 75%, left panel 25% */}
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,3fr)] gap-6">
             {/* Left Column - Cards */}
             <div className="space-y-5">
               {/* Token Preview Card */}
@@ -826,7 +826,7 @@ export function LandingPage() {
 
           {/* Bottom Row - CTA Cards - matching reference layout */}
           {/* Grid matches the two-column layout above: left card under left panel, 3 cards under chart */}
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,4fr)] gap-6 mt-6">
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,3fr)] gap-6 mt-6">
             {/* Left: View Pulse Card - aligned under left panel */}
             <Link
               href="/pulse"
@@ -855,12 +855,12 @@ export function LandingPage() {
               </div>
             </Link>
 
-            {/* Right: 3 cards under chart */}
-            <div className="grid grid-cols-3 gap-4">
-              {/* Ready to trade Card - Coral accent with line draw animation */}
+            {/* Right: 3 cards under chart - Ready to trade spans 2 cols, docs and trade markets each 1 col */}
+            <div className="grid grid-cols-4 gap-4">
+              {/* Ready to trade Card - Coral accent with line draw animation - spans 2 columns */}
               <Link
                 href="/dashboard"
-                className="group rounded-2xl bg-[#FF6B4A] py-6 px-5 hover:scale-[1.02] transition-all relative overflow-hidden"
+                className="group col-span-2 rounded-2xl bg-[#FF6B4A] py-6 px-5 hover:scale-[1.02] transition-all relative overflow-hidden"
               >
                 <div className="relative flex flex-col justify-between h-full">
                   <div className="text-lg font-bold text-white">Ready to trade?</div>
