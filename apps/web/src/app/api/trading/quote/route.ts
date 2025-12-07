@@ -3,12 +3,16 @@ import { getJupiterService, SOL_MINT } from "@/lib/jupiter";
 
 // GET /api/trading/quote?inputMint=...&outputMint=...&amount=...&slippage=50
 export async function GET(req: NextRequest) {
+  const startTime = Date.now();
+
   try {
     const { searchParams } = req.nextUrl;
     const inputMint = searchParams.get("inputMint") || SOL_MINT;
     const outputMint = searchParams.get("outputMint");
     const amount = searchParams.get("amount");
     const slippage = searchParams.get("slippage");
+
+    console.log(`[QUOTE] Request: inputMint=${inputMint}, outputMint=${outputMint}, amount=${amount}`);
 
     if (!outputMint) {
       return NextResponse.json(
@@ -32,6 +36,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    console.log(`[QUOTE] Calling Jupiter API...`);
     const jupiter = getJupiterService();
     const quote = await jupiter.getQuote({
       inputMint,
@@ -39,6 +44,8 @@ export async function GET(req: NextRequest) {
       amount,
       slippageBps: slippage ? parseInt(slippage, 10) : 50, // Default 0.5%
     });
+
+    console.log(`[QUOTE] Jupiter responded in ${Date.now() - startTime}ms`);
 
     // Calculate price per token
     const inAmountNum = Number(quote.inAmount);
@@ -62,9 +69,27 @@ export async function GET(req: NextRequest) {
       _rawQuote: quote,
     });
   } catch (error) {
-    console.error("Quote error:", error);
+    const duration = Date.now() - startTime;
+    console.error(`[QUOTE] Error after ${duration}ms:`, error);
+
+    // More detailed error info
+    const errorMessage = error instanceof Error ? error.message : "Failed to get quote";
+    const errorDetails = error instanceof Error ? {
+      name: error.name,
+      message: error.message,
+      stack: error.stack?.split("\n").slice(0, 3).join("\n"),
+    } : { raw: String(error) };
+
+    console.error(`[QUOTE] Error details:`, JSON.stringify(errorDetails));
+
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to get quote" },
+      {
+        error: errorMessage,
+        debug: {
+          duration,
+          timestamp: new Date().toISOString(),
+        }
+      },
       { status: 500 }
     );
   }
