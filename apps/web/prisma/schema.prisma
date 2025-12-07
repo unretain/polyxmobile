@@ -94,6 +94,9 @@ model User {
   // Subscription link
   subscription  Subscription?
 
+  // Trading history
+  trades        Trade[]
+
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -215,4 +218,55 @@ model EmbedView {
 
   @@index([domain, timestamp])
   @@index([tokenAddress, timestamp])
+}
+
+// ==========================================
+// Trading Models
+// ==========================================
+
+enum TradeStatus {
+  PENDING      // Quote generated, awaiting execution
+  SUBMITTED    // Transaction submitted to network
+  CONFIRMING   // Waiting for confirmation
+  SUCCESS      // Trade completed
+  FAILED       // Trade failed
+  EXPIRED      // Quote expired before execution
+}
+
+model Trade {
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Token details
+  inputMint       String      // Input token mint address
+  inputSymbol     String      // e.g., "SOL"
+  outputMint      String      // Output token mint address
+  outputSymbol    String      // e.g., "BONK"
+
+  // Amounts (stored as strings for precision)
+  amountIn        String      // Amount of input token (raw)
+  amountOut       String      // Amount of output token (raw)
+  amountOutMin    String      // Minimum output (slippage protected)
+
+  // Price info
+  pricePerToken   Float?      // Price per output token in input token
+  priceImpact     Float?      // Price impact percentage
+
+  // Transaction
+  txSignature     String?     @unique
+  status          TradeStatus @default(PENDING)
+  errorMessage    String?
+
+  // Fees
+  platformFee     String?     // Platform fee in lamports
+  networkFee      String?     // Network fee in lamports
+
+  // Timestamps
+  createdAt       DateTime    @default(now())
+  confirmedAt     DateTime?
+
+  @@index([userId, createdAt])
+  @@index([txSignature])
+  @@index([status])
 }
