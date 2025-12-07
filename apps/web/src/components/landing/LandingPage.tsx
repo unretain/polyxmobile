@@ -843,13 +843,13 @@ export function LandingPage() {
                 </svg>
               </div>
               {/* iOS Cylinder rotation text */}
-              <div className="ios-cylinder" style={{ width: "120px" }}>
+              <div className="ios-cylinder" style={{ width: "140px" }}>
                 <div className="ios-cylinder-inner">
                   <div className="ios-cylinder-face ios-cylinder-front">
-                    <span className="font-medium">View Pulse Feed</span>
+                    <span className="text-lg font-bold whitespace-nowrap">View Pulse Feed</span>
                   </div>
                   <div className="ios-cylinder-face ios-cylinder-bottom">
-                    <span className="font-medium text-[#FF6B4A]">Trade now</span>
+                    <span className="text-lg font-bold text-[#FF6B4A] whitespace-nowrap">Trade now</span>
                   </div>
                 </div>
               </div>
@@ -893,13 +893,13 @@ export function LandingPage() {
                     <polyline points="10 9 9 9 8 9" />
                   </svg>
                   {/* iOS Cylinder rotation text */}
-                  <div className="ios-cylinder">
+                  <div className="ios-cylinder" style={{ width: "90px" }}>
                     <div className="ios-cylinder-inner">
                       <div className="ios-cylinder-face ios-cylinder-front">
-                        <span className={`font-medium ${isDark ? 'text-white' : 'text-black'}`}>The docs</span>
+                        <span className={`text-lg font-bold whitespace-nowrap ${isDark ? 'text-white' : 'text-black'}`}>The docs</span>
                       </div>
                       <div className="ios-cylinder-face ios-cylinder-bottom">
-                        <span className="font-medium text-[#FF6B4A]">Read now</span>
+                        <span className="text-lg font-bold text-[#FF6B4A] whitespace-nowrap">Read now</span>
                       </div>
                     </div>
                   </div>
@@ -935,13 +935,13 @@ export function LandingPage() {
                     <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                   </svg>
                   {/* iOS Cylinder rotation text */}
-                  <div className="ios-cylinder" style={{ width: "110px" }}>
+                  <div className="ios-cylinder" style={{ width: "130px" }}>
                     <div className="ios-cylinder-inner">
                       <div className="ios-cylinder-face ios-cylinder-front">
-                        <span className="font-medium">Trade markets</span>
+                        <span className="text-lg font-bold whitespace-nowrap">Trade markets</span>
                       </div>
                       <div className="ios-cylinder-face ios-cylinder-bottom">
-                        <span className="font-medium text-[#FF6B4A]">Explore</span>
+                        <span className="text-lg font-bold text-[#FF6B4A] whitespace-nowrap">Explore</span>
                       </div>
                     </div>
                   </div>
