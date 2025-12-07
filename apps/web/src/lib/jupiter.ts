@@ -1,7 +1,14 @@
 import { Connection, VersionedTransaction, Keypair } from "@solana/web3.js";
 import { config } from "./config";
 
-const JUPITER_QUOTE_API = "https://quote-api.jup.ag/v6";
+// Jupiter API endpoints - try multiple if one fails
+const JUPITER_ENDPOINTS = [
+  "https://quote-api.jup.ag/v6",
+  "https://api.jup.ag/swap/v1",  // Alternative endpoint
+];
+
+// Current endpoint to use (will fallback on failure)
+let currentEndpointIndex = 0;
 
 // Platform fee - disabled for now (requires referral program setup with Jupiter)
 // To enable: Apply at https://referral.jup.ag/ and get a referral account
@@ -61,104 +68,140 @@ export class JupiterService {
   }
 
   /**
-   * Get a swap quote from Jupiter
+   * Get a swap quote from Jupiter with endpoint fallback
    */
   async getQuote(params: QuoteParams): Promise<JupiterQuote> {
-    const url = new URL(`${JUPITER_QUOTE_API}/quote`);
-    url.searchParams.set("inputMint", params.inputMint);
-    url.searchParams.set("outputMint", params.outputMint);
-    url.searchParams.set("amount", params.amount);
-    url.searchParams.set("slippageBps", (params.slippageBps || 50).toString()); // Default 0.5%
-    url.searchParams.set("onlyDirectRoutes", "false");
-    url.searchParams.set("asLegacyTransaction", "false");
-    // Platform fee disabled - requires Jupiter referral program
-    // url.searchParams.set("platformFeeBps", PLATFORM_FEE_BPS.toString());
+    const errors: string[] = [];
 
-    console.log(`[JUPITER] Fetching quote from: ${url.toString().substring(0, 100)}...`);
-    const startTime = Date.now();
+    // Try each endpoint until one works
+    for (let i = 0; i < JUPITER_ENDPOINTS.length; i++) {
+      const endpointIndex = (currentEndpointIndex + i) % JUPITER_ENDPOINTS.length;
+      const baseUrl = JUPITER_ENDPOINTS[endpointIndex];
 
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
+      const url = new URL(`${baseUrl}/quote`);
+      url.searchParams.set("inputMint", params.inputMint);
+      url.searchParams.set("outputMint", params.outputMint);
+      url.searchParams.set("amount", params.amount);
+      url.searchParams.set("slippageBps", (params.slippageBps || 50).toString());
+      url.searchParams.set("onlyDirectRoutes", "false");
+      url.searchParams.set("asLegacyTransaction", "false");
 
-      const response = await fetch(url.toString(), {
-        method: "GET",
-        headers: {
-          "Accept": "application/json",
-        },
-        signal: controller.signal,
-      });
+      console.log(`[JUPITER] Trying endpoint ${endpointIndex + 1}/${JUPITER_ENDPOINTS.length}: ${baseUrl}`);
+      console.log(`[JUPITER] Fetching quote from: ${url.toString().substring(0, 120)}...`);
+      const startTime = Date.now();
 
-      clearTimeout(timeout);
-      console.log(`[JUPITER] Response status: ${response.status} in ${Date.now() - startTime}ms`);
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout per endpoint
 
-      if (!response.ok) {
-        const error = await response.text();
-        console.error(`[JUPITER] Error response: ${error}`);
-        throw new Error(`Jupiter quote failed (${response.status}): ${error}`);
+        const response = await fetch(url.toString(), {
+          method: "GET",
+          headers: {
+            "Accept": "application/json",
+            "User-Agent": "PumpLab/1.0",
+          },
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+        console.log(`[JUPITER] Response status: ${response.status} in ${Date.now() - startTime}ms`);
+
+        if (!response.ok) {
+          const error = await response.text();
+          console.error(`[JUPITER] Error response: ${error}`);
+          errors.push(`Endpoint ${endpointIndex + 1}: ${response.status} - ${error}`);
+          continue; // Try next endpoint
+        }
+
+        const data = await response.json();
+        console.log(`[JUPITER] Quote received: outAmount=${data.outAmount}`);
+
+        // Remember which endpoint worked
+        currentEndpointIndex = endpointIndex;
+        return data;
+      } catch (error) {
+        const duration = Date.now() - startTime;
+        console.error(`[JUPITER] Fetch error after ${duration}ms:`, error);
+
+        if (error instanceof Error) {
+          if (error.name === "AbortError") {
+            errors.push(`Endpoint ${endpointIndex + 1}: timeout after ${duration}ms`);
+          } else {
+            errors.push(`Endpoint ${endpointIndex + 1}: ${error.message}`);
+          }
+        }
+        // Continue to try next endpoint
       }
-
-      const data = await response.json();
-      console.log(`[JUPITER] Quote received: outAmount=${data.outAmount}`);
-      return data;
-    } catch (error) {
-      console.error(`[JUPITER] Fetch error after ${Date.now() - startTime}ms:`, error);
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new Error("Jupiter API timeout - please try again");
-      }
-      // Re-throw with more context
-      if (error instanceof Error) {
-        throw new Error(`Jupiter fetch failed: ${error.message}`);
-      }
-      throw error;
     }
+
+    // All endpoints failed
+    throw new Error(`All Jupiter endpoints failed:\n${errors.join("\n")}`);
   }
 
   /**
-   * Get the swap transaction from Jupiter
+   * Get the swap transaction from Jupiter with endpoint fallback
    */
   async getSwapTransaction(
     quoteResponse: JupiterQuote,
     userPublicKey: string
   ): Promise<VersionedTransaction> {
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
+    const errors: string[] = [];
 
-      const response = await fetch(`${JUPITER_QUOTE_API}/swap`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-        },
-        body: JSON.stringify({
-          quoteResponse,
-          userPublicKey,
-          wrapAndUnwrapSol: true,
-          dynamicComputeUnitLimit: true,
-          prioritizationFeeLamports: "auto",
-          // Fee account disabled - requires Jupiter referral program setup
-          // feeAccount: PLATFORM_FEE_WALLET,
-        }),
-        signal: controller.signal,
-      });
+    // Try each endpoint until one works
+    for (let i = 0; i < JUPITER_ENDPOINTS.length; i++) {
+      const endpointIndex = (currentEndpointIndex + i) % JUPITER_ENDPOINTS.length;
+      const baseUrl = JUPITER_ENDPOINTS[endpointIndex];
 
-      clearTimeout(timeout);
+      console.log(`[JUPITER] Trying swap endpoint ${endpointIndex + 1}/${JUPITER_ENDPOINTS.length}: ${baseUrl}`);
 
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Jupiter swap transaction failed (${response.status}): ${error}`);
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+
+        const response = await fetch(`${baseUrl}/swap`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "PumpLab/1.0",
+          },
+          body: JSON.stringify({
+            quoteResponse,
+            userPublicKey,
+            wrapAndUnwrapSol: true,
+            dynamicComputeUnitLimit: true,
+            prioritizationFeeLamports: "auto",
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+
+        if (!response.ok) {
+          const error = await response.text();
+          console.error(`[JUPITER] Swap error: ${error}`);
+          errors.push(`Endpoint ${endpointIndex + 1}: ${response.status} - ${error}`);
+          continue;
+        }
+
+        const { swapTransaction } = await response.json();
+        const txBuffer = Buffer.from(swapTransaction, "base64");
+
+        // Remember which endpoint worked
+        currentEndpointIndex = endpointIndex;
+        return VersionedTransaction.deserialize(txBuffer);
+      } catch (error) {
+        if (error instanceof Error) {
+          if (error.name === "AbortError") {
+            errors.push(`Endpoint ${endpointIndex + 1}: timeout`);
+          } else {
+            errors.push(`Endpoint ${endpointIndex + 1}: ${error.message}`);
+          }
+        }
       }
-
-      const { swapTransaction } = await response.json();
-      const txBuffer = Buffer.from(swapTransaction, "base64");
-      return VersionedTransaction.deserialize(txBuffer);
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") {
-        throw new Error("Jupiter API timeout - please try again");
-      }
-      throw error;
     }
+
+    throw new Error(`All Jupiter swap endpoints failed:\n${errors.join("\n")}`);
   }
 
   /**
