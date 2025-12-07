@@ -330,10 +330,6 @@ export function SwapWidget({
             <span>Route</span>
             <span>{quote.routePlan.map((r) => r.label).join(" → ")}</span>
           </div>
-          <div className="flex justify-between text-white/60 mt-1">
-            <span>Platform Fee</span>
-            <span>1%</span>
-          </div>
         </div>
       )}
 
