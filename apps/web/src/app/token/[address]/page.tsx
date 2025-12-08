@@ -930,7 +930,7 @@ export default function TokenPage() {
               defaultOutputMint={address}
               outputSymbol={token?.symbol || "TOKEN"}
               outputDecimals={9}
-              isGraduated={token?.complete !== false}
+              isGraduated={(token as PulseTokenData)?.complete !== false}
             />
 
             {/* Holder Stats */}
