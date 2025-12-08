@@ -15,7 +15,8 @@ interface QuoteResponse {
   priceImpactPct: number;
   slippageBps: number;
   routePlan: Array<{ label: string; percent: number }>;
-  _rawQuote: unknown;
+  source?: "jupiter" | "pumpfun";
+  _rawQuote?: unknown;
 }
 
 interface BalanceResponse {
@@ -49,7 +50,7 @@ export function SwapWidget({
 }: SwapWidgetProps) {
   const { data: session, status } = useSession();
   const [inputAmount, setInputAmount] = useState("");
-  const [slippage, setSlippage] = useState(50); // 0.5% default
+  const [slippage, setSlippage] = useState(100); // 1% default (higher for pump.fun)
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -57,6 +58,7 @@ export function SwapWidget({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isBuy, setIsBuy] = useState(true); // true = buy token, false = sell token
+  const [tradingSource, setTradingSource] = useState<"jupiter" | "pumpfun" | null>(null);
 
   const inputMint = isBuy ? SOL_MINT : defaultOutputMint;
   const outputMint = isBuy ? defaultOutputMint : SOL_MINT;
@@ -87,12 +89,14 @@ export function SwapWidget({
     const fetchQuote = async () => {
       if (!inputAmount || !inputMint || !outputMint) {
         setQuote(null);
+        setTradingSource(null);
         return;
       }
 
       const amountNum = parseFloat(inputAmount);
       if (isNaN(amountNum) || amountNum <= 0) {
         setQuote(null);
+        setTradingSource(null);
         return;
       }
 
@@ -103,6 +107,33 @@ export function SwapWidget({
       setError(null);
 
       try {
+        // Try pump.fun first for non-graduated tokens
+        if (!isGraduated) {
+          try {
+            const pumpRes = await fetch(
+              `/api/trading/pump-quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${rawAmount}&slippage=${slippage}`
+            );
+            const pumpData = await pumpRes.json();
+
+            if (pumpRes.ok) {
+              setQuote({ ...pumpData, source: "pumpfun" });
+              setTradingSource("pumpfun");
+              return;
+            }
+            // If NOT_ON_CURVE, fall through to Jupiter
+            if (pumpData.code !== "NOT_ON_CURVE") {
+              throw new Error(pumpData.error || "Failed to get pump.fun quote");
+            }
+          } catch (pumpErr) {
+            // If pump.fun fails with anything other than NOT_ON_CURVE, show error
+            const msg = pumpErr instanceof Error ? pumpErr.message : "";
+            if (!msg.includes("NOT_ON_CURVE") && !msg.includes("not on pump.fun")) {
+              console.log("Pump.fun quote failed, trying Jupiter:", pumpErr);
+            }
+          }
+        }
+
+        // Try Jupiter for graduated tokens or if pump.fun failed
         const res = await fetch(
           `/api/trading/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${rawAmount}&slippage=${slippage}`
         );
@@ -112,14 +143,32 @@ export function SwapWidget({
           // Provide user-friendly error messages
           let errorMsg = data.error || "Failed to get quote";
           if (errorMsg.includes("TOKEN_NOT_TRADABLE") || errorMsg.includes("not tradable")) {
-            errorMsg = "This token hasn't migrated to Raydium yet. Only graduated tokens can be traded.";
+            // Token might still be on bonding curve, try pump.fun
+            if (isGraduated) {
+              try {
+                const pumpRes = await fetch(
+                  `/api/trading/pump-quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${rawAmount}&slippage=${slippage}`
+                );
+                const pumpData = await pumpRes.json();
+
+                if (pumpRes.ok) {
+                  setQuote({ ...pumpData, source: "pumpfun" });
+                  setTradingSource("pumpfun");
+                  return;
+                }
+              } catch {
+                // Pump.fun also failed
+              }
+            }
+            errorMsg = "This token cannot be traded yet. It may still be on the bonding curve.";
           } else if (errorMsg.includes("Unauthorized") || errorMsg.includes("401")) {
             errorMsg = "RPC connection error. Please try again later.";
           }
           throw new Error(errorMsg);
         }
 
-        setQuote(data);
+        setQuote({ ...data, source: "jupiter" });
+        setTradingSource("jupiter");
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "Quote failed";
         // Don't show error for common non-critical issues
@@ -127,6 +176,7 @@ export function SwapWidget({
           setError(errorMsg);
         }
         setQuote(null);
+        setTradingSource(null);
       } finally {
         setLoading(false);
       }
@@ -134,11 +184,11 @@ export function SwapWidget({
 
     const debounce = setTimeout(fetchQuote, 300);
     return () => clearTimeout(debounce);
-  }, [inputAmount, inputMint, outputMint, slippage, inputDecimals]);
+  }, [inputAmount, inputMint, outputMint, slippage, inputDecimals, isGraduated]);
 
   // Execute swap
   const handleSwap = async () => {
-    if (!quote || !inputMint || !outputMint) return;
+    if (!quote || !inputMint || !outputMint || !tradingSource) return;
 
     setSwapping(true);
     setError(null);
@@ -149,7 +199,12 @@ export function SwapWidget({
         parseFloat(inputAmount) * Math.pow(10, inputDecimals)
       ).toString();
 
-      const res = await fetch("/api/trading/swap", {
+      // Use the appropriate endpoint based on trading source
+      const endpoint = tradingSource === "pumpfun"
+        ? "/api/trading/pump-swap"
+        : "/api/trading/swap";
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -168,9 +223,11 @@ export function SwapWidget({
         throw new Error(data.error || "Swap failed");
       }
 
-      setSuccess(`Swap successful! View on Solscan`);
+      const sourceLabel = tradingSource === "pumpfun" ? "Pump.fun" : "Jupiter";
+      setSuccess(`Swap successful via ${sourceLabel}! View on Solscan`);
       setInputAmount("");
       setQuote(null);
+      setTradingSource(null);
       fetchBalance(); // Refresh balance
 
       // Open explorer in new tab
@@ -223,23 +280,6 @@ export function SwapWidget({
           >
             Sign In
           </a>
-        </div>
-      </div>
-    );
-  }
-
-  // Show message for non-graduated tokens
-  if (!isGraduated) {
-    return (
-      <div className="bg-[#1a1a1a] rounded-xl p-6 border border-white/10">
-        <div className="text-center">
-          <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center mx-auto mb-3">
-            <span className="text-2xl">⏳</span>
-          </div>
-          <p className="text-white font-medium mb-2">Token Not Yet Tradable</p>
-          <p className="text-white/50 text-sm">
-            This token is still on the bonding curve. Trading will be available once it graduates to Raydium.
-          </p>
         </div>
       </div>
     );
@@ -358,7 +398,19 @@ export function SwapWidget({
           </div>
           <div className="flex justify-between text-white/60 mt-1">
             <span>Route</span>
-            <span>{quote.routePlan.map((r) => r.label).join(" → ")}</span>
+            <span className="flex items-center gap-1.5">
+              {tradingSource === "pumpfun" && (
+                <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 rounded text-xs">
+                  Pump.fun
+                </span>
+              )}
+              {tradingSource === "jupiter" && (
+                <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded text-xs">
+                  Jupiter
+                </span>
+              )}
+              {quote.routePlan.map((r) => r.label).join(" → ")}
+            </span>
           </div>
         </div>
       )}
