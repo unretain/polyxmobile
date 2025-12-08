@@ -66,7 +66,9 @@ export class JupiterService {
   private connection: Connection;
 
   constructor() {
-    this.connection = new Connection(config.solanaRpcUrl, "confirmed");
+    const rpcUrl = config.solanaRpcUrl || "https://api.mainnet-beta.solana.com";
+    console.log("[JupiterService] Initializing with RPC:", rpcUrl.substring(0, 40) + "...");
+    this.connection = new Connection(rpcUrl, "confirmed");
   }
 
   /**
@@ -280,12 +282,7 @@ export class JupiterService {
   }
 }
 
-// Singleton instance
-let jupiterService: JupiterService | null = null;
-
+// Create fresh instance each time to ensure config is read
 export function getJupiterService(): JupiterService {
-  if (!jupiterService) {
-    jupiterService = new JupiterService();
-  }
-  return jupiterService;
+  return new JupiterService();
 }
