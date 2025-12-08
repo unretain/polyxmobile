@@ -64,11 +64,18 @@ export interface SwapResult {
 
 export class JupiterService {
   private connection: Connection;
+  private sendConnection: Connection; // Separate connection for sending transactions
 
   constructor() {
     const rpcUrl = config.solanaRpcUrl || "https://api.mainnet-beta.solana.com";
     console.log("[JupiterService] Initializing with RPC:", rpcUrl.substring(0, 40) + "...");
     this.connection = new Connection(rpcUrl, "confirmed");
+
+    // Use a separate RPC for sending transactions (Helius free tier may not support sendTransaction)
+    // Fall back to public RPC if no dedicated send RPC is configured
+    const sendRpcUrl = process.env.SOLANA_SEND_RPC_URL || "https://api.mainnet-beta.solana.com";
+    console.log("[JupiterService] Send RPC:", sendRpcUrl.substring(0, 40) + "...");
+    this.sendConnection = new Connection(sendRpcUrl, "confirmed");
   }
 
   /**
@@ -220,23 +227,38 @@ export class JupiterService {
     // Sign the transaction
     transaction.sign([signer]);
 
-    // Send transaction
-    const signature = await this.connection.sendTransaction(transaction, {
-      skipPreflight: false,
-      maxRetries: 3,
-    });
+    console.log("[JupiterService] Sending transaction via send RPC...");
 
-    // Wait for confirmation
-    const confirmation = await this.connection.confirmTransaction(
-      signature,
-      "confirmed"
-    );
+    try {
+      // Send transaction using the dedicated send connection
+      const signature = await this.sendConnection.sendTransaction(transaction, {
+        skipPreflight: false,
+        maxRetries: 3,
+      });
 
-    if (confirmation.value.err) {
-      throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+      console.log("[JupiterService] Transaction sent:", signature);
+
+      // Wait for confirmation using the send connection
+      const latestBlockhash = await this.sendConnection.getLatestBlockhash();
+      const confirmation = await this.sendConnection.confirmTransaction({
+        signature,
+        blockhash: latestBlockhash.blockhash,
+        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
+      });
+
+      if (confirmation.value.err) {
+        throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+      }
+
+      return signature;
+    } catch (error) {
+      console.error("[JupiterService] Transaction error:", error);
+      // Re-throw with more context
+      if (error instanceof Error && error.message.includes("401")) {
+        throw new Error("RPC authorization failed. Your Helius plan may not support sendTransaction. Add SOLANA_SEND_RPC_URL env var.");
+      }
+      throw error;
     }
-
-    return signature;
   }
 
   /**
