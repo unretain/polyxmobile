@@ -143,24 +143,30 @@ export function SwapWidget({
           // Provide user-friendly error messages
           let errorMsg = data.error || "Failed to get quote";
           if (errorMsg.includes("TOKEN_NOT_TRADABLE") || errorMsg.includes("not tradable")) {
-            // Token might still be on bonding curve, try pump.fun
-            if (isGraduated) {
-              try {
-                const pumpRes = await fetch(
-                  `/api/trading/pump-quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${rawAmount}&slippage=${slippage}`
-                );
-                const pumpData = await pumpRes.json();
+            // Token might still be on bonding curve, always try pump.fun as fallback
+            console.log("[SwapWidget] Jupiter TOKEN_NOT_TRADABLE, trying pump.fun...");
+            try {
+              const pumpRes = await fetch(
+                `/api/trading/pump-quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${rawAmount}&slippage=${slippage}`
+              );
+              const pumpData = await pumpRes.json();
+              console.log("[SwapWidget] Pump.fun response:", pumpRes.status, pumpData);
 
-                if (pumpRes.ok) {
-                  setQuote({ ...pumpData, source: "pumpfun" });
-                  setTradingSource("pumpfun");
-                  return;
-                }
-              } catch {
-                // Pump.fun also failed
+              if (pumpRes.ok) {
+                setQuote({ ...pumpData, source: "pumpfun" });
+                setTradingSource("pumpfun");
+                return;
               }
+              // Show pump.fun specific error if available
+              if (pumpData.error) {
+                errorMsg = pumpData.error;
+              }
+            } catch (pumpErr) {
+              console.error("[SwapWidget] Pump.fun fallback error:", pumpErr);
             }
-            errorMsg = "This token cannot be traded yet. It may still be on the bonding curve.";
+            if (errorMsg.includes("TOKEN_NOT_TRADABLE")) {
+              errorMsg = "This token cannot be traded yet. It may still be on the bonding curve.";
+            }
           } else if (errorMsg.includes("Unauthorized") || errorMsg.includes("401")) {
             errorMsg = "RPC connection error. Please try again later.";
           }
