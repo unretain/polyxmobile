@@ -2,9 +2,11 @@ import { Connection, VersionedTransaction, Keypair } from "@solana/web3.js";
 import { config } from "./config";
 
 // Jupiter API endpoints - try multiple if one fails
+// Note: quote-api.jup.ag has DNS issues on some hosts (like Railway)
+// public.jupiterapi.com is a reliable fallback hosted by QuickNode
 const JUPITER_ENDPOINTS = [
-  "https://quote-api.jup.ag/v6",
-  "https://api.jup.ag/swap/v1",  // Alternative endpoint
+  "https://public.jupiterapi.com",  // QuickNode public endpoint (most reliable)
+  "https://quote-api.jup.ag/v6",     // Official Jupiter endpoint
 ];
 
 // Current endpoint to use (will fallback on failure)
