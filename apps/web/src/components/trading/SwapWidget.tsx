@@ -405,17 +405,18 @@ export function SwapWidget({
           <div className="flex justify-between text-white/60 mt-1">
             <span>Route</span>
             <span className="flex items-center gap-1.5">
-              {tradingSource === "pumpfun" && (
+              {tradingSource === "pumpfun" ? (
                 <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 rounded text-xs">
-                  Pump.fun
+                  Pump.fun Bonding Curve
                 </span>
+              ) : (
+                <>
+                  <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded text-xs">
+                    Jupiter
+                  </span>
+                  {quote.routePlan.map((r) => r.label).join(" → ")}
+                </>
               )}
-              {tradingSource === "jupiter" && (
-                <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded text-xs">
-                  Jupiter
-                </span>
-              )}
-              {quote.routePlan.map((r) => r.label).join(" → ")}
             </span>
           </div>
         </div>

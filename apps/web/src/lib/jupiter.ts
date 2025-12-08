@@ -253,9 +253,14 @@ export class JupiterService {
       return signature;
     } catch (error) {
       console.error("[JupiterService] Transaction error:", error);
-      // Re-throw with more context
-      if (error instanceof Error && error.message.includes("401")) {
-        throw new Error("RPC authorization failed. Your Helius plan may not support sendTransaction. Add SOLANA_SEND_RPC_URL env var.");
+      // Re-throw with user-friendly messages
+      if (error instanceof Error) {
+        if (error.message.includes("401")) {
+          throw new Error("RPC authorization failed. Your Helius plan may not support sendTransaction. Add SOLANA_SEND_RPC_URL env var.");
+        }
+        if (error.message.includes("no record of a prior credit") || error.message.includes("insufficient funds")) {
+          throw new Error("Insufficient SOL balance. Please deposit SOL to your wallet first.");
+        }
       }
       throw error;
     }
