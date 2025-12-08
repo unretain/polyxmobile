@@ -455,12 +455,7 @@ export class PumpFunService {
   }
 }
 
-// Singleton instance
-let pumpFunService: PumpFunService | null = null;
-
+// Create new instance each time to ensure fresh config
 export function getPumpFunService(): PumpFunService {
-  if (!pumpFunService) {
-    pumpFunService = new PumpFunService();
-  }
-  return pumpFunService;
+  return new PumpFunService();
 }
