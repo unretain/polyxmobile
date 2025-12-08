@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getPumpFunService } from "@/lib/pumpfun";
+import { config } from "@/lib/config";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -22,6 +23,9 @@ export async function GET(req: NextRequest) {
     const amount = searchParams.get("amount");
     const slippage = parseInt(searchParams.get("slippage") || "100"); // Default 1%
 
+    console.log("[pump-quote] Request:", { inputMint, outputMint, amount, slippage });
+    console.log("[pump-quote] RPC URL:", config.solanaRpcUrl ? config.solanaRpcUrl.substring(0, 30) + "..." : "NOT SET");
+
     if (!inputMint || !outputMint || !amount) {
       return NextResponse.json(
         { error: "inputMint, outputMint, and amount are required" },
@@ -35,8 +39,12 @@ export async function GET(req: NextRequest) {
     const isBuy = inputMint === SOL_MINT;
     const tokenMint = isBuy ? outputMint : inputMint;
 
+    console.log("[pump-quote] Checking bonding curve for token:", tokenMint);
+
     // Check if token is on bonding curve
     const isOnCurve = await pumpFun.isOnBondingCurve(tokenMint);
+    console.log("[pump-quote] Is on bonding curve:", isOnCurve);
+
     if (!isOnCurve) {
       return NextResponse.json(
         { error: "Token is not on pump.fun bonding curve. Use Jupiter instead.", code: "NOT_ON_CURVE" },
