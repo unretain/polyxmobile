@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { Wallet, Mail, ChevronRight, ExternalLink, Minus, TrendingUp, MoveHorizontal, MoveVertical, Pencil, Trash2, MousePointer2, User, LogOut, Shield, Copy, Check, Key, ChevronDown, Sun, Moon } from "lucide-react";
+import { Wallet, Mail, ChevronRight, ExternalLink, Minus, TrendingUp, MoveHorizontal, MoveVertical, Pencil, Trash2, MousePointer2, User, LogOut, Shield, Copy, Check, Key, ChevronDown, Sun, Moon, Loader2, ArrowUpRight } from "lucide-react";
 import type { DrawingToolbarRenderProps } from "@/components/charts/Chart3D";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useSession, signOut } from "next-auth/react";
@@ -279,8 +279,16 @@ export function LandingPage() {
   const [copied, setCopied] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [showWalletModal, setShowWalletModal] = useState(false);
   const [privateKey, setPrivateKey] = useState<string | null>(null);
+  const [privateKeyLoading, setPrivateKeyLoading] = useState(false);
   const [privateKeyCopied, setPrivateKeyCopied] = useState(false);
+  const [balance, setBalance] = useState<{ sol: { uiBalance: number } } | null>(null);
+  const [withdrawAddress, setWithdrawAddress] = useState("");
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawError, setWithdrawError] = useState<string | null>(null);
+  const [withdrawSuccess, setWithdrawSuccess] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const currentToken = FEATURED_TOKENS[tokenIndex];
@@ -308,12 +316,85 @@ export function LandingPage() {
     router.push("/");
   };
 
-  const handleOpenSecurity = () => {
+  const handleOpenSecurity = async () => {
     setShowDropdown(false);
-    // Private key is now stored server-side - would need authenticated API call to retrieve
-    // For security, we don't expose the private key directly in the client
     setPrivateKey(null);
+    setPrivateKeyLoading(true);
     setShowSecurityModal(true);
+
+    // Fetch private key from API
+    try {
+      const res = await fetch("/api/wallet/private-key");
+      if (res.ok) {
+        const data = await res.json();
+        setPrivateKey(data.privateKey);
+      }
+    } catch (err) {
+      console.error("Failed to fetch private key:", err);
+    } finally {
+      setPrivateKeyLoading(false);
+    }
+  };
+
+  const fetchBalance = async () => {
+    try {
+      const res = await fetch("/api/trading/balance");
+      if (res.ok) {
+        const data = await res.json();
+        setBalance(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch balance:", err);
+    }
+  };
+
+  const handleOpenWallet = () => {
+    setShowDropdown(false);
+    setWithdrawAddress("");
+    setWithdrawAmount("");
+    setWithdrawError(null);
+    setWithdrawSuccess(null);
+    setShowWalletModal(true);
+    fetchBalance();
+  };
+
+  const handleWithdraw = async () => {
+    if (!withdrawAddress || !withdrawAmount) return;
+
+    setWithdrawing(true);
+    setWithdrawError(null);
+    setWithdrawSuccess(null);
+
+    try {
+      const res = await fetch("/api/trading/withdraw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          destinationAddress: withdrawAddress,
+          amount: withdrawAmount,
+          tokenMint: null,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Withdrawal failed");
+      }
+
+      setWithdrawSuccess(`Sent ${withdrawAmount} SOL successfully!`);
+      setWithdrawAddress("");
+      setWithdrawAmount("");
+      fetchBalance();
+
+      if (data.explorerUrl) {
+        window.open(data.explorerUrl, "_blank");
+      }
+    } catch (err) {
+      setWithdrawError(err instanceof Error ? err.message : "Withdrawal failed");
+    } finally {
+      setWithdrawing(false);
+    }
   };
 
   const handleCopyPrivateKey = async () => {
@@ -523,6 +604,15 @@ export function LandingPage() {
 
                       {/* Menu Items */}
                       <div className="py-1">
+                        <button
+                          onClick={handleOpenWallet}
+                          className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                            isDark ? 'text-white/70 hover:text-white hover:bg-white/5' : 'text-black/70 hover:text-black hover:bg-black/5'
+                          }`}
+                        >
+                          <Wallet className="h-4 w-4" />
+                          Wallet
+                        </button>
                         <button
                           onClick={handleOpenSecurity}
                           className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
@@ -1036,7 +1126,12 @@ export function LandingPage() {
                   <p className={`text-xs mb-3 ${isDark ? 'text-white/50' : 'text-black/50'}`}>
                     Warning: Never share your private key with anyone. Anyone with your private key can access your funds.
                   </p>
-                  {privateKey ? (
+                  {privateKeyLoading ? (
+                    <div className={`flex items-center gap-2 text-xs ${isDark ? 'text-white/40' : 'text-black/40'}`}>
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Loading...
+                    </div>
+                  ) : privateKey ? (
                     <div className="space-y-2">
                       <p className={`font-mono text-xs break-all select-all rounded-lg p-3 ${isDark ? 'text-white/60 bg-black/30' : 'text-black/60 bg-black/5'}`}>
                         {privateKey}
@@ -1060,7 +1155,7 @@ export function LandingPage() {
                     </div>
                   ) : (
                     <p className={`text-xs italic ${isDark ? 'text-white/40' : 'text-black/40'}`}>
-                      Private key not available (Phantom wallet or external wallet)
+                      Failed to load private key. Please try again.
                     </p>
                   )}
                 </div>
@@ -1070,6 +1165,169 @@ export function LandingPage() {
             <div className={`p-6 border-t ${isDark ? 'border-white/10' : 'border-black/10'}`}>
               <button
                 onClick={() => setShowSecurityModal(false)}
+                className={`w-full font-medium py-2.5 rounded-lg transition-colors ${
+                  isDark
+                    ? 'bg-white/5 hover:bg-white/10 border border-white/10 text-white'
+                    : 'bg-black/5 hover:bg-black/10 border border-black/10 text-black'
+                }`}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Wallet Modal */}
+      {showWalletModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowWalletModal(false)} />
+          <div className={`relative w-full max-w-md border rounded-2xl shadow-2xl ${isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'}`}>
+            <div className={`p-6 border-b ${isDark ? 'border-white/10' : 'border-black/10'}`}>
+              <h2 className={`text-xl font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-black'}`}>
+                <Wallet className="h-5 w-5 text-[#00ffa3]" />
+                Wallet
+              </h2>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Balance */}
+              <div className={`p-4 rounded-xl border ${isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}>
+                <div className="flex items-center justify-between mb-3">
+                  <p className={`text-sm ${isDark ? 'text-white/60' : 'text-black/60'}`}>Balance</p>
+                  <button
+                    onClick={fetchBalance}
+                    className={`text-xs transition-colors ${isDark ? 'text-white/40 hover:text-white' : 'text-black/40 hover:text-black'}`}
+                  >
+                    Refresh
+                  </button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Image src="/solana-logo.png" alt="Solana" width={32} height={32} className="rounded-full" />
+                  <p className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-black'}`}>
+                    {balance ? balance.sol.uiBalance.toFixed(4) : "0.0000"} SOL
+                  </p>
+                </div>
+              </div>
+
+              {/* Deposit Address */}
+              <div className={`p-4 rounded-xl border ${isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}>
+                <p className={`text-sm mb-2 ${isDark ? 'text-white/60' : 'text-black/60'}`}>Deposit Address</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-mono text-xs break-all text-[#00ffa3] flex-1">
+                    {walletAddress}
+                  </p>
+                  <button
+                    onClick={async () => {
+                      if (walletAddress) {
+                        await navigator.clipboard.writeText(walletAddress);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }
+                    }}
+                    className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-white/5' : 'hover:bg-black/5'}`}
+                  >
+                    {copied ? (
+                      <Check className="h-4 w-4 text-green-400" />
+                    ) : (
+                      <Copy className={`h-4 w-4 ${isDark ? 'text-white/40' : 'text-black/40'}`} />
+                    )}
+                  </button>
+                </div>
+                <p className={`text-xs mt-2 ${isDark ? 'text-white/30' : 'text-black/30'}`}>Send SOL to this address to deposit</p>
+              </div>
+
+              {/* Withdraw Section */}
+              <div className={`p-4 rounded-xl border ${isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}>
+                <p className={`text-sm mb-3 ${isDark ? 'text-white/60' : 'text-black/60'}`}>Withdraw SOL</p>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className={`text-xs mb-1 block ${isDark ? 'text-white/40' : 'text-black/40'}`}>Destination Address</label>
+                    <input
+                      type="text"
+                      value={withdrawAddress}
+                      onChange={(e) => setWithdrawAddress(e.target.value)}
+                      placeholder="Solana wallet address..."
+                      className={`w-full px-3 py-2 rounded-lg border outline-none text-sm font-mono ${
+                        isDark
+                          ? 'bg-black/30 text-white border-white/10 focus:border-[#00ffa3]/50'
+                          : 'bg-white text-black border-black/10 focus:border-[#00ffa3]/50'
+                      }`}
+                    />
+                  </div>
+
+                  <div>
+                    <div className={`flex justify-between text-xs mb-1 ${isDark ? 'text-white/40' : 'text-black/40'}`}>
+                      <label>Amount (SOL)</label>
+                      <button
+                        onClick={() => setWithdrawAmount(balance?.sol.uiBalance.toString() || "0")}
+                        className="text-[#00ffa3] hover:underline"
+                      >
+                        MAX
+                      </button>
+                    </div>
+                    <input
+                      type="number"
+                      value={withdrawAmount}
+                      onChange={(e) => setWithdrawAmount(e.target.value)}
+                      placeholder="0.0"
+                      className={`w-full px-3 py-2 rounded-lg border outline-none text-sm ${
+                        isDark
+                          ? 'bg-black/30 text-white border-white/10 focus:border-[#00ffa3]/50'
+                          : 'bg-white text-black border-black/10 focus:border-[#00ffa3]/50'
+                      }`}
+                    />
+                  </div>
+
+                  {withdrawError && (
+                    <p className="text-xs text-red-400 bg-red-500/10 p-2 rounded">{withdrawError}</p>
+                  )}
+                  {withdrawSuccess && (
+                    <p className="text-xs text-green-400 bg-green-500/10 p-2 rounded">{withdrawSuccess}</p>
+                  )}
+
+                  <button
+                    onClick={handleWithdraw}
+                    disabled={!withdrawAddress || !withdrawAmount || withdrawing}
+                    className={`w-full py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${
+                      !withdrawAddress || !withdrawAmount || withdrawing
+                        ? "bg-white/10 text-white/40 cursor-not-allowed"
+                        : "bg-[#00ffa3] text-black hover:bg-[#00dd8a]"
+                    }`}
+                  >
+                    {withdrawing ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <ArrowUpRight className="h-4 w-4" />
+                        Withdraw
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* View on Explorer */}
+              {walletAddress && (
+                <a
+                  href={`https://solscan.io/account/${walletAddress}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`flex items-center justify-center gap-2 text-sm transition-colors ${isDark ? 'text-white/40 hover:text-white' : 'text-black/40 hover:text-black'}`}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View on Solscan
+                </a>
+              )}
+            </div>
+
+            <div className={`p-6 border-t ${isDark ? 'border-white/10' : 'border-black/10'}`}>
+              <button
+                onClick={() => setShowWalletModal(false)}
                 className={`w-full font-medium py-2.5 rounded-lg transition-colors ${
                   isDark
                     ? 'bg-white/5 hover:bg-white/10 border border-white/10 text-white'
