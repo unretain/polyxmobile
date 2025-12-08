@@ -51,10 +51,12 @@ export interface PumpQuote {
 
 export class PumpFunService {
   private connection: Connection;
+  private rpcUrl: string;
 
   constructor() {
-    const rpcUrl = config.solanaRpcUrl || "https://api.mainnet-beta.solana.com";
-    this.connection = new Connection(rpcUrl, "confirmed");
+    this.rpcUrl = config.solanaRpcUrl || "https://api.mainnet-beta.solana.com";
+    console.log("[PumpFunService] Initializing with RPC:", this.rpcUrl.substring(0, 40) + "...");
+    this.connection = new Connection(this.rpcUrl, "confirmed");
   }
 
   /**
@@ -120,15 +122,22 @@ export class PumpFunService {
     try {
       const mint = new PublicKey(mintAddress);
       const bondingCurve = this.getBondingCurvePDA(mint);
+      console.log("[PumpFunService] Checking bonding curve PDA:", bondingCurve.toBase58());
+
       const accountInfo = await this.connection.getAccountInfo(bondingCurve);
+      console.log("[PumpFunService] Account info exists:", !!accountInfo);
 
       if (!accountInfo) {
+        console.log("[PumpFunService] No account found for bonding curve");
         return false;
       }
 
       // Check if it's owned by pump.fun program
-      return accountInfo.owner.equals(PUMP_FUN_PROGRAM_ID);
-    } catch {
+      const isOwned = accountInfo.owner.equals(PUMP_FUN_PROGRAM_ID);
+      console.log("[PumpFunService] Owned by pump.fun program:", isOwned, "Owner:", accountInfo.owner.toBase58());
+      return isOwned;
+    } catch (error) {
+      console.error("[PumpFunService] Error checking bonding curve:", error);
       return false;
     }
   }
