@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { ArrowDownIcon, Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -39,25 +39,25 @@ interface SwapWidgetProps {
   defaultOutputMint?: string;
   outputSymbol?: string;
   outputDecimals?: number;
-  isGraduated?: boolean; // Whether token has graduated from bonding curve
+  isGraduated?: boolean;
 }
 
 export function SwapWidget({
   defaultOutputMint,
   outputSymbol = "TOKEN",
   outputDecimals = 9,
-  isGraduated = true, // Default to true for backward compatibility
+  isGraduated = true,
 }: SwapWidgetProps) {
   const { data: session, status } = useSession();
   const [inputAmount, setInputAmount] = useState("");
-  const [slippage, setSlippage] = useState(100); // 1% default (higher for pump.fun)
+  const [slippage, setSlippage] = useState(100);
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [swapping, setSwapping] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [isBuy, setIsBuy] = useState(true); // true = buy token, false = sell token
+  const [isBuy, setIsBuy] = useState(true);
   const [tradingSource, setTradingSource] = useState<"jupiter" | "pumpfun" | null>(null);
 
   const inputMint = isBuy ? SOL_MINT : defaultOutputMint;
@@ -65,10 +65,8 @@ export function SwapWidget({
   const inputSymbol = isBuy ? "SOL" : outputSymbol;
   const inputDecimals = isBuy ? 9 : outputDecimals;
 
-  // Fetch balance
   const fetchBalance = useCallback(async () => {
     if (status !== "authenticated") return;
-
     try {
       const res = await fetch("/api/trading/balance");
       if (res.ok) {
@@ -84,7 +82,6 @@ export function SwapWidget({
     fetchBalance();
   }, [fetchBalance]);
 
-  // Fetch quote when input changes
   useEffect(() => {
     const fetchQuote = async () => {
       if (!inputAmount || !inputMint || !outputMint) {
@@ -100,32 +97,26 @@ export function SwapWidget({
         return;
       }
 
-      // Convert to raw amount
       const rawAmount = Math.floor(amountNum * Math.pow(10, inputDecimals)).toString();
-
       setLoading(true);
       setError(null);
 
       try {
-        // Try pump.fun first for non-graduated tokens
         if (!isGraduated) {
           try {
             const pumpRes = await fetch(
               `/api/trading/pump-quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${rawAmount}&slippage=${slippage}`
             );
             const pumpData = await pumpRes.json();
-
             if (pumpRes.ok) {
               setQuote({ ...pumpData, source: "pumpfun" });
               setTradingSource("pumpfun");
               return;
             }
-            // If NOT_ON_CURVE, fall through to Jupiter
             if (pumpData.code !== "NOT_ON_CURVE") {
               throw new Error(pumpData.error || "Failed to get pump.fun quote");
             }
           } catch (pumpErr) {
-            // If pump.fun fails with anything other than NOT_ON_CURVE, show error
             const msg = pumpErr instanceof Error ? pumpErr.message : "";
             if (!msg.includes("NOT_ON_CURVE") && !msg.includes("not on pump.fun")) {
               console.log("Pump.fun quote failed, trying Jupiter:", pumpErr);
@@ -133,17 +124,14 @@ export function SwapWidget({
           }
         }
 
-        // Try Jupiter for graduated tokens or if pump.fun failed
         const res = await fetch(
           `/api/trading/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${rawAmount}&slippage=${slippage}`
         );
         const data = await res.json();
 
         if (!res.ok) {
-          // Provide user-friendly error messages
           let errorMsg = data.error || "Failed to get quote";
           if (errorMsg.includes("TOKEN_NOT_TRADABLE") || errorMsg.includes("not tradable")) {
-            // Token might still be on bonding curve, always try pump.fun as fallback
             console.log("[SwapWidget] Jupiter TOKEN_NOT_TRADABLE, trying pump.fun...");
             try {
               const pumpRes = await fetch(
@@ -151,13 +139,11 @@ export function SwapWidget({
               );
               const pumpData = await pumpRes.json();
               console.log("[SwapWidget] Pump.fun response:", pumpRes.status, pumpData);
-
               if (pumpRes.ok) {
                 setQuote({ ...pumpData, source: "pumpfun" });
                 setTradingSource("pumpfun");
                 return;
               }
-              // Show pump.fun specific error if available
               if (pumpData.error) {
                 errorMsg = pumpData.error;
               }
@@ -177,7 +163,6 @@ export function SwapWidget({
         setTradingSource("jupiter");
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "Quote failed";
-        // Don't show error for common non-critical issues
         if (!errorMsg.includes("No route found")) {
           setError(errorMsg);
         }
@@ -192,7 +177,6 @@ export function SwapWidget({
     return () => clearTimeout(debounce);
   }, [inputAmount, inputMint, outputMint, slippage, inputDecimals, isGraduated]);
 
-  // Execute swap
   const handleSwap = async () => {
     if (!quote || !inputMint || !outputMint || !tradingSource) return;
 
@@ -205,7 +189,6 @@ export function SwapWidget({
         parseFloat(inputAmount) * Math.pow(10, inputDecimals)
       ).toString();
 
-      // Use the appropriate endpoint based on trading source
       const endpoint = tradingSource === "pumpfun"
         ? "/api/trading/pump-swap"
         : "/api/trading/swap";
@@ -229,14 +212,12 @@ export function SwapWidget({
         throw new Error(data.error || "Swap failed");
       }
 
-      const sourceLabel = tradingSource === "pumpfun" ? "Pump.fun" : "Jupiter";
-      setSuccess(`Swap successful via ${sourceLabel}! View on Solscan`);
+      setSuccess("Transaction successful!");
       setInputAmount("");
       setQuote(null);
       setTradingSource(null);
-      fetchBalance(); // Refresh balance
+      fetchBalance();
 
-      // Open explorer in new tab
       if (data.explorerUrl) {
         window.open(data.explorerUrl, "_blank");
       }
@@ -247,7 +228,6 @@ export function SwapWidget({
     }
   };
 
-  // Get available balance for input token
   const getInputBalance = () => {
     if (!balance) return 0;
     if (inputMint === SOL_MINT) {
@@ -257,9 +237,8 @@ export function SwapWidget({
     return token?.uiBalance || 0;
   };
 
-  // Format output amount
   const formatOutputAmount = () => {
-    if (!quote) return "0";
+    if (!quote) return "0.0";
     const outDecimals = isBuy ? outputDecimals : 9;
     const amount = Number(quote.outAmount) / Math.pow(10, outDecimals);
     return amount.toLocaleString(undefined, { maximumFractionDigits: 6 });
@@ -267,9 +246,9 @@ export function SwapWidget({
 
   if (status === "loading") {
     return (
-      <div className="bg-[#1a1a1a] rounded-xl p-6 border border-white/10">
-        <div className="flex items-center justify-center h-40">
-          <Loader2 className="w-6 h-6 animate-spin text-white/50" />
+      <div className="bg-[#0d0d0d] border border-white/10 p-4">
+        <div className="flex items-center justify-center h-32">
+          <Loader2 className="w-5 h-5 animate-spin text-white/40" />
         </div>
       </div>
     );
@@ -277,213 +256,215 @@ export function SwapWidget({
 
   if (status === "unauthenticated") {
     return (
-      <div className="bg-[#1a1a1a] rounded-xl p-6 border border-white/10">
-        <div className="text-center">
-          <p className="text-white/60 mb-4">Sign in to trade</p>
-          <a
-            href="/auth/signin"
-            className="inline-block px-4 py-2 bg-[#00ffa3] text-black rounded-lg font-medium hover:bg-[#00dd8a] transition-colors"
-          >
-            Sign In
-          </a>
-        </div>
+      <div className="bg-[#0d0d0d] border border-white/10 p-4">
+        <p className="text-white/50 text-sm text-center mb-3">Sign in to trade</p>
+        <a
+          href="/auth/signin"
+          className="block w-full py-2 bg-[#00ffa3] text-black text-center text-sm font-medium hover:bg-[#00dd8a] transition-colors"
+        >
+          Sign In
+        </a>
       </div>
     );
   }
 
   return (
-    <div className="bg-[#1a1a1a] rounded-xl p-4 border border-white/10">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex gap-2">
-          <button
-            onClick={() => setIsBuy(true)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              isBuy
-                ? "bg-[#00ffa3] text-black"
-                : "bg-white/5 text-white/60 hover:bg-white/10"
-            }`}
-          >
-            Buy
-          </button>
-          <button
-            onClick={() => setIsBuy(false)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              !isBuy
-                ? "bg-red-500 text-white"
-                : "bg-white/5 text-white/60 hover:bg-white/10"
-            }`}
-          >
-            Sell
-          </button>
-        </div>
+    <div className="bg-[#0d0d0d] border border-white/10">
+      {/* Tabs */}
+      <div className="flex border-b border-white/10">
         <button
-          onClick={fetchBalance}
-          className="p-2 hover:bg-white/5 rounded-lg transition-colors"
-          title="Refresh balance"
+          onClick={() => setIsBuy(true)}
+          className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+            isBuy
+              ? "bg-[#00ffa3]/10 text-[#00ffa3] border-b-2 border-[#00ffa3]"
+              : "text-white/50 hover:text-white/70"
+          }`}
         >
-          <RefreshCw className="w-4 h-4 text-white/40" />
+          Buy
+        </button>
+        <button
+          onClick={() => setIsBuy(false)}
+          className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+            !isBuy
+              ? "bg-red-500/10 text-red-400 border-b-2 border-red-400"
+              : "text-white/50 hover:text-white/70"
+          }`}
+        >
+          Sell
         </button>
       </div>
 
-      {/* Input */}
-      <div className="bg-black/30 rounded-xl p-4 mb-2">
-        <div className="flex justify-between text-sm text-white/40 mb-2">
-          <span>You pay</span>
-          <span>
-            Balance: {getInputBalance().toLocaleString(undefined, { maximumFractionDigits: 4 })}{" "}
-            {inputSymbol}
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          <input
-            type="number"
-            value={inputAmount}
-            onChange={(e) => setInputAmount(e.target.value)}
-            placeholder="0.0"
-            className="flex-1 bg-transparent text-2xl font-medium text-white outline-none"
-          />
-          <div className="flex items-center gap-2 px-3 py-2 bg-white/5 rounded-lg">
-            <span className="font-medium">{inputSymbol}</span>
+      <div className="p-4">
+        {/* Amount Input */}
+        <div className="mb-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-white/40 uppercase tracking-wide">Amount</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-white/40">
+                {getInputBalance().toFixed(4)} {inputSymbol}
+              </span>
+              <button
+                onClick={fetchBalance}
+                className="p-1 hover:bg-white/5 transition-colors"
+                title="Refresh"
+              >
+                <RefreshCw className="w-3 h-3 text-white/40" />
+              </button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 bg-black/40 border border-white/10 p-3">
+            <input
+              type="number"
+              value={inputAmount}
+              onChange={(e) => setInputAmount(e.target.value)}
+              placeholder="0.0"
+              className="flex-1 bg-transparent text-white text-lg font-mono outline-none placeholder-white/20"
+            />
+            <span className="text-white/60 text-sm font-medium">{inputSymbol}</span>
+          </div>
+          {/* Quick amounts */}
+          <div className="flex gap-2 mt-2">
+            {[0.1, 0.25, 0.5, 1].map((amt) => (
+              <button
+                key={amt}
+                onClick={() => setInputAmount(amt.toString())}
+                className="flex-1 py-1.5 text-xs text-white/50 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors font-mono"
+              >
+                {amt}
+              </button>
+            ))}
           </div>
         </div>
-        <button
-          onClick={() => setInputAmount(getInputBalance().toString())}
-          className="mt-2 text-xs text-[#00ffa3] hover:underline"
-        >
-          MAX
-        </button>
-      </div>
 
-      {/* Arrow */}
-      <div className="flex justify-center -my-2 z-10 relative">
-        <div className="bg-[#1a1a1a] p-2 rounded-lg border border-white/10">
-          <ArrowDownIcon className="w-4 h-4 text-white/40" />
-        </div>
-      </div>
-
-      {/* Output */}
-      <div className="bg-black/30 rounded-xl p-4 mt-2">
-        <div className="flex justify-between text-sm text-white/40 mb-2">
-          <span>You receive</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex-1 text-2xl font-medium text-white">
+        {/* Output Display */}
+        <div className="mb-4 p-3 bg-black/20 border border-white/5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-white/40 uppercase tracking-wide">You Receive</span>
+            <span className="text-white/60 text-sm">{isBuy ? outputSymbol : "SOL"}</span>
+          </div>
+          <div className="mt-2 text-xl font-mono text-white">
             {loading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin text-white/40" />
             ) : (
               formatOutputAmount()
             )}
           </div>
-          <div className="flex items-center gap-2 px-3 py-2 bg-white/5 rounded-lg">
-            <span className="font-medium">{isBuy ? outputSymbol : "SOL"}</span>
-          </div>
         </div>
-      </div>
 
-      {/* Quote Details */}
-      {quote && (
-        <div className="mt-4 p-3 bg-black/20 rounded-lg text-sm">
-          <div className="flex justify-between text-white/60">
-            <span>Price Impact</span>
-            <span
-              className={
-                quote.priceImpactPct > 5
-                  ? "text-red-400"
-                  : quote.priceImpactPct > 1
-                  ? "text-yellow-400"
-                  : "text-green-400"
-              }
-            >
-              {quote.priceImpactPct.toFixed(2)}%
-            </span>
+        {/* Quote Details */}
+        {quote && (
+          <div className="mb-4 space-y-2 text-xs">
+            <div className="flex justify-between">
+              <span className="text-white/40">Price Impact</span>
+              <span
+                className={`font-mono ${
+                  quote.priceImpactPct > 5
+                    ? "text-red-400"
+                    : quote.priceImpactPct > 1
+                    ? "text-yellow-400"
+                    : "text-[#00ffa3]"
+                }`}
+              >
+                {quote.priceImpactPct.toFixed(2)}%
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-white/40">Slippage</span>
+              <span className="text-white/60 font-mono">{slippage / 100}%</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-white/40">Route</span>
+              <span className={`px-2 py-0.5 text-xs font-medium ${
+                tradingSource === "pumpfun"
+                  ? "bg-pink-500/20 text-pink-400"
+                  : "bg-[#00ffa3]/20 text-[#00ffa3]"
+              }`}>
+                {tradingSource === "pumpfun" ? "Pump.fun" : "Jupiter"}
+              </span>
+            </div>
           </div>
-          <div className="flex justify-between text-white/60 mt-1">
-            <span>Slippage</span>
-            <span>{slippage / 100}%</span>
-          </div>
-          <div className="flex justify-between text-white/60 mt-1">
-            <span>Route</span>
-            <span className="flex items-center gap-1.5">
-              {tradingSource === "pumpfun" ? (
-                <span className="px-1.5 py-0.5 bg-pink-500/20 text-pink-400 rounded text-xs">
-                  Pump.fun Bonding Curve
-                </span>
-              ) : (
-                <>
-                  <span className="px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded text-xs">
-                    Jupiter
-                  </span>
-                  {quote.routePlan.map((r) => r.label).join(" → ")}
-                </>
-              )}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Slippage Settings */}
-      <div className="mt-4 flex items-center gap-2">
-        <span className="text-sm text-white/40">Slippage:</span>
-        {[50, 100, 300].map((bps) => (
-          <button
-            key={bps}
-            onClick={() => setSlippage(bps)}
-            className={`px-2 py-1 text-xs rounded ${
-              slippage === bps
-                ? "bg-[#00ffa3] text-black"
-                : "bg-white/5 text-white/60 hover:bg-white/10"
-            }`}
-          >
-            {bps / 100}%
-          </button>
-        ))}
-      </div>
-
-      {/* Error/Success */}
-      {error && (
-        <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="mt-4 p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-green-400 text-sm">
-          {success}
-        </div>
-      )}
-
-      {/* Swap Button */}
-      <button
-        onClick={handleSwap}
-        disabled={!quote || swapping || loading}
-        className={`w-full mt-4 py-3 rounded-xl font-medium transition-colors ${
-          !quote || swapping || loading
-            ? "bg-white/10 text-white/40 cursor-not-allowed"
-            : isBuy
-            ? "bg-[#00ffa3] text-black hover:bg-[#00dd8a]"
-            : "bg-red-500 text-white hover:bg-red-600"
-        }`}
-      >
-        {swapping ? (
-          <span className="flex items-center justify-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Swapping...
-          </span>
-        ) : !quote ? (
-          "Enter an amount"
-        ) : isBuy ? (
-          `Buy ${outputSymbol}`
-        ) : (
-          `Sell ${outputSymbol}`
         )}
-      </button>
 
-      {/* Wallet Address */}
-      {balance && (
-        <div className="mt-4 text-center text-xs text-white/40">
-          Wallet: {balance.walletAddress.slice(0, 6)}...{balance.walletAddress.slice(-4)}
+        {/* Slippage */}
+        <div className="mb-4">
+          <span className="text-xs text-white/40 uppercase tracking-wide">Slippage</span>
+          <div className="flex gap-2 mt-2">
+            {[50, 100, 300].map((bps) => (
+              <button
+                key={bps}
+                onClick={() => setSlippage(bps)}
+                className={`flex-1 py-1.5 text-xs font-mono transition-colors border ${
+                  slippage === bps
+                    ? "bg-[#00ffa3]/10 text-[#00ffa3] border-[#00ffa3]/50"
+                    : "text-white/50 border-white/10 hover:border-white/20"
+                }`}
+              >
+                {bps / 100}%
+              </button>
+            ))}
+          </div>
         </div>
-      )}
+
+        {/* Error/Success Messages */}
+        {error && (
+          <div className="mb-4 p-2 bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="mb-4 p-2 bg-[#00ffa3]/10 border border-[#00ffa3]/30 text-[#00ffa3] text-xs">
+            {success}
+          </div>
+        )}
+
+        {/* Action Button */}
+        <button
+          onClick={handleSwap}
+          disabled={!quote || swapping || loading}
+          className={`w-full py-3 text-sm font-medium transition-colors ${
+            !quote || swapping || loading
+              ? "bg-white/5 text-white/30 cursor-not-allowed"
+              : isBuy
+              ? "bg-[#00ffa3] text-black hover:bg-[#00dd8a]"
+              : "bg-red-500 text-white hover:bg-red-600"
+          }`}
+        >
+          {swapping ? (
+            <span className="flex items-center justify-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Processing...
+            </span>
+          ) : !quote ? (
+            "Enter Amount"
+          ) : isBuy ? (
+            `Buy ${outputSymbol}`
+          ) : (
+            `Sell ${outputSymbol}`
+          )}
+        </button>
+
+        {/* Stats Row */}
+        {balance && (
+          <div className="mt-4 pt-3 border-t border-white/5 grid grid-cols-4 gap-2 text-center">
+            <div>
+              <div className="text-[10px] text-white/30 uppercase">Bought</div>
+              <div className="text-xs text-white/50 font-mono">0</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-white/30 uppercase">Sold</div>
+              <div className="text-xs text-white/50 font-mono">0</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-white/30 uppercase">Holding</div>
+              <div className="text-xs text-white/50 font-mono">0</div>
+            </div>
+            <div>
+              <div className="text-[10px] text-white/30 uppercase">PnL</div>
+              <div className="text-xs text-white/50 font-mono">+0%</div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
