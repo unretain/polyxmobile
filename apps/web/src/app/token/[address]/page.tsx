@@ -122,6 +122,7 @@ interface PulseTokenData {
   totalSupply?: number;
   maxSupply?: number;
   circulatingSupply?: number;
+  complete?: boolean; // Whether bonding curve is complete (token graduated to Raydium)
 }
 
 // Trade type for trade history
@@ -929,6 +930,7 @@ export default function TokenPage() {
               defaultOutputMint={address}
               outputSymbol={token?.symbol || "TOKEN"}
               outputDecimals={9}
+              isGraduated={token?.complete !== false}
             />
 
             {/* Holder Stats */}
