@@ -51,12 +51,18 @@ export interface PumpQuote {
 
 export class PumpFunService {
   private connection: Connection;
+  private sendConnection: Connection;
   private rpcUrl: string;
 
   constructor() {
     this.rpcUrl = config.solanaRpcUrl || "https://api.mainnet-beta.solana.com";
     console.log("[PumpFunService] Initializing with RPC:", this.rpcUrl.substring(0, 40) + "...");
     this.connection = new Connection(this.rpcUrl, "confirmed");
+
+    // Use separate RPC for sending (Helius free tier may not support sendTransaction)
+    const sendRpcUrl = process.env.SOLANA_SEND_RPC_URL || "https://api.mainnet-beta.solana.com";
+    console.log("[PumpFunService] Send RPC:", sendRpcUrl.substring(0, 40) + "...");
+    this.sendConnection = new Connection(sendRpcUrl, "confirmed");
   }
 
   /**
@@ -395,9 +401,9 @@ export class PumpFunService {
     transaction.recentBlockhash = blockhash;
     transaction.feePayer = buyer;
 
-    // Sign and send
+    // Sign and send using dedicated send connection
     const signature = await sendAndConfirmTransaction(
-      this.connection,
+      this.sendConnection,
       transaction,
       [buyerKeypair],
       { commitment: "confirmed" }
@@ -439,13 +445,13 @@ export class PumpFunService {
     const transaction = new Transaction().add(sellIx);
 
     // Get recent blockhash
-    const { blockhash } = await this.connection.getLatestBlockhash();
+    const { blockhash } = await this.sendConnection.getLatestBlockhash();
     transaction.recentBlockhash = blockhash;
     transaction.feePayer = seller;
 
-    // Sign and send
+    // Sign and send using dedicated send connection
     const signature = await sendAndConfirmTransaction(
-      this.connection,
+      this.sendConnection,
       transaction,
       [sellerKeypair],
       { commitment: "confirmed" }
