@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getJupiterService, SOL_MINT } from "@/lib/jupiter";
+import { config } from "@/lib/config";
 
 // GET /api/trading/balance
 export async function GET(req: NextRequest) {
   try {
+    console.log("[balance] Request received");
+    console.log("[balance] RPC URL:", config.solanaRpcUrl ? config.solanaRpcUrl.substring(0, 30) + "..." : "NOT SET - using public");
+
     const session = await auth();
 
     if (!session?.user?.id) {
@@ -30,6 +34,7 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    console.log("[balance] Fetching for wallet:", user.walletAddress.substring(0, 8) + "...");
     const jupiter = getJupiterService();
 
     // Get SOL balance and token accounts in parallel
@@ -37,6 +42,7 @@ export async function GET(req: NextRequest) {
       jupiter.getSolBalance(user.walletAddress),
       jupiter.getTokenAccounts(user.walletAddress),
     ]);
+    console.log("[balance] Success - SOL:", solBalance / 1e9, "Tokens:", tokenAccounts.length);
 
     // Format SOL balance
     const solUiBalance = solBalance / 1e9; // Convert lamports to SOL
