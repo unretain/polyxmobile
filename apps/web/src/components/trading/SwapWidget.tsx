@@ -38,12 +38,14 @@ interface SwapWidgetProps {
   defaultOutputMint?: string;
   outputSymbol?: string;
   outputDecimals?: number;
+  isGraduated?: boolean; // Whether token has graduated from bonding curve
 }
 
 export function SwapWidget({
   defaultOutputMint,
   outputSymbol = "TOKEN",
   outputDecimals = 9,
+  isGraduated = true, // Default to true for backward compatibility
 }: SwapWidgetProps) {
   const { data: session, status } = useSession();
   const [inputAmount, setInputAmount] = useState("");
@@ -107,12 +109,23 @@ export function SwapWidget({
         const data = await res.json();
 
         if (!res.ok) {
-          throw new Error(data.error || "Failed to get quote");
+          // Provide user-friendly error messages
+          let errorMsg = data.error || "Failed to get quote";
+          if (errorMsg.includes("TOKEN_NOT_TRADABLE") || errorMsg.includes("not tradable")) {
+            errorMsg = "This token hasn't migrated to Raydium yet. Only graduated tokens can be traded.";
+          } else if (errorMsg.includes("Unauthorized") || errorMsg.includes("401")) {
+            errorMsg = "RPC connection error. Please try again later.";
+          }
+          throw new Error(errorMsg);
         }
 
         setQuote(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Quote failed");
+        const errorMsg = err instanceof Error ? err.message : "Quote failed";
+        // Don't show error for common non-critical issues
+        if (!errorMsg.includes("No route found")) {
+          setError(errorMsg);
+        }
         setQuote(null);
       } finally {
         setLoading(false);
@@ -210,6 +223,23 @@ export function SwapWidget({
           >
             Sign In
           </a>
+        </div>
+      </div>
+    );
+  }
+
+  // Show message for non-graduated tokens
+  if (!isGraduated) {
+    return (
+      <div className="bg-[#1a1a1a] rounded-xl p-6 border border-white/10">
+        <div className="text-center">
+          <div className="w-12 h-12 rounded-full bg-yellow-500/10 flex items-center justify-center mx-auto mb-3">
+            <span className="text-2xl">⏳</span>
+          </div>
+          <p className="text-white font-medium mb-2">Token Not Yet Tradable</p>
+          <p className="text-white/50 text-sm">
+            This token is still on the bonding curve. Trading will be available once it graduates to Raydium.
+          </p>
         </div>
       </div>
     );
