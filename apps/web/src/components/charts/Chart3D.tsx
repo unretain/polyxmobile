@@ -433,11 +433,13 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   }, [visibleData]);
 
   // Scroll wheel to zoom time axis - uses native event for preventDefault support
+  // This handler is for the SLIDER area (non-canvas), canvas zoom is handled by OrbitControls
   const handleWheel = useCallback((e: WheelEvent) => {
-    // Shift+Scroll is handled by Y-axis scaling, skip here
+    // Shift+Scroll is handled by Y-axis scaling effect, skip here
     if (e.shiftKey) return;
 
-    // Only zoom if not over the 3D canvas controls area
+    // Only handle wheel on the slider/container area, NOT the canvas
+    // Canvas zoom is handled by OrbitControls directly
     const target = e.target as HTMLElement;
     if (target.tagName === 'CANVAS') return;
 
@@ -599,23 +601,27 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   }, []);
 
   // Shift+Left-click drag to pan X-axis (scroll left/right through time)
+  // Uses window-level listeners so it doesn't interfere with OrbitControls
   useEffect(() => {
-    const container = canvasContainerRef.current;
-    if (!container) return;
-
     const handleMouseDown = (e: MouseEvent) => {
-      // Check for Shift + Left-click (button 0)
-      if (e.shiftKey && e.button === 0) {
-        e.preventDefault();
-        e.stopPropagation();
-        isPanningRef.current = true;
-        panStartXRef.current = e.clientX;
-        panStartViewRef.current = { start: viewStartRef.current, end: viewEndRef.current };
-      }
+      // Only activate pan if Shift + Left-click on the canvas container
+      if (!e.shiftKey || e.button !== 0) return;
+
+      // Check if click is within the canvas container
+      const container = canvasContainerRef.current;
+      if (!container || !container.contains(e.target as Node)) return;
+
+      e.preventDefault();
+      isPanningRef.current = true;
+      panStartXRef.current = e.clientX;
+      panStartViewRef.current = { start: viewStartRef.current, end: viewEndRef.current };
     };
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!isPanningRef.current) return;
+
+      const container = canvasContainerRef.current;
+      if (!container) return;
 
       // Throttle to 30fps
       const now = Date.now();
@@ -652,12 +658,13 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       }
     };
 
-    container.addEventListener('mousedown', handleMouseDown, { capture: true });
+    // Use window-level listeners so we don't block OrbitControls
+    window.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
 
     return () => {
-      container.removeEventListener('mousedown', handleMouseDown, { capture: true });
+      window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
