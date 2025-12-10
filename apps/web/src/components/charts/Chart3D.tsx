@@ -169,6 +169,15 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   const lastMouseXRef = useRef(0);
   const lastUpdateTimeRef = useRef(0);
 
+  // Shift+Right-click pan state
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartXRef = useRef(0);
+  const panStartViewRef = useRef({ start: 0, end: 0 });
+
+  // Y-axis scale state (1.0 = default, >1 = zoomed in, <1 = zoomed out)
+  const [yScale, setYScale] = useState(1.0);
+  const yScaleRef = useRef(1.0);
+
   // Hovered candle
   const [hoveredCandle, setHoveredCandle] = useState<OHLCV | null>(null);
 
@@ -362,13 +371,19 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       priceRange = maxPrice - minPrice;
     }
 
+    // Apply Y-axis scale: yScale > 1 zooms in (shows less range), < 1 zooms out
+    // Calculate scaled range centered on midpoint
+    const scaledRange = priceRange / yScale;
+    const scaledMin = midPrice - scaledRange / 2;
+    const scaledMax = midPrice + scaledRange / 2;
+
     return {
-      minPrice: Math.max(0, minPrice),
-      maxPrice,
+      minPrice: Math.max(0, scaledMin),
+      maxPrice: scaledMax,
       maxVolume: maxVolume || 1,
-      priceRange,
+      priceRange: scaledRange,
     };
-  }, [visibleData, price]);
+  }, [visibleData, price, yScale]);
 
   // Camera position
   const cameraPosition = useMemo(() => {
@@ -549,7 +564,110 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   const handleDoubleClick = useCallback(() => {
     setViewStart(0);
     setViewEnd(1);
+    setYScale(1.0);
+    yScaleRef.current = 1.0;
   }, []);
+
+  // Shift+Right-click drag to pan X-axis (scroll left/right through time)
+  useEffect(() => {
+    const container = canvasContainerRef.current;
+    if (!container) return;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      // Check for Shift + Right-click (button 2)
+      if (e.shiftKey && e.button === 2) {
+        e.preventDefault();
+        setIsPanning(true);
+        panStartXRef.current = e.clientX;
+        panStartViewRef.current = { start: viewStartRef.current, end: viewEndRef.current };
+      }
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isPanning) return;
+
+      // Throttle to 30fps
+      const now = Date.now();
+      if (now - lastUpdateTimeRef.current < 33) return;
+      lastUpdateTimeRef.current = now;
+
+      const rect = container.getBoundingClientRect();
+      const deltaX = (e.clientX - panStartXRef.current) / rect.width;
+
+      // Pan amount relative to current view range
+      const viewRange = panStartViewRef.current.end - panStartViewRef.current.start;
+      const panAmount = -deltaX * viewRange; // Negative so drag right = move forward in time
+
+      let newStart = panStartViewRef.current.start + panAmount;
+      let newEnd = panStartViewRef.current.end + panAmount;
+
+      // Clamp to valid range
+      if (newStart < 0) {
+        newEnd -= newStart;
+        newStart = 0;
+      }
+      if (newEnd > 1) {
+        newStart -= (newEnd - 1);
+        newEnd = 1;
+      }
+
+      setViewStart(Math.max(0, newStart));
+      setViewEnd(Math.min(1, newEnd));
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (e.button === 2 && isPanning) {
+        setIsPanning(false);
+      }
+    };
+
+    const handleContextMenu = (e: MouseEvent) => {
+      // Prevent context menu when shift+right-clicking
+      if (e.shiftKey) {
+        e.preventDefault();
+      }
+    };
+
+    container.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    container.addEventListener('contextmenu', handleContextMenu);
+
+    return () => {
+      container.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      container.removeEventListener('contextmenu', handleContextMenu);
+    };
+  }, [isPanning]);
+
+  // Y-axis scaling with Shift+Scroll
+  useEffect(() => {
+    const container = canvasContainerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      // Shift+Scroll = Y-axis zoom
+      if (e.shiftKey) {
+        e.preventDefault();
+
+        const zoomIn = e.deltaY < 0;
+        const zoomFactor = zoomIn ? 1.1 : 0.9;
+
+        const newScale = Math.max(0.5, Math.min(3.0, yScaleRef.current * zoomFactor));
+        yScaleRef.current = newScale;
+        setYScale(newScale);
+      }
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, []);
+
+  // Keep yScaleRef in sync
+  useEffect(() => {
+    yScaleRef.current = yScale;
+  }, [yScale]);
 
   // Toggle fly mode with Shift+Enter
   useEffect(() => {
