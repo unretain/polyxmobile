@@ -199,6 +199,27 @@ function ChartScene({
     return labels;
   }, []);
 
+  // X-axis time labels
+  const xLabels = useMemo(() => {
+    if (data.length === 0) return [];
+
+    const labels: { x: number; text: string }[] = [];
+    const labelCount = Math.min(5, data.length);
+
+    for (let i = 0; i < labelCount; i++) {
+      const dataIndex = Math.floor((i / (labelCount - 1 || 1)) * (data.length - 1));
+      const point = data[dataIndex];
+      if (!point) continue;
+
+      const x = (dataIndex / Math.max(1, data.length - 1)) * CHART_WIDTH;
+      const date = new Date(point.t);
+      const text = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      labels.push({ x, text });
+    }
+
+    return labels;
+  }, [data]);
+
   const yesColor = "#22c55e";
   const noColor = "#ef4444";
 
@@ -262,6 +283,20 @@ function ChartScene({
             color="#666666"
             anchorX="right"
             anchorY="middle"
+          >
+            {label.text}
+          </Text>
+        </Billboard>
+      ))}
+
+      {/* X-axis time labels */}
+      {xLabels.map((label, i) => (
+        <Billboard key={`x-${i}`} position={[label.x, -0.4, 0.5]} follow={true}>
+          <Text
+            fontSize={0.18}
+            color="#888888"
+            anchorX="center"
+            anchorY="top"
           >
             {label.text}
           </Text>

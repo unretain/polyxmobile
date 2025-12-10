@@ -170,15 +170,16 @@ export function ChartAxis({
         <meshBasicMaterial color="#FF6B4A" transparent opacity={0.4} />
       </mesh>
 
-      {/* Date labels - positioned below X axis */}
+      {/* Date labels - positioned below X axis, in front of volume bars */}
       {dateLabels.map(({ text, position }, index) => (
         <Text
           key={`date-${index}`}
-          position={position}
-          fontSize={0.5}
+          position={[position[0], position[1], 8]}
+          fontSize={0.7}
           color={axisLabelColor}
           anchorX="center"
           anchorY="top"
+          renderOrder={10}
         >
           {text}
         </Text>
@@ -197,11 +198,12 @@ export function ChartAxis({
       </Text>
 
       <Text
-        position={[chartWidth / 2, -2.8, 0]}
-        fontSize={0.4}
+        position={[chartWidth / 2, -2.8, 8]}
+        fontSize={0.5}
         color={axisLabelColor}
         anchorX="center"
         anchorY="middle"
+        renderOrder={10}
       >
         Time
       </Text>
