@@ -169,10 +169,14 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   const lastMouseXRef = useRef(0);
   const lastUpdateTimeRef = useRef(0);
 
-  // Shift+Right-click pan state (use ref for event handler to avoid stale closure)
+  // Shift+Left-click pan state (use ref for event handler to avoid stale closure)
+  // Changed from right-click to left-click because OrbitControls uses right-click for rotation
   const isPanningRef = useRef(false);
   const panStartXRef = useRef(0);
   const panStartViewRef = useRef({ start: 0, end: 0 });
+
+  // Track if shift is held for disabling OrbitControls during pan
+  const [isShiftHeld, setIsShiftHeld] = useState(false);
 
   // Y-axis scale state (1.0 = default, >1 = zoomed in, <1 = zoomed out)
   const [yScale, setYScale] = useState(1.0);
@@ -571,15 +575,39 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     yScaleRef.current = 1.0;
   }, []);
 
-  // Shift+Right-click drag to pan X-axis (scroll left/right through time)
+  // Track shift key state globally for OrbitControls and panning
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        setIsShiftHeld(true);
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        setIsShiftHeld(false);
+        // Also stop panning when shift is released
+        isPanningRef.current = false;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  // Shift+Left-click drag to pan X-axis (scroll left/right through time)
   useEffect(() => {
     const container = canvasContainerRef.current;
     if (!container) return;
 
     const handleMouseDown = (e: MouseEvent) => {
-      // Check for Shift + Right-click (button 2)
-      if (e.shiftKey && e.button === 2) {
+      // Check for Shift + Left-click (button 0)
+      if (e.shiftKey && e.button === 0) {
         e.preventDefault();
+        e.stopPropagation();
         isPanningRef.current = true;
         panStartXRef.current = e.clientX;
         panStartViewRef.current = { start: viewStartRef.current, end: viewEndRef.current };
@@ -619,28 +647,19 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     };
 
     const handleMouseUp = (e: MouseEvent) => {
-      if (e.button === 2 && isPanningRef.current) {
+      if (e.button === 0 && isPanningRef.current) {
         isPanningRef.current = false;
       }
     };
 
-    const handleContextMenu = (e: MouseEvent) => {
-      // Prevent context menu when shift+right-clicking
-      if (e.shiftKey) {
-        e.preventDefault();
-      }
-    };
-
-    container.addEventListener('mousedown', handleMouseDown);
+    container.addEventListener('mousedown', handleMouseDown, { capture: true });
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-    container.addEventListener('contextmenu', handleContextMenu);
 
     return () => {
-      container.removeEventListener('mousedown', handleMouseDown);
+      container.removeEventListener('mousedown', handleMouseDown, { capture: true });
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
-      container.removeEventListener('contextmenu', handleContextMenu);
     };
   }, []);
 
@@ -910,10 +929,10 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
                 </>
               )}
 
-              {/* OrbitControls - disabled in fly mode or when drawing */}
+              {/* OrbitControls - disabled in fly mode, when drawing, or when shift is held for panning */}
               <OrbitControls
                 ref={orbitControlsRef}
-                enabled={!isFlyMode && !activeTool}
+                enabled={!isFlyMode && !activeTool && !isShiftHeld}
                 enablePan={true}
                 enableZoom={true}
                 enableRotate={true}
@@ -1074,7 +1093,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
             "WASD: move - Q/E: up/down - Mouse: look - Shift: speed - ESC: exit"
           ) : (
             <>
-              3D: drag rotate - scroll zoom - Slider: pan time - Double-click: reset
+              3D: drag rotate - scroll zoom - Shift+drag: pan time - Shift+scroll: scale Y - Double-click: reset
               {hasMoreData && " - Scroll left for history"}
             </>
           )}
