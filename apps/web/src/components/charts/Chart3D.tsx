@@ -176,7 +176,8 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   const panStartViewRef = useRef({ start: 0, end: 0 });
 
   // Track if shift is held for disabling OrbitControls during pan
-  const [isShiftHeld, setIsShiftHeld] = useState(false);
+  // Use ref to avoid re-renders that cause freezing, plus state for OrbitControls
+  const isShiftHeldRef = useRef(false);
 
   // Y-axis scale state (1.0 = default, >1 = zoomed in, <1 = zoomed out)
   const [yScale, setYScale] = useState(1.0);
@@ -399,12 +400,11 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   }, []);
 
   // Normalize price to 0-PRICE_HEIGHT range
+  // NO CLAMPING - allow candles to extend beyond visible area when Y-axis is scaled
   const normalizePrice = (price: number) => {
     if (!isFinite(price)) return PRICE_HEIGHT / 2;
     if (bounds.priceRange === 0) return PRICE_HEIGHT / 2;
-    const normalized = ((price - bounds.minPrice) / bounds.priceRange) * PRICE_HEIGHT;
-    // Clamp to valid range
-    return Math.max(0, Math.min(PRICE_HEIGHT, normalized));
+    return ((price - bounds.minPrice) / bounds.priceRange) * PRICE_HEIGHT;
   };
 
   // Normalize volume to 0-VOLUME_HEIGHT range
@@ -577,16 +577,16 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     yScaleRef.current = 1.0;
   }, []);
 
-  // Track shift key state globally for OrbitControls and panning
+  // Track shift key state globally for panning
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Shift') {
-        setIsShiftHeld(true);
+        isShiftHeldRef.current = true;
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'Shift') {
-        setIsShiftHeld(false);
+        isShiftHeldRef.current = false;
         // Also stop panning when shift is released
         isPanningRef.current = false;
       }
@@ -936,10 +936,10 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
                 </>
               )}
 
-              {/* OrbitControls - disabled in fly mode, when drawing, or when shift is held for panning */}
+              {/* OrbitControls - disabled in fly mode or when drawing */}
               <OrbitControls
                 ref={orbitControlsRef}
-                enabled={!isFlyMode && !activeTool && !isShiftHeld}
+                enabled={!isFlyMode && !activeTool}
                 enablePan={true}
                 enableZoom={true}
                 enableRotate={true}
