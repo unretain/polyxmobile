@@ -169,8 +169,8 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   const lastMouseXRef = useRef(0);
   const lastUpdateTimeRef = useRef(0);
 
-  // Shift+Right-click pan state
-  const [isPanning, setIsPanning] = useState(false);
+  // Shift+Right-click pan state (use ref for event handler to avoid stale closure)
+  const isPanningRef = useRef(false);
   const panStartXRef = useRef(0);
   const panStartViewRef = useRef({ start: 0, end: 0 });
 
@@ -430,6 +430,9 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
 
   // Scroll wheel to zoom time axis - uses native event for preventDefault support
   const handleWheel = useCallback((e: WheelEvent) => {
+    // Shift+Scroll is handled by Y-axis scaling, skip here
+    if (e.shiftKey) return;
+
     // Only zoom if not over the 3D canvas controls area
     const target = e.target as HTMLElement;
     if (target.tagName === 'CANVAS') return;
@@ -577,14 +580,14 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       // Check for Shift + Right-click (button 2)
       if (e.shiftKey && e.button === 2) {
         e.preventDefault();
-        setIsPanning(true);
+        isPanningRef.current = true;
         panStartXRef.current = e.clientX;
         panStartViewRef.current = { start: viewStartRef.current, end: viewEndRef.current };
       }
     };
 
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isPanning) return;
+      if (!isPanningRef.current) return;
 
       // Throttle to 30fps
       const now = Date.now();
@@ -616,8 +619,8 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     };
 
     const handleMouseUp = (e: MouseEvent) => {
-      if (e.button === 2 && isPanning) {
-        setIsPanning(false);
+      if (e.button === 2 && isPanningRef.current) {
+        isPanningRef.current = false;
       }
     };
 
@@ -639,7 +642,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       window.removeEventListener('mouseup', handleMouseUp);
       container.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [isPanning]);
+  }, []);
 
   // Y-axis scaling with Shift+Scroll
   useEffect(() => {
