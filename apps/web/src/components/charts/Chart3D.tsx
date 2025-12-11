@@ -601,23 +601,26 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   }, []);
 
   // Shift+Right-click drag to pan X-axis (scroll left/right through time)
+  // This pans through the data timeline, NOT the 3D camera
   useEffect(() => {
-    const container = canvasContainerRef.current;
-    if (!container) {
-      console.log('[Chart3D] Pan effect: container not ready yet');
-      return;
-    }
-
-    console.log('[Chart3D] Pan effect: attaching listeners to container');
+    if (!isMounted) return;
 
     const handleMouseDown = (e: MouseEvent) => {
-      // Only activate pan if Shift + Right-click (button 2) on the canvas container
+      // Only activate pan if Shift + Right-click (button 2)
       if (!e.shiftKey || e.button !== 2) return;
-      if (!container.contains(e.target as Node)) return;
 
-      console.log('[Chart3D] Shift+Right-click detected, starting pan');
+      // Check if click is within our chart container
+      const container = canvasContainerRef.current;
+      if (!container) return;
+
+      const rect = container.getBoundingClientRect();
+      if (e.clientX < rect.left || e.clientX > rect.right ||
+          e.clientY < rect.top || e.clientY > rect.bottom) {
+        return;
+      }
+
+      console.log('[Chart3D] Shift+Right-click detected, starting time pan');
       e.preventDefault();
-      e.stopPropagation();
       isPanningRef.current = true;
       panStartXRef.current = e.clientX;
       panStartViewRef.current = { start: viewStartRef.current, end: viewEndRef.current };
@@ -625,6 +628,9 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!isPanningRef.current) return;
+
+      const container = canvasContainerRef.current;
+      if (!container) return;
 
       // Throttle to 30fps
       const now = Date.now();
@@ -657,32 +663,31 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
 
     const handleMouseUp = (e: MouseEvent) => {
       if (e.button === 2 && isPanningRef.current) {
-        console.log('[Chart3D] Pan ended');
+        console.log('[Chart3D] Time pan ended');
         isPanningRef.current = false;
       }
     };
 
     // Prevent context menu when shift+right-clicking for pan
     const handleContextMenu = (e: MouseEvent) => {
-      if (e.shiftKey) {
+      if (e.shiftKey && isPanningRef.current) {
         e.preventDefault();
       }
     };
 
-    // Use capture phase to intercept before OrbitControls
-    container.addEventListener('mousedown', handleMouseDown, { capture: true });
-    container.addEventListener('contextmenu', handleContextMenu);
+    // Use window-level listeners to catch events even when canvas captures them
+    window.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('contextmenu', handleContextMenu);
 
     return () => {
-      console.log('[Chart3D] Pan effect: cleaning up listeners');
-      container.removeEventListener('mousedown', handleMouseDown, { capture: true });
-      container.removeEventListener('contextmenu', handleContextMenu);
+      window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [isMounted]); // Re-run when mounted to ensure container ref is ready
+  }, [isMounted]);
 
   // Y-axis scaling with Shift+Scroll
   useEffect(() => {
