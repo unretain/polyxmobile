@@ -602,50 +602,44 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
 
   // Shift+Right-click drag to pan X-axis (scroll left/right through time)
   // This pans through the data timeline, NOT the 3D camera
+  // When fully zoomed out, initiating pan will auto-zoom to 50% window for meaningful panning
   useEffect(() => {
-    console.log('[Chart3D] Pan effect running, isMounted:', isMounted);
-    if (!isMounted) {
-      console.log('[Chart3D] Not mounted yet, skipping pan setup');
-      return;
-    }
-
-    console.log('[Chart3D] Setting up pan listeners on window');
+    if (!isMounted) return;
 
     const handleMouseDown = (e: MouseEvent) => {
-      console.log('[Chart3D] mousedown - button:', e.button, 'shiftKey:', e.shiftKey);
-
       // Only activate pan if Shift + Right-click (button 2)
-      if (!e.shiftKey) {
-        console.log('[Chart3D] Shift not held, ignoring');
-        return;
-      }
-      if (e.button !== 2) {
-        console.log('[Chart3D] Not right-click (button 2), ignoring. Got button:', e.button);
-        return;
-      }
+      if (!e.shiftKey || e.button !== 2) return;
 
       // Check if click is within our chart container
       const container = canvasContainerRef.current;
-      if (!container) {
-        console.log('[Chart3D] Container ref is null');
-        return;
-      }
+      if (!container) return;
 
       const rect = container.getBoundingClientRect();
-      console.log('[Chart3D] Container rect:', rect, 'Mouse:', e.clientX, e.clientY);
-
       if (e.clientX < rect.left || e.clientX > rect.right ||
           e.clientY < rect.top || e.clientY > rect.bottom) {
-        console.log('[Chart3D] Click outside container bounds');
         return;
       }
 
-      console.log('[Chart3D] ✓ Shift+Right-click inside container, starting time pan');
-      console.log('[Chart3D] Current view:', viewStartRef.current, '-', viewEndRef.current);
+      // If currently showing all data (fully zoomed out), zoom in to 50% window first
+      // This allows meaningful panning through historical data
+      let currentStart = viewStartRef.current;
+      let currentEnd = viewEndRef.current;
+      const currentRange = currentEnd - currentStart;
+
+      if (currentRange > 0.9) {
+        // Almost fully zoomed out - zoom to show last 50% of data (most recent)
+        currentStart = 0.5;
+        currentEnd = 1.0;
+        setViewStart(currentStart);
+        setViewEnd(currentEnd);
+        viewStartRef.current = currentStart;
+        viewEndRef.current = currentEnd;
+      }
+
       e.preventDefault();
       isPanningRef.current = true;
       panStartXRef.current = e.clientX;
-      panStartViewRef.current = { start: viewStartRef.current, end: viewEndRef.current };
+      panStartViewRef.current = { start: currentStart, end: currentEnd };
     };
 
     const handleMouseMove = (e: MouseEvent) => {
@@ -679,23 +673,19 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
         newEnd = 1;
       }
 
-      console.log('[Chart3D] Panning - deltaX:', deltaX.toFixed(3), 'newView:', newStart.toFixed(3), '-', newEnd.toFixed(3));
       setViewStart(Math.max(0, newStart));
       setViewEnd(Math.min(1, newEnd));
     };
 
     const handleMouseUp = (e: MouseEvent) => {
       if (e.button === 2 && isPanningRef.current) {
-        console.log('[Chart3D] Time pan ended');
         isPanningRef.current = false;
       }
     };
 
     // Prevent context menu when shift is held (for pan gesture)
     const handleContextMenu = (e: MouseEvent) => {
-      console.log('[Chart3D] contextmenu - shiftKey:', e.shiftKey, 'isPanning:', isPanningRef.current);
       if (e.shiftKey) {
-        console.log('[Chart3D] Preventing context menu (shift held)');
         e.preventDefault();
         return false;
       }
@@ -708,7 +698,6 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     window.addEventListener('contextmenu', handleContextMenu);
 
     return () => {
-      console.log('[Chart3D] Cleaning up pan listeners');
       window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
