@@ -376,19 +376,16 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       priceRange = maxPrice - minPrice;
     }
 
-    // Apply Y-axis scale: yScale > 1 zooms in (shows less range), < 1 zooms out
-    // Calculate scaled range centered on midpoint
-    const scaledRange = priceRange / yScale;
-    const scaledMin = midPrice - scaledRange / 2;
-    const scaledMax = midPrice + scaledRange / 2;
+    // Don't apply yScale here - we'll use Three.js group scale transform instead
+    // This ensures the entire chart (grid, axis, candles) scales together visually
 
     return {
-      minPrice: Math.max(0, scaledMin),
-      maxPrice: scaledMax,
+      minPrice,
+      maxPrice,
       maxVolume: maxVolume || 1,
-      priceRange: scaledRange,
+      priceRange,
     };
-  }, [visibleData, price, yScale]);
+  }, [visibleData, price]);
 
   // Camera position
   const cameraPosition = useMemo(() => {
@@ -400,11 +397,12 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   }, []);
 
   // Normalize price to 0-PRICE_HEIGHT range
-  // NO CLAMPING - allow candles to extend beyond visible area when Y-axis is scaled
   const normalizePrice = (price: number) => {
     if (!isFinite(price)) return PRICE_HEIGHT / 2;
     if (bounds.priceRange === 0) return PRICE_HEIGHT / 2;
-    return ((price - bounds.minPrice) / bounds.priceRange) * PRICE_HEIGHT;
+    const normalized = ((price - bounds.minPrice) / bounds.priceRange) * PRICE_HEIGHT;
+    // Clamp to valid range (Y scaling is done via group transform)
+    return Math.max(0, Math.min(PRICE_HEIGHT, normalized));
   };
 
   // Normalize volume to 0-VOLUME_HEIGHT range
@@ -882,8 +880,13 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
               <directionalLight position={[10, 20, 10]} intensity={1} />
               <pointLight position={[-10, 10, -10]} intensity={0.4} />
 
+              {/* Wrap entire chart in a group that scales on Y-axis based on yScale */}
+              {/* Scale is applied around the chart's vertical center (PRICE_HEIGHT/2) */}
               {visibleData.length > 0 && (
-                <>
+                <group
+                  scale={[1, yScale, 1]}
+                  position={[0, PRICE_HEIGHT / 2 * (1 - yScale), 0]}
+                >
                   {/* Grid and axes */}
                   <ChartGrid width={CHART_WIDTH} height={PRICE_HEIGHT} depth={VOLUME_Z_OFFSET + 4} isDark={isDark} />
                   <ChartAxis
@@ -933,7 +936,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
                   {showWatermark && (
                     <Watermark3D chartWidth={CHART_WIDTH} chartHeight={PRICE_HEIGHT} />
                   )}
-                </>
+                </group>
               )}
 
               {/* OrbitControls - disabled in fly mode or when drawing */}
