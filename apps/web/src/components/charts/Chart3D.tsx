@@ -175,8 +175,8 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   const panStartXRef = useRef(0);
   const panStartViewRef = useRef({ start: 0, end: 0 });
 
-  // Track if shift is held for disabling OrbitControls during pan
-  // Use ref to avoid re-renders that cause freezing, plus state for OrbitControls
+  // Track if shift is held - state for OrbitControls, ref for event handlers
+  const [isShiftHeld, setIsShiftHeld] = useState(false);
   const isShiftHeldRef = useRef(false);
 
   // Y-axis scale state (1.0 = default, >1 = zoomed in, <1 = zoomed out)
@@ -575,16 +575,18 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     yScaleRef.current = 1.0;
   }, []);
 
-  // Track shift key state globally for panning
+  // Track shift key state globally for panning and disabling OrbitControls
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Shift') {
         isShiftHeldRef.current = true;
+        setIsShiftHeld(true);
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === 'Shift') {
         isShiftHeldRef.current = false;
+        setIsShiftHeld(false);
         // Also stop panning when shift is released
         isPanningRef.current = false;
       }
@@ -945,10 +947,10 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
                 </group>
               )}
 
-              {/* OrbitControls - disabled in fly mode or when drawing */}
+              {/* OrbitControls - disabled in fly mode, when drawing, or when shift is held for pan */}
               <OrbitControls
                 ref={orbitControlsRef}
-                enabled={!isFlyMode && !activeTool}
+                enabled={!isFlyMode && !activeTool && !isShiftHeld}
                 enablePan={true}
                 enableZoom={true}
                 enableRotate={true}
