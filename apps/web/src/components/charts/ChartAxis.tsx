@@ -187,7 +187,7 @@ export function ChartAxis({
 
       {/* Axis labels */}
       <Text
-        position={[-3.5, chartHeight / 2, 0]}
+        position={[-5, chartHeight / 2, 0]}
         fontSize={0.35}
         color={axisLabelColor}
         anchorX="center"
