@@ -12,8 +12,8 @@ interface ChartGridProps {
 }
 
 export function ChartGrid({ width, height, depth, isDark = true }: ChartGridProps) {
-  const gridColor = new THREE.Color(isDark ? "#1a1a1a" : "#e5e7eb");
-  const accentColor = new THREE.Color("#FF6B4A");
+  // Clean, subtle grid - no accent colors
+  const gridColor = new THREE.Color(isDark ? "#1f1f1f" : "#d1d5db");
 
   // Generate floor grid lines
   const floorLines = useMemo(() => {
@@ -116,10 +116,10 @@ export function ChartGrid({ width, height, depth, isDark = true }: ChartGridProp
         <Line
           key={`back-${index}`}
           points={line}
-          color={accentColor}
+          color={gridColor}
           lineWidth={0.5}
           transparent
-          opacity={0.15}
+          opacity={0.25}
         />
       ))}
 
