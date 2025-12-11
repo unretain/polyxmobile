@@ -603,13 +603,19 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   // Shift+Right-click drag to pan X-axis (scroll left/right through time)
   useEffect(() => {
     const container = canvasContainerRef.current;
-    if (!container) return;
+    if (!container) {
+      console.log('[Chart3D] Pan effect: container not ready yet');
+      return;
+    }
+
+    console.log('[Chart3D] Pan effect: attaching listeners to container');
 
     const handleMouseDown = (e: MouseEvent) => {
       // Only activate pan if Shift + Right-click (button 2) on the canvas container
       if (!e.shiftKey || e.button !== 2) return;
       if (!container.contains(e.target as Node)) return;
 
+      console.log('[Chart3D] Shift+Right-click detected, starting pan');
       e.preventDefault();
       e.stopPropagation();
       isPanningRef.current = true;
@@ -651,6 +657,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
 
     const handleMouseUp = (e: MouseEvent) => {
       if (e.button === 2 && isPanningRef.current) {
+        console.log('[Chart3D] Pan ended');
         isPanningRef.current = false;
       }
     };
@@ -669,12 +676,13 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     window.addEventListener('mouseup', handleMouseUp);
 
     return () => {
+      console.log('[Chart3D] Pan effect: cleaning up listeners');
       container.removeEventListener('mousedown', handleMouseDown, { capture: true });
       container.removeEventListener('contextmenu', handleContextMenu);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, []);
+  }, [isMounted]); // Re-run when mounted to ensure container ref is ready
 
   // Y-axis scaling with Shift+Scroll
   useEffect(() => {
@@ -697,7 +705,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
 
     container.addEventListener('wheel', handleWheel, { passive: false });
     return () => container.removeEventListener('wheel', handleWheel);
-  }, []);
+  }, [isMounted]); // Re-run when mounted to ensure container ref is ready
 
   // Keep yScaleRef in sync
   useEffect(() => {
