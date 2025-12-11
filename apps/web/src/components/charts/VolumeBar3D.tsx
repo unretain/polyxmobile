@@ -24,16 +24,15 @@ export function VolumeBar3D({
   const barWidth = width;
   const barDepth = depth;
 
-  // Subtle blue/purple tones for volume - distinct from candle colors
-  const upColor = new THREE.Color("#3b82f6"); // blue
-  const downColor = new THREE.Color("#8b5cf6"); // purple
+  const upColor = new THREE.Color("#22c55e");
+  const downColor = new THREE.Color("#ef4444");
   const color = isUp ? upColor : downColor;
 
   const xPosition = index * spacing;
-  const yPosition = height / 2;
+  const yPosition = height / 2; // Center the bar vertically
 
   // Ensure minimum visible height
-  const displayHeight = Math.max(height, 0.05);
+  const displayHeight = Math.max(height, 0.1);
 
   return (
     <mesh position={[xPosition, yPosition, zOffset]}>
@@ -41,9 +40,9 @@ export function VolumeBar3D({
       <meshStandardMaterial
         color={color}
         transparent
-        opacity={0.4}
-        metalness={0.1}
-        roughness={0.6}
+        opacity={0.6}
+        metalness={0.2}
+        roughness={0.5}
       />
     </mesh>
   );

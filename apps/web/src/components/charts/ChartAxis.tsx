@@ -69,14 +69,17 @@ interface ChartAxisProps {
 export function ChartAxis({
   minPrice,
   maxPrice,
+  candleCount,
+  chartWidth,
   chartHeight,
   showMarketCap = false,
   data = [],
   spacing = 1.2,
   isDark = true,
 }: ChartAxisProps) {
-  // Clean, readable text colors
-  const labelColor = isDark ? "#666" : "#888";
+  // Theme-aware colors
+  const labelColor = isDark ? "#888" : "#666";
+  const axisLabelColor = isDark ? "#aaa" : "#555";
   // For Pulse tokens (showMarketCap=true): multiply price by supply to show market cap
   // For Dashboard tokens (showMarketCap=false): show actual price
   const multiplier = showMarketCap ? PUMP_FUN_SUPPLY : 1;
@@ -141,12 +144,18 @@ export function ChartAxis({
 
   return (
     <group>
-      {/* Price/Market Cap labels - left side */}
+      {/* Y-axis (Price) */}
+      <mesh position={[-0.5, chartHeight / 2, 0]}>
+        <boxGeometry args={[0.03, chartHeight, 0.03]} />
+        <meshBasicMaterial color="#FF6B4A" transparent opacity={0.4} />
+      </mesh>
+
+      {/* Price/Market Cap labels */}
       {priceLabels.map(({ value, position }, index) => (
         <Text
           key={`price-${index}`}
-          position={[-1.5, position[1], 0]}
-          fontSize={0.4}
+          position={position}
+          fontSize={0.32}
           color={labelColor}
           anchorX="right"
           anchorY="middle"
@@ -155,19 +164,49 @@ export function ChartAxis({
         </Text>
       ))}
 
-      {/* Date labels - below chart, at z=0 so they're behind volume */}
+      {/* X-axis (Time) */}
+      <mesh position={[chartWidth / 2, 0, 0]}>
+        <boxGeometry args={[chartWidth, 0.03, 0.03]} />
+        <meshBasicMaterial color="#FF6B4A" transparent opacity={0.4} />
+      </mesh>
+
+      {/* Date labels - positioned below X axis, in front of volume bars */}
       {dateLabels.map(({ text, position }, index) => (
         <Text
           key={`date-${index}`}
-          position={[position[0], -0.8, 0]}
-          fontSize={0.5}
-          color={labelColor}
+          position={[position[0], position[1], 8]}
+          fontSize={0.7}
+          color={axisLabelColor}
           anchorX="center"
           anchorY="top"
+          renderOrder={10}
         >
           {text}
         </Text>
       ))}
+
+      {/* Axis labels */}
+      <Text
+        position={[-5, chartHeight / 2, 0]}
+        fontSize={0.35}
+        color={axisLabelColor}
+        anchorX="center"
+        anchorY="middle"
+        rotation={[0, 0, Math.PI / 2]}
+      >
+        {showMarketCap ? "Market Cap" : "Price (USD)"}
+      </Text>
+
+      <Text
+        position={[chartWidth / 2, -2.8, 8]}
+        fontSize={0.5}
+        color={axisLabelColor}
+        anchorX="center"
+        anchorY="middle"
+        renderOrder={10}
+      >
+        Time
+      </Text>
     </group>
   );
 }
