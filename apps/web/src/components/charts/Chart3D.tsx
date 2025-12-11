@@ -1139,10 +1139,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
           {isFlyMode ? (
             "WASD: move - Q/E: up/down - Mouse: look - Shift: speed - ESC: exit"
           ) : (
-            <>
-              3D: drag rotate - scroll zoom - Shift+right-drag: pan time - Shift+scroll: scale Y - Double-click: reset
-              {hasMoreData && " - Scroll left for history"}
-            </>
+            "Drag: rotate - Scroll: zoom - Shift+Scroll: scale Y - Shift+Right-drag: pan history - Double-click: reset"
           )}
         </div>
       )}
