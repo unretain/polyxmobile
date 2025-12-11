@@ -598,18 +598,18 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     };
   }, []);
 
-  // Shift+Left-click drag to pan X-axis (scroll left/right through time)
-  // Uses window-level listeners so it doesn't interfere with OrbitControls
+  // Shift+Right-click drag to pan X-axis (scroll left/right through time)
   useEffect(() => {
-    const handleMouseDown = (e: MouseEvent) => {
-      // Only activate pan if Shift + Left-click on the canvas container
-      if (!e.shiftKey || e.button !== 0) return;
+    const container = canvasContainerRef.current;
+    if (!container) return;
 
-      // Check if click is within the canvas container
-      const container = canvasContainerRef.current;
-      if (!container || !container.contains(e.target as Node)) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      // Only activate pan if Shift + Right-click (button 2) on the canvas container
+      if (!e.shiftKey || e.button !== 2) return;
+      if (!container.contains(e.target as Node)) return;
 
       e.preventDefault();
+      e.stopPropagation();
       isPanningRef.current = true;
       panStartXRef.current = e.clientX;
       panStartViewRef.current = { start: viewStartRef.current, end: viewEndRef.current };
@@ -617,9 +617,6 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!isPanningRef.current) return;
-
-      const container = canvasContainerRef.current;
-      if (!container) return;
 
       // Throttle to 30fps
       const now = Date.now();
@@ -651,18 +648,27 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     };
 
     const handleMouseUp = (e: MouseEvent) => {
-      if (e.button === 0 && isPanningRef.current) {
+      if (e.button === 2 && isPanningRef.current) {
         isPanningRef.current = false;
       }
     };
 
-    // Use window-level listeners so we don't block OrbitControls
-    window.addEventListener('mousedown', handleMouseDown);
+    // Prevent context menu when shift+right-clicking for pan
+    const handleContextMenu = (e: MouseEvent) => {
+      if (e.shiftKey) {
+        e.preventDefault();
+      }
+    };
+
+    // Use capture phase to intercept before OrbitControls
+    container.addEventListener('mousedown', handleMouseDown, { capture: true });
+    container.addEventListener('contextmenu', handleContextMenu);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
 
     return () => {
-      window.removeEventListener('mousedown', handleMouseDown);
+      container.removeEventListener('mousedown', handleMouseDown, { capture: true });
+      container.removeEventListener('contextmenu', handleContextMenu);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
@@ -1103,7 +1109,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
             "WASD: move - Q/E: up/down - Mouse: look - Shift: speed - ESC: exit"
           ) : (
             <>
-              3D: drag rotate - scroll zoom - Shift+drag: pan time - Shift+scroll: scale Y - Double-click: reset
+              3D: drag rotate - scroll zoom - Shift+right-drag: pan time - Shift+scroll: scale Y - Double-click: reset
               {hasMoreData && " - Scroll left for history"}
             </>
           )}
