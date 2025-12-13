@@ -137,7 +137,7 @@ export function WithdrawWidget() {
         <div className="mb-4 p-3 bg-black/30 rounded-lg">
           <div className="text-sm text-white/40 mb-1">Your Deposit Address</div>
           <div className="flex items-center gap-2">
-            <code className="flex-1 text-sm text-[#00ffa3] font-mono break-all">
+            <code className="flex-1 text-sm text-[#FF6B4A] font-mono break-all">
               {balance.walletAddress}
             </code>
             <button
@@ -160,7 +160,7 @@ export function WithdrawWidget() {
         <select
           value={selectedToken}
           onChange={(e) => setSelectedToken(e.target.value)}
-          className="w-full bg-black/30 text-white px-4 py-3 rounded-xl border border-white/10 outline-none focus:border-[#00ffa3]/50"
+          className="w-full bg-black/30 text-white px-4 py-3 rounded-xl border border-white/10 outline-none focus:border-[#FF6B4A]/50"
         >
           <option value={SOL_MINT}>SOL ({balance?.sol.uiBalance.toFixed(4) || 0})</option>
           {balance?.tokens.map((token) => (
@@ -183,7 +183,7 @@ export function WithdrawWidget() {
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.0"
-            className="flex-1 bg-black/30 text-white px-4 py-3 rounded-xl border border-white/10 outline-none focus:border-[#00ffa3]/50"
+            className="flex-1 bg-black/30 text-white px-4 py-3 rounded-xl border border-white/10 outline-none focus:border-[#FF6B4A]/50"
           />
           <button
             onClick={() => setAmount(getSelectedBalance().toString())}
@@ -204,7 +204,7 @@ export function WithdrawWidget() {
           value={destinationAddress}
           onChange={(e) => setDestinationAddress(e.target.value)}
           placeholder="Solana wallet address..."
-          className="w-full bg-black/30 text-white px-4 py-3 rounded-xl border border-white/10 outline-none focus:border-[#00ffa3]/50 font-mono text-sm"
+          className="w-full bg-black/30 text-white px-4 py-3 rounded-xl border border-white/10 outline-none focus:border-[#FF6B4A]/50 font-mono text-sm"
         />
       </div>
 
@@ -227,7 +227,7 @@ export function WithdrawWidget() {
         className={`w-full py-3 rounded-xl font-medium transition-colors ${
           !destinationAddress || !amount || withdrawing
             ? "bg-white/10 text-white/40 cursor-not-allowed"
-            : "bg-[#00ffa3] text-black hover:bg-[#00dd8a]"
+            : "bg-[#FF6B4A] text-white hover:bg-[#FF8F6B]"
         }`}
       >
         {withdrawing ? (
