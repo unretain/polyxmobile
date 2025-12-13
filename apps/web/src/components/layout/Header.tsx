@@ -377,7 +377,7 @@ export function Header() {
           <div className="relative w-full max-w-md border rounded-2xl shadow-2xl bg-[#0f0f0f] border-white/10">
             <div className="p-6 border-b border-white/10">
               <h2 className="text-xl font-bold flex items-center gap-2 text-white">
-                <Wallet className="h-5 w-5 text-[#00ffa3]" />
+                <Wallet className="h-5 w-5 text-[#FF6B4A]" />
                 Wallet
               </h2>
             </div>
@@ -415,7 +415,7 @@ export function Header() {
               <div className="p-4 rounded-xl border bg-white/5 border-white/10">
                 <p className="text-sm text-white/60 mb-2">Deposit Address</p>
                 <div className="flex items-center gap-2">
-                  <p className="font-mono text-xs break-all text-[#00ffa3] flex-1">
+                  <p className="font-mono text-xs break-all text-[#FF6B4A] flex-1">
                     {walletAddress}
                   </p>
                   <button
@@ -450,7 +450,7 @@ export function Header() {
                       value={withdrawAddress}
                       onChange={(e) => setWithdrawAddress(e.target.value)}
                       placeholder="Solana wallet address..."
-                      className="w-full bg-black/30 text-white px-3 py-2 rounded-lg border border-white/10 outline-none focus:border-[#00ffa3]/50 text-sm font-mono"
+                      className="w-full bg-black/30 text-white px-3 py-2 rounded-lg border border-white/10 outline-none focus:border-[#FF6B4A]/50 text-sm font-mono"
                     />
                   </div>
 
@@ -459,7 +459,7 @@ export function Header() {
                       <label>Amount (SOL)</label>
                       <button
                         onClick={() => setWithdrawAmount(balance?.sol.uiBalance.toString() || "0")}
-                        className="text-[#00ffa3] hover:underline"
+                        className="text-[#FF6B4A] hover:underline"
                       >
                         MAX
                       </button>
@@ -469,7 +469,7 @@ export function Header() {
                       value={withdrawAmount}
                       onChange={(e) => setWithdrawAmount(e.target.value)}
                       placeholder="0.0"
-                      className="w-full bg-black/30 text-white px-3 py-2 rounded-lg border border-white/10 outline-none focus:border-[#00ffa3]/50 text-sm"
+                      className="w-full bg-black/30 text-white px-3 py-2 rounded-lg border border-white/10 outline-none focus:border-[#FF6B4A]/50 text-sm"
                     />
                   </div>
 
@@ -486,7 +486,7 @@ export function Header() {
                     className={`w-full py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${
                       !withdrawAddress || !withdrawAmount || withdrawing
                         ? "bg-white/10 text-white/40 cursor-not-allowed"
-                        : "bg-[#00ffa3] text-black hover:bg-[#00dd8a]"
+                        : "bg-[#FF6B4A] text-white hover:bg-[#FF8F6B]"
                     }`}
                   >
                     {withdrawing ? (
