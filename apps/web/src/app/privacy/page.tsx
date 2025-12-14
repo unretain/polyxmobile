@@ -89,7 +89,7 @@ export default function PrivacyPolicyPage() {
               We do not sell your personal information. We may share your information with:
             </p>
             <ul className="list-disc list-inside text-white/70 space-y-2 ml-4">
-              <li><strong>Service Providers:</strong> Third parties that help us operate our Service (e.g., Stripe for payments, Resend for emails)</li>
+              <li><strong>Service Providers:</strong> Third parties that help us operate our Service</li>
               <li><strong>Analytics Partners:</strong> To help us understand usage patterns</li>
               <li><strong>Legal Requirements:</strong> When required by law or to protect our rights</li>
               <li><strong>Business Transfers:</strong> In connection with a merger, acquisition, or sale of assets</li>
@@ -102,8 +102,6 @@ export default function PrivacyPolicyPage() {
               Our Service integrates with third-party services that have their own privacy policies:
             </p>
             <ul className="list-disc list-inside text-white/70 space-y-2 ml-4">
-              <li><strong>Google OAuth:</strong> For authentication</li>
-              <li><strong>Stripe:</strong> For payment processing</li>
               <li><strong>Solana Blockchain:</strong> Public blockchain data</li>
               <li><strong>Birdeye/Moralis:</strong> For market data</li>
             </ul>
