@@ -13,8 +13,17 @@ import { useThemeStore } from "@/stores/themeStore";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
+// Token logo overrides - use local images for specific tokens
+const TOKEN_LOGO_OVERRIDES: Record<string, string> = {
+  "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn": "/pump-logo.jpg", // PUMP
+};
+
 // Convert IPFS URLs to use a more reliable gateway
-function getReliableImageUrl(url: string | null | undefined): string | null {
+function getReliableImageUrl(url: string | null | undefined, tokenAddress?: string): string | null {
+  // Check for token-specific override first
+  if (tokenAddress && TOKEN_LOGO_OVERRIDES[tokenAddress]) {
+    return TOKEN_LOGO_OVERRIDES[tokenAddress];
+  }
   if (!url) return null;
   // Replace ipfs.io with dweb.link which is more reliable
   if (url.includes("ipfs.io/ipfs/")) {
@@ -36,7 +45,7 @@ export function TokenCard({ token }: TokenCardProps) {
   const [imageError, setImageError] = useState(false);
   const cardRef = useRef<HTMLAnchorElement>(null);
   const isPositive = (token.priceChange24h ?? 0) >= 0;
-  const imageUrl = getReliableImageUrl(token.logoUri);
+  const imageUrl = getReliableImageUrl(token.logoUri, token.address);
 
   // Use IntersectionObserver to track visibility for WebGL context management
   useEffect(() => {
