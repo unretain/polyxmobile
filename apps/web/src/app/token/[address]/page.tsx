@@ -28,6 +28,19 @@ import { SwapWidget } from "@/components/trading";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const PUMP_FUN_SUPPLY = 1_000_000_000;
 
+// Token logo overrides - use local images for specific tokens
+const TOKEN_LOGO_OVERRIDES: Record<string, string> = {
+  "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn": "/pump-logo.jpg", // PUMP
+};
+
+// Get token logo URL with overrides
+function getTokenLogoUrl(logoUri: string | undefined, tokenAddress: string): string | null {
+  if (TOKEN_LOGO_OVERRIDES[tokenAddress]) {
+    return TOKEN_LOGO_OVERRIDES[tokenAddress];
+  }
+  return logoUri || null;
+}
+
 // ============================================================================
 // BIRDEYE API CONFIGS (for Dashboard tokens like ETH, SOL, etc.)
 // Birdeye intervals: "1m" | "5m" | "15m" | "1h" | "4h" | "1d"
@@ -661,10 +674,10 @@ export default function TokenPage() {
             <div className={`relative h-12 w-12 overflow-hidden rounded-full ring-2 ${
               isDark ? 'bg-white/5 ring-white/10' : 'bg-black/5 ring-black/10'
             }`}>
-              {token?.logoUri ? (
+              {getTokenLogoUrl(token?.logoUri, address) ? (
                 <Image
-                  src={token.logoUri}
-                  alt={token.symbol}
+                  src={getTokenLogoUrl(token?.logoUri, address)!}
+                  alt={token?.symbol || "Token"}
                   fill
                   className="object-cover"
                   unoptimized
