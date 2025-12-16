@@ -639,43 +639,93 @@ export function AuthModal({ isOpen, onClose, mode: initialMode = "signin" }: Aut
     setError("");
     setIsSubmitting(true);
 
-    const phantom = (window as unknown as { phantom?: { solana?: { connect: () => Promise<{ publicKey: { toString: () => string } }> } } }).phantom?.solana;
+    console.log("=== PHANTOM CONNECT DEBUG ===");
+    console.log("window.phantom:", (window as unknown as { phantom?: unknown }).phantom);
+    console.log("window.solana:", (window as unknown as { solana?: unknown }).solana);
 
-    if (phantom) {
-      try {
-        const response = await phantom.connect();
+    try {
+      // Check for Phantom wallet - it can be at window.phantom.solana or window.solana with isPhantom
+      const getPhantomProvider = () => {
+        console.log("Checking for Phantom provider...");
+
+        if ("phantom" in window) {
+          console.log("Found window.phantom");
+          const phantom = (window as unknown as { phantom?: { solana?: { isPhantom?: boolean; connect: () => Promise<{ publicKey: { toString: () => string } }> } } }).phantom;
+          console.log("phantom.solana:", phantom?.solana);
+          console.log("phantom.solana.isPhantom:", phantom?.solana?.isPhantom);
+          if (phantom?.solana?.isPhantom) {
+            console.log("Using window.phantom.solana provider");
+            return phantom.solana;
+          }
+        }
+
+        // Also check window.solana for older Phantom versions
+        if ("solana" in window) {
+          console.log("Found window.solana");
+          const solana = (window as unknown as { solana?: { isPhantom?: boolean; connect: () => Promise<{ publicKey: { toString: () => string } }> } }).solana;
+          console.log("solana.isPhantom:", solana?.isPhantom);
+          if (solana?.isPhantom) {
+            console.log("Using window.solana provider");
+            return solana;
+          }
+        }
+
+        console.log("No Phantom provider found");
+        return null;
+      };
+
+      const provider = getPhantomProvider();
+      console.log("Provider result:", provider);
+
+      if (provider) {
+        console.log("Calling provider.connect()...");
+        // Request connection to Phantom wallet
+        const response = await provider.connect();
+        console.log("Connect response:", response);
         const phantomPublicKey = response.publicKey.toString();
+        console.log("Public key:", phantomPublicKey);
 
         // For Phantom, we'll use a special email format and sign in directly
         // The backend handles wallet generation
         const phantomEmail = `${phantomPublicKey.slice(0, 8)}@phantom`;
+        console.log("Phantom email:", phantomEmail);
 
+        console.log("Calling signIn with credentials...");
         const result = await signIn("credentials", {
           email: phantomEmail,
           password: phantomPublicKey, // Use public key as password for Phantom users
           redirect: false,
         });
+        console.log("SignIn result:", result);
 
         if (result?.error) {
-          setError("Failed to connect wallet");
+          console.error("SignIn error:", result.error);
+          setError("Failed to connect wallet. Please try again.");
           setIsSubmitting(false);
           return;
         }
 
+        console.log("Success! Redirecting...");
         handleSuccess();
-      } catch (err: unknown) {
-        const error = err as { code?: number };
-        if (error.code === 4001) {
-          setError("Connection rejected by user");
-        } else {
-          setError("Failed to connect Phantom wallet");
-        }
+      } else {
+        // Phantom not detected - open their website
+        console.log("Opening Phantom website...");
+        window.open("https://phantom.app/", "_blank");
+        setError("Phantom wallet not detected. Please install it and refresh the page.");
       }
-    } else {
-      window.open("https://phantom.app/", "_blank");
-      setError("Phantom wallet not installed. Please install it first.");
+    } catch (err: unknown) {
+      console.error("Phantom connect caught error:", err);
+      const error = err as { code?: number; message?: string };
+      if (error.code === 4001) {
+        setError("Connection rejected. Please approve the connection in Phantom.");
+      } else {
+        setError(error.message || "Failed to connect Phantom wallet. Please try again.");
+      }
+    } finally {
+      // Always reset submitting state, even on errors
+      console.log("Resetting isSubmitting to false");
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   }
 
   // ==================== RENDER CONTENT ====================

@@ -1,9 +1,10 @@
 "use client";
 
-import { Suspense, useState, useEffect, useRef } from "react";
+import { Suspense, useState, useEffect } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { Copy, Check, Code, ExternalLink, Zap, Box, Palette, Settings, ChevronRight, Sun, Moon, Play, Pause, Sparkles, Building, Crown, X, Loader2 } from "lucide-react";
+import { Copy, Check, Code, Zap, Box, Palette, Settings, ChevronRight, Play, Pause, Sparkles, Building, Crown } from "lucide-react";
+import { Header } from "@/components/layout/Header";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useThemeStore } from "@/stores/themeStore";
@@ -134,7 +135,7 @@ function ApiEndpoint({ method, path, description, params, isDark }: {
 }
 
 function SolutionsPageContent() {
-  const { isDark, toggleTheme } = useThemeStore();
+  const { isDark } = useThemeStore();
   const searchParams = useSearchParams();
   const router = useRouter();
   const { data: session, status: sessionStatus } = useSession();
@@ -151,13 +152,9 @@ function SolutionsPageContent() {
   // Subscription state
   const [userPlan, setUserPlan] = useState<"FREE" | "PRO" | "BUSINESS">("FREE");
 
-  // Checkout modal state
-  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
-  const [checkoutPlan, setCheckoutPlan] = useState<"PRO" | "BUSINESS" | null>(null);
-  const [checkoutEmail, setCheckoutEmail] = useState("");
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
-  const [checkoutError, setCheckoutError] = useState("");
+  // Checkout state
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+
 
   // Check user's subscription status
   useEffect(() => {
@@ -181,7 +178,7 @@ function SolutionsPageContent() {
       window.history.replaceState({}, "", "/solutions");
     }
     if (searchParams.get("canceled") === "true") {
-      setCheckoutError("Checkout was canceled. You can try again anytime.");
+      // Checkout was canceled - just clear the URL params
       window.history.replaceState({}, "", "/solutions");
     }
   }, [searchParams]);
@@ -193,11 +190,8 @@ function SolutionsPageContent() {
       return; // Don't do anything while session is loading
     }
 
-    // If user is logged in, skip email modal and go directly to Stripe
+    // If user is logged in, go directly to Stripe
     if (sessionStatus === "authenticated" && session?.user?.email) {
-      setCheckoutLoading(true);
-      setCheckoutError("");
-
       try {
         const response = await fetch("/api/checkout", {
           method: "POST",
@@ -218,7 +212,6 @@ function SolutionsPageContent() {
         if (data.upgraded) {
           setShowSuccessMessage(true);
           setUserPlan(plan);
-          setCheckoutLoading(false);
           return;
         }
 
@@ -230,50 +223,17 @@ function SolutionsPageContent() {
           throw new Error("No checkout URL returned");
         }
       } catch (err) {
-        setCheckoutError(err instanceof Error ? err.message : "Something went wrong");
-        setCheckoutLoading(false);
+        console.error("Checkout error:", err);
+        alert(err instanceof Error ? err.message : "Something went wrong");
       }
       return;
     }
 
-    // Not logged in - show email modal
-    setCheckoutPlan(plan);
-    setShowCheckoutModal(true);
-    setCheckoutError("");
-  };
-
-  const submitCheckout = async () => {
-    if (!checkoutEmail || !checkoutPlan) return;
-
-    setCheckoutLoading(true);
-    setCheckoutError("");
-
-    try {
-      const response = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          plan: checkoutPlan,
-          email: checkoutEmail,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to create checkout session");
-      }
-
-      // Redirect to Stripe checkout
-      if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
-      } else {
-        throw new Error("No checkout URL returned");
-      }
-    } catch (err) {
-      setCheckoutError(err instanceof Error ? err.message : "Something went wrong");
-      setCheckoutLoading(false);
-    }
+    // Not logged in - redirect to landing page to sign in
+    const url = new URL("/", window.location.origin);
+    url.searchParams.set("redirect", "/solutions");
+    url.searchParams.set("plan", plan);
+    router.push(url.toString());
   };
 
   // Fetch candles for demo - refetch when token OR timeframe changes
@@ -332,51 +292,7 @@ function SolutionsPageContent() {
   return (
     <div className={`min-h-screen transition-colors duration-300 ${isDark ? 'bg-[#0a0a0a] text-white' : 'bg-[#f5f5f5] text-black'}`}>
       {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center relative">
-          <Link href="/" className={`flex items-center px-4 py-2 rounded-full border backdrop-blur-sm ${
-            isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
-          }`}>
-            <span className={`font-medium text-sm ${isDark ? 'text-white' : 'text-black'}`}>[poly<span className="text-[#FF6B4A]">x</span>]</span>
-          </Link>
-
-          <nav className={`absolute left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1.5 rounded-full border backdrop-blur-sm ${
-            isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
-          }`}>
-            <Link href="/pulse" className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              isDark ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-black/60 hover:text-black hover:bg-black/10'
-            }`}>
-              Pulse
-            </Link>
-            <Link href="/dashboard" className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              isDark ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-black/60 hover:text-black hover:bg-black/10'
-            }`}>
-              Dashboard
-            </Link>
-            <Link href="/solutions" className={`px-4 py-1.5 rounded-full text-sm font-medium bg-[#FF6B4A] text-white`}>
-              Solutions
-            </Link>
-            <Link href="/markets" className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              isDark ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-black/60 hover:text-black hover:bg-black/10'
-            }`}>
-              Markets
-            </Link>
-          </nav>
-
-          <div className="flex items-center gap-2 ml-auto">
-            <button
-              onClick={toggleTheme}
-              className={`p-2.5 rounded-full border backdrop-blur-md transition-colors ${
-                isDark
-                  ? 'bg-white/5 border-white/10 hover:bg-white/10 text-white/60 hover:text-white'
-                  : 'bg-black/5 border-black/10 hover:bg-black/10 text-black/60 hover:text-black'
-              }`}
-            >
-              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
-          </div>
-        </div>
-      </header>
+      <Header />
 
       {/* Hero Section */}
       <section className="pt-32 pb-16 px-6">
@@ -481,7 +397,7 @@ function SolutionsPageContent() {
               </div>
 
               {/* Pro Plan */}
-              <div className={`relative p-6 border-2 border-[#FF6B4A] transition-all hover:scale-[1.02] ${
+              <div data-plan="pro" className={`relative p-6 border-2 border-[#FF6B4A] transition-all hover:scale-[1.02] ${
                 isDark ? 'bg-[#FF6B4A]/5' : 'bg-[#FF6B4A]/5'
               }`}>
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
@@ -643,7 +559,7 @@ function SolutionsPageContent() {
                     {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                   </button>
                 </div>
-                <div style={{ height: `${Math.min(Math.max(parseInt(embedHeight) || 500, 200), 800)}px` }}>
+                <div className="relative" style={{ height: `${Math.min(Math.max(parseInt(embedHeight) || 500, 200), 800)}px` }}>
                   {candles.length > 0 ? (
                     <Chart3D
                       data={candles}
@@ -657,6 +573,40 @@ function SolutionsPageContent() {
                       <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#FF6B4A] border-t-transparent" />
                     </div>
                   )}
+                  {/* Watermark overlay */}
+                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                    <div className={`text-4xl font-bold tracking-wider ${embedTheme === 'dark' ? 'text-white/10' : 'text-black/10'}`}>
+                      [polyx]
+                    </div>
+                  </div>
+                </div>
+                {/* Want no watermark button */}
+                <div className={`px-4 py-3 border-t flex items-center justify-center ${embedTheme === 'dark' ? 'border-white/10' : 'border-black/10'}`}>
+                  <button
+                    onClick={() => {
+                      const proCard = document.getElementById('pricing');
+                      if (proCard) {
+                        proCard.scrollIntoView({ behavior: 'smooth' });
+                        // Highlight effect
+                        setTimeout(() => {
+                          const proPlanEl = document.querySelector('[data-plan="pro"]');
+                          if (proPlanEl) {
+                            proPlanEl.classList.add('ring-2', 'ring-[#FF6B4A]', 'ring-offset-2', 'ring-offset-[#0a0a0a]');
+                            setTimeout(() => {
+                              proPlanEl.classList.remove('ring-2', 'ring-[#FF6B4A]', 'ring-offset-2', 'ring-offset-[#0a0a0a]');
+                            }, 2000);
+                          }
+                        }, 500);
+                      }
+                    }}
+                    className={`text-sm font-medium transition-colors ${
+                      embedTheme === 'dark'
+                        ? 'text-white/50 hover:text-[#FF6B4A]'
+                        : 'text-black/50 hover:text-[#FF6B4A]'
+                    }`}
+                  >
+                    Want no watermark? <span className="text-[#FF6B4A]">Upgrade to Pro →</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -699,22 +649,32 @@ function SolutionsPageContent() {
                 {/* Timeframe */}
                 <div>
                   <label className={`text-sm mb-2 block ${isDark ? 'text-white/60' : 'text-gray-600'}`}>Timeframe</label>
-                  <select
-                    value={embedTimeframe}
-                    onChange={(e) => setEmbedTimeframe(e.target.value)}
-                    className={`w-full py-2 px-3 text-sm border ${
-                      isDark
-                        ? 'bg-white/5 border-white/10 text-white'
-                        : 'bg-black/5 border-black/10 text-black'
-                    }`}
-                  >
-                    <option value="1m">1 minute</option>
-                    <option value="5m">5 minutes</option>
-                    <option value="15m">15 minutes</option>
-                    <option value="1h">1 hour</option>
-                    <option value="4h">4 hours</option>
-                    <option value="1d">1 day</option>
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={embedTimeframe}
+                      onChange={(e) => setEmbedTimeframe(e.target.value)}
+                      className={`w-full py-2.5 px-3 pr-10 text-sm border rounded-lg appearance-none cursor-pointer transition-all focus:outline-none focus:ring-2 focus:ring-[#FF6B4A]/50 ${
+                        isDark
+                          ? 'bg-white/5 border-white/10 text-white hover:bg-white/10 hover:border-white/20'
+                          : 'bg-black/5 border-black/10 text-black hover:bg-black/10 hover:border-black/20'
+                      }`}
+                      style={{
+                        backgroundImage: 'none'
+                      }}
+                    >
+                      <option value="1m" className={isDark ? 'bg-[#1a1a1a] text-white' : 'bg-white text-black'}>1 minute</option>
+                      <option value="5m" className={isDark ? 'bg-[#1a1a1a] text-white' : 'bg-white text-black'}>5 minutes</option>
+                      <option value="15m" className={isDark ? 'bg-[#1a1a1a] text-white' : 'bg-white text-black'}>15 minutes</option>
+                      <option value="1h" className={isDark ? 'bg-[#1a1a1a] text-white' : 'bg-white text-black'}>1 hour</option>
+                      <option value="4h" className={isDark ? 'bg-[#1a1a1a] text-white' : 'bg-white text-black'}>4 hours</option>
+                      <option value="1d" className={isDark ? 'bg-[#1a1a1a] text-white' : 'bg-white text-black'}>1 day</option>
+                    </select>
+                    <div className={`absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${isDark ? 'text-white/40' : 'text-black/40'}`}>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Dimensions */}
@@ -943,87 +903,6 @@ function SolutionsPageContent() {
         </div>
       )}
 
-      {/* Checkout Modal */}
-      {showCheckoutModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className={`max-w-md w-full p-6 ${
-            isDark ? 'bg-[#0a0a0a] border border-white/10' : 'bg-white border border-black/10'
-          }`}>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold">
-                Subscribe to {checkoutPlan === "PRO" ? "Pro" : "Business"}
-              </h2>
-              <button
-                onClick={() => {
-                  setShowCheckoutModal(false);
-                  setCheckoutEmail("");
-                  setCheckoutError("");
-                }}
-                className={`p-2 transition-colors ${
-                  isDark ? 'hover:bg-white/10' : 'hover:bg-black/10'
-                }`}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className={`p-4 mb-6 ${
-              isDark ? 'bg-white/5 border border-white/10' : 'bg-black/5 border border-black/10'
-            }`}>
-              <div className="flex items-center justify-between">
-                <span className={isDark ? 'text-white/60' : 'text-gray-600'}>Plan</span>
-                <span className="font-bold">{checkoutPlan === "PRO" ? "Pro" : "Business"}</span>
-              </div>
-              <div className="flex items-center justify-between mt-2">
-                <span className={isDark ? 'text-white/60' : 'text-gray-600'}>Price</span>
-                <span className="font-bold">${checkoutPlan === "PRO" ? "29" : "99"}/month</span>
-              </div>
-            </div>
-
-            <div className="mb-6">
-              <label className={`text-sm mb-2 block ${isDark ? 'text-white/60' : 'text-gray-600'}`}>
-                Email Address
-              </label>
-              <input
-                type="email"
-                value={checkoutEmail}
-                onChange={(e) => setCheckoutEmail(e.target.value)}
-                placeholder="you@company.com"
-                className={`w-full py-3 px-4 text-sm border ${
-                  isDark
-                    ? 'bg-white/5 border-white/10 text-white placeholder:text-white/30'
-                    : 'bg-black/5 border-black/10 text-black placeholder:text-black/30'
-                }`}
-              />
-            </div>
-
-            {checkoutError && (
-              <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
-                {checkoutError}
-              </div>
-            )}
-
-            <button
-              onClick={submitCheckout}
-              disabled={!checkoutEmail || checkoutLoading}
-              className="w-full py-3 font-medium bg-[#FF6B4A] text-white hover:bg-[#FF5A36] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {checkoutLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                "Continue to Payment"
-              )}
-            </button>
-
-            <p className={`text-xs text-center mt-4 ${isDark ? 'text-white/40' : 'text-gray-400'}`}>
-              Secure payment powered by Stripe. Cancel anytime.
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
