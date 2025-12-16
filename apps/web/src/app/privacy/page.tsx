@@ -1,24 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import { Header } from "@/components/layout/Header";
+import { useThemeStore } from "@/stores/themeStore";
 
 export default function PrivacyPolicyPage() {
-  return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
-      {/* Header */}
-      <header className="border-b border-white/10 bg-[#0a0a0a]/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <span className="text-xl font-bold tracking-tight">
-              [poly<span className="text-[#FF6B4A]">x</span>]
-            </span>
-          </Link>
-        </div>
-      </header>
+  const { isDark } = useThemeStore();
 
-      <main className="max-w-4xl mx-auto px-6 py-12">
+  return (
+    <div className={`min-h-screen ${isDark ? 'bg-[#0a0a0a] text-white' : 'bg-[#f5f5f5] text-black'}`}>
+      {/* Header */}
+      <Header />
+
+      <main className="max-w-4xl mx-auto px-6 py-12 pt-32">
         <h1 className="text-3xl font-bold mb-2">Privacy Policy</h1>
-        <p className="text-white/40 text-sm mb-8">Last updated: December 14, 2024</p>
+        <p className={`text-sm mb-8 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Last updated: December 14, 2024</p>
 
         <div className="prose prose-invert max-w-none space-y-8">
           <section>

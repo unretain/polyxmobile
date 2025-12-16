@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { LogOut, User, Shield, Copy, Check, Key, ChevronDown, Sun, Moon, CreditCard, Wallet, Loader2, ExternalLink, ArrowUpRight } from "lucide-react";
+import { useRouter, usePathname } from "next/navigation";
+import { LogOut, User, Shield, Copy, Check, Key, ChevronDown, Sun, Moon, CreditCard, Wallet, Loader2, ExternalLink, ArrowUpRight, Mail } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 import { useAuthStore } from "@/stores/authStore";
 import { useThemeStore } from "@/stores/themeStore";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { shortenAddress } from "@/lib/wallet";
+import { AuthModal } from "@/components/auth/AuthModal";
 
 // Extended session user type with our custom fields
 interface SessionUser {
@@ -35,8 +36,12 @@ interface BalanceResponse {
   }>;
 }
 
+// Routes that require authentication
+const protectedRoutes = ["/dashboard", "/pulse", "/markets", "/token"];
+
 export function Header() {
   const router = useRouter();
+  const pathname = usePathname();
   const { data: session, status } = useSession();
   const { logout } = useAuthStore();
   const { isDark, toggleTheme } = useThemeStore();
@@ -54,11 +59,54 @@ export function Header() {
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
   const [withdrawSuccess, setWithdrawSuccess] = useState<string | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [pendingRedirect, setPendingRedirect] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const currentUser = session?.user as SessionUser | undefined;
   const walletAddress = currentUser?.walletAddress;
   const twoFactorEnabled = currentUser?.twoFactorEnabled;
+  const isAuthenticated = status === "authenticated";
+
+  // Check if a route is protected
+  const isProtectedRoute = (path: string) => {
+    return protectedRoutes.some(
+      (route) => path === route || path.startsWith(`${route}/`)
+    );
+  };
+
+  // Check if current path matches
+  const isActive = (path: string) => pathname === path;
+
+  // Handle nav link click - show auth modal for protected routes if not authenticated
+  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, path: string) => {
+    if (isProtectedRoute(path) && !isAuthenticated) {
+      e.preventDefault();
+      setPendingRedirect(path);
+      setAuthMode("signin");
+      setIsAuthModalOpen(true);
+    }
+  };
+
+  // Handle successful auth - redirect to pending route
+  const handleAuthClose = () => {
+    setIsAuthModalOpen(false);
+    // If user successfully authenticated and there's a pending redirect, navigate there
+    if (isAuthenticated && pendingRedirect) {
+      router.push(pendingRedirect);
+      setPendingRedirect(null);
+    }
+  };
+
+  // Watch for auth state changes to handle redirect after login
+  useEffect(() => {
+    if (isAuthenticated && pendingRedirect) {
+      router.push(pendingRedirect);
+      setPendingRedirect(null);
+      setIsAuthModalOpen(false);
+    }
+  }, [isAuthenticated, pendingRedirect, router]);
 
   // Fetch balance
   const fetchBalance = useCallback(async () => {
@@ -179,41 +227,48 @@ export function Header() {
     }
   };
 
+  const openAuthModal = (mode: "signin" | "signup") => {
+    setAuthMode(mode);
+    setIsAuthModalOpen(true);
+  };
+
   return (
     <>
-      <header className="fixed top-0 left-0 right-0 z-50 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex items-center relative">
+      <header className="fixed top-0 left-0 right-0 z-50 px-6 md:px-10 lg:px-16 py-5">
+        <div className="max-w-[1600px] mx-auto flex items-center relative">
           {/* Left - Logo */}
-          <Link href="/" className={`flex items-center px-4 py-2 rounded-full border backdrop-blur-md transition-colors ${
-            isDark
-              ? 'bg-white/5 border-white/10 hover:bg-white/10'
-              : 'bg-black/5 border-black/10 hover:bg-black/10'
+          <Link href="/" className={`flex items-center px-4 py-2 rounded-full border backdrop-blur-sm ${
+            isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
           }`}>
             <span className={`font-medium text-sm ${isDark ? 'text-white' : 'text-black'}`}>[poly<span className="text-[#FF6B4A]">x</span>]</span>
           </Link>
 
-          {/* Center - Navigation */}
-          <nav className={`absolute left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1.5 rounded-full border backdrop-blur-md ${
-            isDark
-              ? 'bg-white/5 border-white/10'
-              : 'bg-black/5 border-black/10'
+          {/* Center - Navigation (absolutely positioned to stay centered) */}
+          <nav className={`absolute left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1.5 rounded-full border backdrop-blur-sm ${
+            isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
           }`}>
             <Link
               href="/pulse"
+              onClick={(e) => handleNavClick(e, "/pulse")}
               className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                isDark
-                  ? 'text-white/60 hover:text-white hover:bg-white/10'
-                  : 'text-black/60 hover:text-black hover:bg-black/10'
+                isActive('/pulse')
+                  ? 'bg-[#FF6B4A] text-white'
+                  : isDark
+                    ? 'text-white/60 hover:text-white hover:bg-white/10'
+                    : 'text-black/60 hover:text-black hover:bg-black/10'
               }`}
             >
               Pulse
             </Link>
             <Link
               href="/dashboard"
+              onClick={(e) => handleNavClick(e, "/dashboard")}
               className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                isDark
-                  ? 'text-white/60 hover:text-white hover:bg-white/10'
-                  : 'text-black/60 hover:text-black hover:bg-black/10'
+                isActive('/dashboard')
+                  ? 'bg-[#FF6B4A] text-white'
+                  : isDark
+                    ? 'text-white/60 hover:text-white hover:bg-white/10'
+                    : 'text-black/60 hover:text-black hover:bg-black/10'
               }`}
             >
               Dashboard
@@ -221,26 +276,31 @@ export function Header() {
             <Link
               href="/solutions"
               className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                isDark
-                  ? 'text-white/60 hover:text-white hover:bg-white/10'
-                  : 'text-black/60 hover:text-black hover:bg-black/10'
+                isActive('/solutions')
+                  ? 'bg-[#FF6B4A] text-white'
+                  : isDark
+                    ? 'text-white/60 hover:text-white hover:bg-white/10'
+                    : 'text-black/60 hover:text-black hover:bg-black/10'
               }`}
             >
               Solutions
             </Link>
             <Link
               href="/markets"
+              onClick={(e) => handleNavClick(e, "/markets")}
               className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                isDark
-                  ? 'text-white/60 hover:text-white hover:bg-white/10'
-                  : 'text-black/60 hover:text-black hover:bg-black/10'
+                isActive('/markets')
+                  ? 'bg-[#FF6B4A] text-white'
+                  : isDark
+                    ? 'text-white/60 hover:text-white hover:bg-white/10'
+                    : 'text-black/60 hover:text-black hover:bg-black/10'
               }`}
             >
               Markets
             </Link>
           </nav>
 
-          {/* Right - Wallet & User Menu */}
+          {/* Right - Actions (ml-auto pushes to right) */}
           <div className="flex items-center gap-2 ml-auto">
             {/* Theme Toggle */}
             <button
@@ -255,120 +315,144 @@ export function Header() {
               {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
 
-            {/* Wallet Balance - clickable to open wallet modal */}
-            {walletAddress && (
-              <button
-                onClick={handleOpenWallet}
-                className={`flex items-center gap-2 rounded-full border backdrop-blur-md px-3 py-2 text-sm font-medium transition-colors ${
-                  isDark
-                    ? 'bg-white/5 border-white/10 hover:bg-white/10'
-                    : 'bg-black/5 border-black/10 hover:bg-black/10'
-                }`}
-                title="Open wallet"
-              >
-                <Image
-                  src="/solana-logo.png"
-                  alt="Solana"
-                  width={20}
-                  height={20}
-                  className="rounded-full"
-                />
-                <span className={`font-medium ${isDark ? 'text-white' : 'text-black'}`}>
-                  {balance ? balance.sol.uiBalance.toFixed(4) : "0.00"}
-                </span>
-                <span className={isDark ? 'text-white/40' : 'text-black/40'}>SOL</span>
-                <div className={`w-px h-4 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
-                <span className={isDark ? 'text-white/60' : 'text-black/60'}>{shortenAddress(walletAddress)}</span>
-                <Wallet className={`h-3 w-3 ${isDark ? 'text-white/40' : 'text-black/40'}`} />
-              </button>
-            )}
+            {/* Show wallet and user menu when logged in */}
+            {currentUser ? (
+              <>
+                {/* Wallet Balance - clickable to open wallet modal */}
+                {walletAddress && (
+                  <button
+                    onClick={handleOpenWallet}
+                    className={`flex items-center gap-2 rounded-full border backdrop-blur-md px-3 py-2 text-sm font-medium transition-colors ${
+                      isDark
+                        ? 'bg-white/5 border-white/10 hover:bg-white/10'
+                        : 'bg-black/5 border-black/10 hover:bg-black/10'
+                    }`}
+                    title="Open wallet"
+                  >
+                    <Image
+                      src="/solana-logo.png"
+                      alt="Solana"
+                      width={20}
+                      height={20}
+                      className="rounded-full"
+                    />
+                    <span className={`font-medium ${isDark ? 'text-white' : 'text-black'}`}>
+                      {balance ? balance.sol.uiBalance.toFixed(4) : "0.00"}
+                    </span>
+                    <span className={isDark ? 'text-white/40' : 'text-black/40'}>SOL</span>
+                    <div className={`w-px h-4 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+                    <span className={isDark ? 'text-white/60' : 'text-black/60'}>{shortenAddress(walletAddress)}</span>
+                    <Wallet className={`h-3 w-3 ${isDark ? 'text-white/40' : 'text-black/40'}`} />
+                  </button>
+                )}
 
-            {/* User Account Dropdown */}
-            {currentUser && (
-              <div className="relative" ref={dropdownRef}>
+                {/* User Account Dropdown */}
+                <div className="relative" ref={dropdownRef}>
+                  <button
+                    onClick={() => setShowDropdown(!showDropdown)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-full border backdrop-blur-md transition-colors ${
+                      isDark
+                        ? 'bg-white/5 border-white/10 hover:bg-white/10'
+                        : 'bg-black/5 border-black/10 hover:bg-black/10'
+                    }`}
+                  >
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#FF6B4A] to-[#FF8F6B] flex items-center justify-center">
+                      <User className="h-4 w-4 text-white" />
+                    </div>
+                    {twoFactorEnabled && (
+                      <Shield className="h-3 w-3 text-green-500" />
+                    )}
+                    <ChevronDown className={`h-4 w-4 transition-transform ${isDark ? 'text-white/40' : 'text-black/40'} ${showDropdown ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {showDropdown && (
+                    <div className={`absolute right-0 top-full mt-2 w-56 rounded-xl border backdrop-blur-md shadow-xl overflow-hidden ${
+                      isDark ? 'bg-[#1a1a1a]/95 border-white/10' : 'bg-white/95 border-black/10'
+                    }`}>
+                      {/* User Info */}
+                      <div className={`px-4 py-3 border-b ${isDark ? 'border-white/10' : 'border-black/10'}`}>
+                        <p className={`text-sm font-medium truncate ${isDark ? 'text-white' : 'text-black'}`}>{currentUser.name || currentUser.email}</p>
+                        {walletAddress && (
+                          <p className={`text-xs mt-1 ${isDark ? 'text-white/40' : 'text-black/40'}`}>{shortenAddress(walletAddress)}</p>
+                        )}
+                      </div>
+
+                      {/* Menu Items */}
+                      <div className="py-1">
+                        <button
+                          onClick={handleOpenWallet}
+                          className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                            isDark ? 'text-white/70 hover:text-white hover:bg-white/5' : 'text-black/70 hover:text-black hover:bg-black/5'
+                          }`}
+                        >
+                          <Wallet className="h-4 w-4" />
+                          Wallet
+                        </button>
+                        <Link
+                          href="/dashboard/license"
+                          onClick={() => setShowDropdown(false)}
+                          className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                            isDark ? 'text-white/70 hover:text-white hover:bg-white/5' : 'text-black/70 hover:text-black hover:bg-black/5'
+                          }`}
+                        >
+                          <CreditCard className="h-4 w-4" />
+                          License & Billing
+                        </Link>
+                        <button
+                          onClick={handleOpenSecurity}
+                          className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                            isDark ? 'text-white/70 hover:text-white hover:bg-white/5' : 'text-black/70 hover:text-black hover:bg-black/5'
+                          }`}
+                        >
+                          <Key className="h-4 w-4" />
+                          Security
+                        </button>
+                        <button
+                          onClick={handleLogout}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+                        >
+                          <LogOut className="h-4 w-4" />
+                          Sign Out
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Login/Signup buttons when not logged in */}
                 <button
-                  onClick={() => setShowDropdown(!showDropdown)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-full border backdrop-blur-md transition-colors ${
+                  onClick={() => openAuthModal("signin")}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full border text-sm transition-all ${
                     isDark
-                      ? 'bg-white/5 border-white/10 hover:bg-white/10'
-                      : 'bg-black/5 border-black/10 hover:bg-black/10'
+                      ? 'bg-white/5 border-white/10 text-white hover:bg-white/10'
+                      : 'bg-black/5 border-black/10 text-black hover:bg-black/10'
                   }`}
                 >
-                  <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#FF6B4A] to-[#FF8F6B] flex items-center justify-center">
-                    <User className="h-4 w-4 text-white" />
-                  </div>
-                  {twoFactorEnabled && (
-                    <Shield className="h-3 w-3 text-green-500" />
-                  )}
-                  <ChevronDown className={`h-4 w-4 transition-transform ${isDark ? 'text-white/40' : 'text-black/40'} ${showDropdown ? 'rotate-180' : ''}`} />
+                  <Mail className="w-4 h-4" />
+                  <span>Log In</span>
                 </button>
-
-                {/* Dropdown Menu */}
-                {showDropdown && (
-                  <div className={`absolute right-0 top-full mt-2 w-56 rounded-xl border backdrop-blur-md shadow-xl overflow-hidden ${
-                    isDark
-                      ? 'bg-[#111]/95 border-white/10'
-                      : 'bg-white/95 border-black/10'
-                  }`}>
-                    {/* User Info */}
-                    <div className={`px-4 py-3 border-b ${isDark ? 'border-white/10' : 'border-black/10'}`}>
-                      <p className={`text-sm font-medium truncate ${isDark ? 'text-white' : 'text-black'}`}>{currentUser.name || currentUser.email}</p>
-                      {walletAddress && (
-                        <p className={`text-xs mt-1 ${isDark ? 'text-white/40' : 'text-black/40'}`}>{shortenAddress(walletAddress)}</p>
-                      )}
-                    </div>
-
-                    {/* Menu Items */}
-                    <div className="py-1">
-                      <button
-                        onClick={handleOpenWallet}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
-                          isDark
-                            ? 'text-white/70 hover:text-white hover:bg-white/5'
-                            : 'text-black/70 hover:text-black hover:bg-black/5'
-                        }`}
-                      >
-                        <Wallet className="h-4 w-4" />
-                        Wallet
-                      </button>
-                      <Link
-                        href="/dashboard/license"
-                        onClick={() => setShowDropdown(false)}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
-                          isDark
-                            ? 'text-white/70 hover:text-white hover:bg-white/5'
-                            : 'text-black/70 hover:text-black hover:bg-black/5'
-                        }`}
-                      >
-                        <CreditCard className="h-4 w-4" />
-                        License & Billing
-                      </Link>
-                      <button
-                        onClick={handleOpenSecurity}
-                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
-                          isDark
-                            ? 'text-white/70 hover:text-white hover:bg-white/5'
-                            : 'text-black/70 hover:text-black hover:bg-black/5'
-                        }`}
-                      >
-                        <Key className="h-4 w-4" />
-                        Security
-                      </button>
-                      <button
-                        onClick={handleLogout}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
-                      >
-                        <LogOut className="h-4 w-4" />
-                        Sign Out
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
+                <button
+                  onClick={() => openAuthModal("signup")}
+                  className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all bg-[#FF6B4A] text-white hover:bg-[#FF5A36]"
+                >
+                  <Wallet className="w-4 h-4" />
+                  <span>Sign Up</span>
+                </button>
+              </>
             )}
           </div>
         </div>
       </header>
+
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={handleAuthClose}
+        mode={authMode}
+      />
 
       {/* Wallet Modal */}
       {showWalletModal && (
