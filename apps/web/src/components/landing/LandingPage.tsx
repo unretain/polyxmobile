@@ -2,12 +2,15 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { ChevronRight, ExternalLink, Minus, TrendingUp, MoveHorizontal, MoveVertical, Pencil, Trash2, MousePointer2 } from "lucide-react";
 import type { DrawingToolbarRenderProps } from "@/components/charts/Chart3D";
 import { Header } from "@/components/layout/Header";
 import { useThemeStore } from "@/stores/themeStore";
+import { useSession } from "next-auth/react";
+import { AuthModal } from "@/components/auth/AuthModal";
 
 // Dynamic import for Chart3D
 const Chart3D = dynamic(
@@ -251,13 +254,27 @@ function XIcon({ className }: { className?: string }) {
 
 export function LandingPage() {
   const { isDark } = useThemeStore();
+  const router = useRouter();
+  const { status } = useSession();
+  const isAuthenticated = status === "authenticated";
   const [tokenIndex, setTokenIndex] = useState(0);
   const [tokenPrice, setTokenPrice] = useState<number | null>(null);
   const [candles, setCandles] = useState<OHLCVCandle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [timeframe, setTimeframe] = useState<Timeframe>("1m");
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   const currentToken = FEATURED_TOKENS[tokenIndex];
+
+  // Handle Launch App click
+  const handleLaunchApp = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (isAuthenticated) {
+      router.push("/pulse");
+    } else {
+      setIsAuthModalOpen(true);
+    }
+  };
 
   // Navigate to previous token
   const goToPrevToken = () => {
@@ -440,8 +457,8 @@ export function LandingPage() {
                   </div>
                 </div>
 
-                <Link
-                  href="/dashboard"
+                <button
+                  onClick={handleLaunchApp}
                   className={`flex items-center justify-between w-full px-5 py-4 rounded-xl border transition-colors ${
                     isDark
                       ? 'bg-white/5 border-white/10 hover:bg-white/10'
@@ -450,7 +467,7 @@ export function LandingPage() {
                 >
                   <span className="font-medium">Launch App</span>
                   <span className={`text-sm ${isDark ? 'text-white/40' : 'text-black/40'}`}>Enter</span>
-                </Link>
+                </button>
               </div>
             </div>
 
@@ -599,9 +616,9 @@ export function LandingPage() {
             {/* Right: 3 cards under chart - Ready to trade spans 2 cols, docs and trade markets each 1 col */}
             <div className="grid grid-cols-4 gap-4">
               {/* Ready to trade Card - Coral accent with line draw animation - spans 2 columns */}
-              <Link
-                href="/dashboard"
-                className="group col-span-2 rounded-2xl bg-[#FF6B4A] py-6 px-5 hover:scale-[1.02] transition-all relative overflow-hidden"
+              <button
+                onClick={handleLaunchApp}
+                className="group col-span-2 rounded-2xl bg-[#FF6B4A] py-6 px-5 hover:scale-[1.02] transition-all relative overflow-hidden text-left"
               >
                 <div className="relative flex flex-col justify-between h-full">
                   <div className="text-lg font-bold text-white">Ready to trade?</div>
@@ -615,7 +632,7 @@ export function LandingPage() {
                     <div className="h-[2px] w-0 group-hover:w-20 bg-black transition-all duration-500 ease-out ml-2" />
                   </div>
                 </div>
-              </Link>
+              </button>
 
               {/* Docs Card with iOS cylinder rotation */}
               <Link
@@ -702,13 +719,13 @@ export function LandingPage() {
               <span>{currentToken.symbol}:</span>
               <span className={isDark ? 'text-white/60' : 'text-black/60'}>${tokenPrice?.toFixed(2) || "..."}</span>
             </span>
-            <a href="#" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Support</a>
-            <a href="#" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Founders</a>
+            <a href="mailto:omniscient@extraficial.dev" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Support</a>
+            <a href="https://x.com/unretains" target="_blank" rel="noopener noreferrer" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Founders</a>
           </div>
 
           <div className={`flex items-center gap-4 text-sm ${isDark ? 'text-white/40' : 'text-black/40'}`}>
-            <a href="#" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Privacy Policy</a>
-            <a href="#" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Terms of Service</a>
+            <Link href="/privacy" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Privacy Policy</Link>
+            <Link href="/tos" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Terms of Service</Link>
             <a href="https://x.com/polyx" target="_blank" rel="noopener noreferrer" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>
               𝕏
             </a>
@@ -721,6 +738,12 @@ export function LandingPage() {
         </div>
       </footer>
 
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        mode="signin"
+      />
     </div>
   );
 }

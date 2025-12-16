@@ -14,7 +14,7 @@ export default function TermsOfServicePage() {
 
       <main className="max-w-4xl mx-auto px-6 py-12 pt-32">
         <h1 className="text-3xl font-bold mb-2">Terms of Service</h1>
-        <p className={`text-sm mb-8 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Last updated: December 14, 2024</p>
+        <p className={`text-sm mb-8 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Last updated: December 14, 2025</p>
 
         <div className="prose prose-invert max-w-none space-y-8">
           <section>
