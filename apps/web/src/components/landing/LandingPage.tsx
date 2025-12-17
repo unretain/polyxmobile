@@ -715,7 +715,6 @@ export function LandingPage() {
         <div className="max-w-[1600px] mx-auto flex items-center justify-between">
           <div className={`flex items-center gap-4 text-sm ${isDark ? 'text-white/40' : 'text-black/40'}`}>
             <span className="flex items-center gap-1">
-              <span className={isDark ? 'text-white/20' : 'text-black/20'}>≡</span>
               <span>{currentToken.symbol}:</span>
               <span className={isDark ? 'text-white/60' : 'text-black/60'}>${tokenPrice?.toFixed(2) || "..."}</span>
             </span>
@@ -726,14 +725,6 @@ export function LandingPage() {
           <div className={`flex items-center gap-4 text-sm ${isDark ? 'text-white/40' : 'text-black/40'}`}>
             <Link href="/privacy" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Privacy Policy</Link>
             <Link href="/tos" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Terms of Service</Link>
-            <a href="https://x.com/polyx" target="_blank" rel="noopener noreferrer" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>
-              𝕏
-            </a>
-            <a href="https://t.me" target="_blank" rel="noopener noreferrer" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-              </svg>
-            </a>
           </div>
         </div>
       </footer>
