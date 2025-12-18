@@ -47,8 +47,8 @@ export async function GET(req: NextRequest) {
     // Format SOL balance
     const solUiBalance = solBalance / 1e9; // Convert lamports to SOL
 
-    // Format token balances
-    const tokens = tokenAccounts
+    // Format token balances (before prices)
+    const tokensWithBalance = tokenAccounts
       .filter((t) => Number(t.balance) > 0) // Only tokens with balance
       .map((t) => ({
         mint: t.mint,
@@ -57,6 +57,26 @@ export async function GET(req: NextRequest) {
         decimals: t.decimals,
       }));
 
+    // Get prices for SOL and all tokens with balance
+    const mintsToPrice = [SOL_MINT, ...tokensWithBalance.map((t) => t.mint)];
+    const prices = await jupiter.getTokenPrices(mintsToPrice);
+    const solPriceUsd = prices.get(SOL_MINT) || null;
+
+    // Calculate token values with prices
+    const tokens = tokensWithBalance.map((t) => {
+      const priceUsd = prices.get(t.mint) || null;
+      return {
+        ...t,
+        priceUsd,
+        valueUsd: priceUsd ? t.uiBalance * priceUsd : null,
+      };
+    });
+
+    // Calculate total value
+    const solValueUsd = solPriceUsd ? solUiBalance * solPriceUsd : null;
+    const tokensValueUsd = tokens.reduce((sum, t) => sum + (t.valueUsd || 0), 0);
+    const totalValueUsd = solValueUsd !== null ? solValueUsd + tokensValueUsd : null;
+
     return NextResponse.json({
       walletAddress: user.walletAddress,
       sol: {
@@ -64,8 +84,11 @@ export async function GET(req: NextRequest) {
         balance: solBalance.toString(),
         uiBalance: solUiBalance,
         decimals: 9,
+        priceUsd: solPriceUsd,
+        valueUsd: solValueUsd,
       },
       tokens,
+      totalValueUsd,
     });
   } catch (error) {
     console.error("Balance error:", error);

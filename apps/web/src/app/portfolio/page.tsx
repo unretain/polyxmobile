@@ -70,13 +70,18 @@ interface BalanceResponse {
     balance: string;
     uiBalance: number;
     decimals: number;
+    priceUsd: number | null;
+    valueUsd: number | null;
   };
   tokens: Array<{
     mint: string;
     balance: string;
     uiBalance: number;
     decimals: number;
+    priceUsd: number | null;
+    valueUsd: number | null;
   }>;
+  totalValueUsd: number | null;
 }
 
 type ViewMode = "chart" | "calendar";
@@ -92,7 +97,6 @@ export default function PortfolioPage() {
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [balanceLoading, setBalanceLoading] = useState(true);
-  const [solPrice, setSolPrice] = useState<number | null>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>("chart");
   const [period, setPeriod] = useState<Period>("30d");
@@ -150,24 +154,10 @@ export default function PortfolioPage() {
     }
   };
 
-  // Fetch SOL price
-  const fetchSolPrice = async () => {
-    try {
-      const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd");
-      if (res.ok) {
-        const data = await res.json();
-        setSolPrice(data.solana?.usd || null);
-      }
-    } catch (err) {
-      console.error("Failed to fetch SOL price:", err);
-    }
-  };
-
   useEffect(() => {
     if (status === "authenticated") {
       fetchPnL();
       fetchBalance();
-      fetchSolPrice();
     }
   }, [status, period, viewMode, calendarYear, calendarMonth]);
 
@@ -178,14 +168,8 @@ export default function PortfolioPage() {
     return max || 1;
   }, [pnlData]);
 
-  // Calculate total portfolio value in USD
-  const totalPortfolioValueUsd = useMemo(() => {
-    if (!balance || !solPrice) return null;
-    // SOL balance in USD
-    const solValueUsd = balance.sol.uiBalance * solPrice;
-    // For now, just return SOL value (token values would need price lookups)
-    return solValueUsd;
-  }, [balance, solPrice]);
+  // Total portfolio value from balance API (includes SOL + all tokens)
+  const totalPortfolioValueUsd = balance?.totalValueUsd ?? null;
 
   // Filter positions
   const filteredPositions = useMemo(() => {
@@ -295,7 +279,8 @@ export default function PortfolioPage() {
                   : balanceLoading ? "..." : "$0.00"}
               </p>
               <p className={`text-sm mt-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
-                {balance?.sol.uiBalance.toFixed(4) || "0"} SOL {solPrice ? `@ $${solPrice.toFixed(2)}` : ""}
+                {balance?.sol.uiBalance.toFixed(4) || "0"} SOL {balance?.sol.priceUsd ? `@ $${balance.sol.priceUsd.toFixed(2)}` : ""}
+                {balance?.tokens && balance.tokens.length > 0 && ` + ${balance.tokens.length} token${balance.tokens.length > 1 ? 's' : ''}`}
               </p>
             </div>
             <div className="flex flex-wrap gap-6">
@@ -650,6 +635,11 @@ export default function PortfolioPage() {
                     <p className={`font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                       {token.uiBalance.toLocaleString(undefined, { maximumFractionDigits: 4 })}
                     </p>
+                    {token.valueUsd !== null && (
+                      <p className={`text-sm ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
+                        ${token.valueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}
