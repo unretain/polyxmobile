@@ -92,6 +92,7 @@ export default function PortfolioPage() {
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [balanceLoading, setBalanceLoading] = useState(true);
+  const [solPrice, setSolPrice] = useState<number | null>(null);
 
   const [viewMode, setViewMode] = useState<ViewMode>("chart");
   const [period, setPeriod] = useState<Period>("30d");
@@ -149,10 +150,24 @@ export default function PortfolioPage() {
     }
   };
 
+  // Fetch SOL price
+  const fetchSolPrice = async () => {
+    try {
+      const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd");
+      if (res.ok) {
+        const data = await res.json();
+        setSolPrice(data.solana?.usd || null);
+      }
+    } catch (err) {
+      console.error("Failed to fetch SOL price:", err);
+    }
+  };
+
   useEffect(() => {
     if (status === "authenticated") {
       fetchPnL();
       fetchBalance();
+      fetchSolPrice();
     }
   }, [status, period, viewMode, calendarYear, calendarMonth]);
 
@@ -162,6 +177,15 @@ export default function PortfolioPage() {
     const max = Math.max(...pnlData.dailyPnL.map(d => Math.abs(d.pnl)));
     return max || 1;
   }, [pnlData]);
+
+  // Calculate total portfolio value in USD
+  const totalPortfolioValueUsd = useMemo(() => {
+    if (!balance || !solPrice) return null;
+    // SOL balance in USD
+    const solValueUsd = balance.sol.uiBalance * solPrice;
+    // For now, just return SOL value (token values would need price lookups)
+    return solValueUsd;
+  }, [balance, solPrice]);
 
   // Filter positions
   const filteredPositions = useMemo(() => {
@@ -260,52 +284,48 @@ export default function PortfolioPage() {
           </div>
         </div>
 
-        {/* Total PnL Banner */}
-        {pnlData && (
-          <div className={`mb-6 p-6 rounded-xl border ${isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200'}`}>
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        {/* Total Portfolio Value Banner */}
+        <div className={`mb-6 p-6 rounded-xl border ${isDark ? 'bg-gradient-to-r from-[#FF6B4A]/10 to-transparent border-white/10' : 'bg-gradient-to-r from-[#FF6B4A]/5 to-transparent border-gray-200'}`}>
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <p className={`text-sm ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Total Portfolio Value</p>
+              <p className={`text-4xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                {totalPortfolioValueUsd !== null
+                  ? `$${totalPortfolioValueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : balanceLoading ? "..." : "$0.00"}
+              </p>
+              <p className={`text-sm mt-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
+                {balance?.sol.uiBalance.toFixed(4) || "0"} SOL {solPrice ? `@ $${solPrice.toFixed(2)}` : ""}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-6">
               <div>
-                <p className={`text-sm ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Total Realized PnL</p>
-                <p className={`text-3xl font-bold ${getPnLColor(pnlData.summary.totalRealizedPnl, isDark)}`}>
-                  {formatPnL(pnlData.summary.totalRealizedPnl)}
+                <p className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Realized PnL</p>
+                <p className={`text-lg font-semibold ${pnlData ? getPnLColor(pnlData.summary.totalRealizedPnl, isDark) : (isDark ? 'text-white' : 'text-gray-900')}`}>
+                  {pnlData ? formatPnL(pnlData.summary.totalRealizedPnl) : "0 SOL"}
                 </p>
-                {/* Progress bar */}
-                <div className="mt-2 h-1.5 w-full max-w-md rounded-full overflow-hidden bg-white/10">
-                  <div
-                    className={`h-full ${pnlData.summary.totalRealizedPnl >= 0 ? 'bg-green-500' : 'bg-red-500'}`}
-                    style={{ width: `${Math.min(Math.abs(pnlData.summary.totalRealizedPnl) * 10, 100)}%` }}
-                  />
-                </div>
               </div>
-              <div className="flex flex-wrap gap-6">
-                <div>
-                  <p className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Volume</p>
-                  <p className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {formatSOL(pnlData.summary.totalVolume)} SOL
-                  </p>
-                </div>
-                <div>
-                  <p className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Trades</p>
-                  <p className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {pnlData.summary.totalTrades}
-                  </p>
-                </div>
-                <div>
-                  <p className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Win Rate</p>
-                  <p className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {(pnlData.summary.winRate * 100).toFixed(0)}%
-                  </p>
-                </div>
-                <div>
-                  <p className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>SOL Balance</p>
-                  <p className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {balanceLoading ? "..." : `${balance?.sol.uiBalance.toFixed(4) || "0"}`}
-                  </p>
-                </div>
+              <div>
+                <p className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Volume</p>
+                <p className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {pnlData ? `${formatSOL(pnlData.summary.totalVolume)} SOL` : "0 SOL"}
+                </p>
+              </div>
+              <div>
+                <p className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Trades</p>
+                <p className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {pnlData?.summary.totalTrades || 0}
+                </p>
+              </div>
+              <div>
+                <p className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Win Rate</p>
+                <p className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  {pnlData ? `${(pnlData.summary.winRate * 100).toFixed(0)}%` : "0%"}
+                </p>
               </div>
             </div>
           </div>
-        )}
+        </div>
 
         {/* PnL Chart/Calendar Section */}
         <div className={`mb-6 rounded-xl border overflow-hidden ${isDark ? 'bg-[#111] border-white/10' : 'bg-white border-gray-200'}`}>
