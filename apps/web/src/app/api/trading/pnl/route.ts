@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
     const trades = await prisma.trade.findMany({
       where: {
         userId: session.user.id,
-        status: TradeStatus.CONFIRMED,
+        status: TradeStatus.SUCCESS,
         confirmedAt: {
           gte: startDate,
           lte: endDate,
