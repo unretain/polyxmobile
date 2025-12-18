@@ -102,7 +102,22 @@ export function SwapWidget({
       setError(null);
 
       try {
-        if (!isGraduated) {
+        // Try Jupiter first for graduated tokens, or always try Jupiter
+        const res = await fetch(
+          `/api/trading/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${rawAmount}&slippage=${slippage}`
+        );
+        const data = await res.json();
+
+        if (res.ok) {
+          // Jupiter worked - use it
+          setQuote({ ...data, source: "jupiter" });
+          setTradingSource("jupiter");
+          return;
+        }
+
+        // Jupiter failed - try pump.fun for non-graduated tokens
+        if (!isGraduated || data.error?.includes("TOKEN_NOT_TRADABLE") || data.error?.includes("No route found")) {
+          console.log("[SwapWidget] Jupiter failed, trying pump.fun...");
           try {
             const pumpRes = await fetch(
               `/api/trading/pump-quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${rawAmount}&slippage=${slippage}`
@@ -113,54 +128,27 @@ export function SwapWidget({
               setTradingSource("pumpfun");
               return;
             }
-            if (pumpData.code !== "NOT_ON_CURVE") {
-              throw new Error(pumpData.error || "Failed to get pump.fun quote");
+            // Pump.fun also failed - show appropriate error
+            if (pumpData.code === "NOT_ON_CURVE") {
+              // Token graduated but Jupiter can't find route - likely no liquidity
+              throw new Error("No trading route available. Token may have low liquidity.");
             }
+            throw new Error(pumpData.error || "Failed to get quote");
           } catch (pumpErr) {
-            const msg = pumpErr instanceof Error ? pumpErr.message : "";
-            if (!msg.includes("NOT_ON_CURVE") && !msg.includes("not on pump.fun")) {
-              console.log("Pump.fun quote failed, trying Jupiter:", pumpErr);
+            if (pumpErr instanceof Error && !pumpErr.message.includes("NOT_ON_CURVE")) {
+              throw pumpErr;
             }
+            // Both failed - show Jupiter's original error
+            throw new Error(data.error || "Failed to get quote");
           }
         }
 
-        const res = await fetch(
-          `/api/trading/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${rawAmount}&slippage=${slippage}`
-        );
-        const data = await res.json();
-
-        if (!res.ok) {
-          let errorMsg = data.error || "Failed to get quote";
-          if (errorMsg.includes("TOKEN_NOT_TRADABLE") || errorMsg.includes("not tradable")) {
-            console.log("[SwapWidget] Jupiter TOKEN_NOT_TRADABLE, trying pump.fun...");
-            try {
-              const pumpRes = await fetch(
-                `/api/trading/pump-quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${rawAmount}&slippage=${slippage}`
-              );
-              const pumpData = await pumpRes.json();
-              console.log("[SwapWidget] Pump.fun response:", pumpRes.status, pumpData);
-              if (pumpRes.ok) {
-                setQuote({ ...pumpData, source: "pumpfun" });
-                setTradingSource("pumpfun");
-                return;
-              }
-              if (pumpData.error) {
-                errorMsg = pumpData.error;
-              }
-            } catch (pumpErr) {
-              console.error("[SwapWidget] Pump.fun fallback error:", pumpErr);
-            }
-            if (errorMsg.includes("TOKEN_NOT_TRADABLE")) {
-              errorMsg = "This token cannot be traded yet. It may still be on the bonding curve.";
-            }
-          } else if (errorMsg.includes("Unauthorized") || errorMsg.includes("401")) {
-            errorMsg = "RPC connection error. Please try again later.";
-          }
-          throw new Error(errorMsg);
+        // Jupiter failed with other error
+        let errorMsg = data.error || "Failed to get quote";
+        if (errorMsg.includes("Unauthorized") || errorMsg.includes("401")) {
+          errorMsg = "RPC connection error. Please try again later.";
         }
-
-        setQuote({ ...data, source: "jupiter" });
-        setTradingSource("jupiter");
+        throw new Error(errorMsg);
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "Quote failed";
         if (!errorMsg.includes("No route found")) {
