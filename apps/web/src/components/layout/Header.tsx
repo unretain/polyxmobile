@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
-import { LogOut, User, Shield, Copy, Check, Key, ChevronDown, Sun, Moon, CreditCard, Wallet, Loader2, ExternalLink, ArrowUpRight, Mail } from "lucide-react";
+import { LogOut, User, Shield, Copy, Check, Key, ChevronDown, Sun, Moon, CreditCard, Wallet, Loader2, ExternalLink, ArrowUpRight, Mail, PieChart } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 import { useAuthStore } from "@/stores/authStore";
 import { useThemeStore } from "@/stores/themeStore";
@@ -588,18 +588,28 @@ export function Header() {
                 </div>
               </div>
 
-              {/* View on Explorer */}
-              {walletAddress && (
-                <a
-                  href={`https://solscan.io/account/${walletAddress}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 text-sm text-white/40 hover:text-white transition-colors"
+              {/* Portfolio & Explorer Links */}
+              <div className="flex flex-col gap-2">
+                <Link
+                  href="/portfolio"
+                  onClick={() => setShowWalletModal(false)}
+                  className="flex items-center justify-center gap-2 text-sm py-2.5 rounded-lg transition-colors bg-[#FF6B4A] hover:bg-[#FF8F6B] text-white font-medium"
                 >
-                  <ExternalLink className="h-4 w-4" />
-                  View on Solscan
-                </a>
-              )}
+                  <PieChart className="h-4 w-4" />
+                  View Portfolio
+                </Link>
+                {walletAddress && (
+                  <a
+                    href={`https://solscan.io/account/${walletAddress}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-2 text-sm text-white/40 hover:text-white transition-colors"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    View on Solscan
+                  </a>
+                )}
+              </div>
             </div>
 
             <div className="p-6 border-t border-white/10">
