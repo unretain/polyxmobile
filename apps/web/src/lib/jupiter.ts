@@ -542,6 +542,60 @@ export class JupiterService {
   }
 
   /**
+   * Get token prices in USD from Jupiter Price API
+   * @param mints Array of token mint addresses
+   * @returns Map of mint address to price in USD
+   */
+  async getTokenPrices(mints: string[]): Promise<Map<string, number>> {
+    const prices = new Map<string, number>();
+
+    if (mints.length === 0) {
+      return prices;
+    }
+
+    try {
+      // Jupiter Price API v2
+      const url = new URL("https://api.jup.ag/price/v2");
+      url.searchParams.set("ids", mints.join(","));
+      url.searchParams.set("showExtraInfo", "false");
+
+      console.log(`[JupiterService] Fetching prices for ${mints.length} tokens`);
+
+      const response = await fetch(url.toString(), {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "PumpLab/1.0",
+        },
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (!response.ok) {
+        console.error(`[JupiterService] Price API error: ${response.status}`);
+        return prices;
+      }
+
+      const data = await response.json();
+
+      // data.data is a map of mint -> { id, type, price }
+      if (data.data) {
+        for (const [mint, info] of Object.entries(data.data)) {
+          const priceInfo = info as { price?: string };
+          if (priceInfo.price) {
+            prices.set(mint, parseFloat(priceInfo.price));
+          }
+        }
+      }
+
+      console.log(`[JupiterService] Got prices for ${prices.size}/${mints.length} tokens`);
+      return prices;
+    } catch (error) {
+      console.error("[JupiterService] Failed to fetch token prices:", error);
+      return prices;
+    }
+  }
+
+  /**
    * Get the connection instance
    */
   getConnection(): Connection {
