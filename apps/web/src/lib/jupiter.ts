@@ -1,21 +1,38 @@
-import { Connection, VersionedTransaction, Keypair } from "@solana/web3.js";
+import {
+  Connection,
+  VersionedTransaction,
+  Keypair,
+  TransactionMessage,
+  AddressLookupTableAccount,
+  SystemProgram,
+  PublicKey,
+  LAMPORTS_PER_SOL,
+} from "@solana/web3.js";
+import bs58 from "bs58";
 import { config } from "./config";
 
 // Jupiter API endpoints - try multiple if one fails
-// Note: quote-api.jup.ag has DNS issues on some hosts (like Railway)
-// public.jupiterapi.com is a reliable fallback hosted by QuickNode
 const JUPITER_ENDPOINTS = [
-  "https://public.jupiterapi.com",  // QuickNode public endpoint (most reliable)
-  "https://quote-api.jup.ag/v6",     // Official Jupiter endpoint
+  "https://lite-api.jup.ag/swap/v1", // Latest Jupiter lite API
+  "https://public.jupiterapi.com", // QuickNode public endpoint
+  "https://quote-api.jup.ag/v6", // Official Jupiter endpoint (legacy)
+];
+
+// Helius Sender endpoint for ultra-fast transaction landing
+// No API key needed, no credits consumed
+const HELIUS_SENDER_ENDPOINT = "https://sender.helius-rpc.com/fast";
+
+// Jito tip accounts for MEV protection
+const JITO_TIP_ACCOUNTS = [
+  "4ACfpUFoaSD9bfPdeu6DBt89gB6ENTeHBXCAi87NhDEE",
+  "D2L6yPZ2FmmmTKPgzaMKdhu6EWZcTpLy1Vhx8uvZe7NZ",
+  "9bnz4RShgq1hAnLnZbP8kbgBg1kEmcJBYQq3gQbmnSta",
+  "5VY91ws6B2hMmBFRsXkoAAdsPHBJwRfBht4DXox3xkwn",
+  "2nyhqdwKcJZR2vcqCyrYsaPVdAnFoJjiksCXJ7hfEYgD",
 ];
 
 // Current endpoint to use (will fallback on failure)
 let currentEndpointIndex = 0;
-
-// Platform fee - disabled for now (requires referral program setup with Jupiter)
-// To enable: Apply at https://referral.jup.ag/ and get a referral account
-// const PLATFORM_FEE_WALLET = "E1KexcKsZb5Pkz7Uy2tEVqKvWjAq9XbyaUBddsuxePNt";
-// const PLATFORM_FEE_BPS = 100; // 1% fee
 
 // Common token mints
 export const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -64,18 +81,95 @@ export interface SwapResult {
 
 export class JupiterService {
   private connection: Connection;
-  private sendConnection: Connection; // Separate connection for sending transactions
+  private heliusApiKey: string | null;
 
   constructor() {
     const rpcUrl = config.solanaRpcUrl || "https://api.mainnet-beta.solana.com";
     console.log("[JupiterService] Initializing with RPC:", rpcUrl.substring(0, 40) + "...");
     this.connection = new Connection(rpcUrl, "confirmed");
 
-    // Use a separate RPC for sending transactions (Helius free tier may not support sendTransaction)
-    // Fall back to public RPC if no dedicated send RPC is configured
-    const sendRpcUrl = process.env.SOLANA_SEND_RPC_URL || "https://api.mainnet-beta.solana.com";
-    console.log("[JupiterService] Send RPC:", sendRpcUrl.substring(0, 40) + "...");
-    this.sendConnection = new Connection(sendRpcUrl, "confirmed");
+    // Extract Helius API key from RPC URL if present
+    this.heliusApiKey = this.extractHeliusApiKey(rpcUrl);
+    if (this.heliusApiKey) {
+      console.log("[JupiterService] Helius API key detected");
+    }
+  }
+
+  private extractHeliusApiKey(rpcUrl: string): string | null {
+    const match = rpcUrl.match(/api-key=([a-f0-9-]+)/i);
+    return match ? match[1] : null;
+  }
+
+  /**
+   * Get Helius RPC URL with API key
+   */
+  private getHeliusRpcUrl(): string {
+    if (this.heliusApiKey) {
+      return `https://mainnet.helius-rpc.com/?api-key=${this.heliusApiKey}`;
+    }
+    // Fallback to configured RPC or public
+    return config.solanaRpcUrl || "https://api.mainnet-beta.solana.com";
+  }
+
+  /**
+   * Get dynamic Jito tip amount based on recent landed tips
+   */
+  private async getDynamicTipAmount(): Promise<number> {
+    try {
+      const response = await fetch("https://bundles.jito.wtf/api/v1/bundles/tip_floor", {
+        signal: AbortSignal.timeout(5000),
+      });
+      const data = await response.json();
+
+      if (data && data[0] && typeof data[0].landed_tips_75th_percentile === "number") {
+        const tip75th = data[0].landed_tips_75th_percentile;
+        // Use 75th percentile but minimum 0.0002 SOL, max 0.001 SOL
+        return Math.max(Math.min(tip75th, 0.001 * LAMPORTS_PER_SOL), 0.0002 * LAMPORTS_PER_SOL);
+      }
+      return 0.0002 * LAMPORTS_PER_SOL; // Default minimum tip
+    } catch (error) {
+      console.warn("[JupiterService] Failed to get dynamic tip, using default:", error);
+      return 0.0002 * LAMPORTS_PER_SOL;
+    }
+  }
+
+  /**
+   * Get priority fee estimate from Helius
+   */
+  private async getPriorityFeeEstimate(transaction: VersionedTransaction): Promise<number> {
+    if (!this.heliusApiKey) {
+      return 50000; // Default 50k microLamports if no Helius
+    }
+
+    try {
+      const serializedTx = bs58.encode(transaction.serialize());
+      const response = await fetch(this.getHeliusRpcUrl(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "priority-fee",
+          method: "getPriorityFeeEstimate",
+          params: [
+            {
+              transaction: serializedTx,
+              options: { recommended: true },
+            },
+          ],
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+
+      const data = await response.json();
+      if (data.result?.priorityFeeEstimate) {
+        console.log("[JupiterService] Priority fee estimate:", data.result.priorityFeeEstimate);
+        return data.result.priorityFeeEstimate;
+      }
+    } catch (error) {
+      console.warn("[JupiterService] Failed to get priority fee estimate:", error);
+    }
+
+    return 50000; // Default fallback
   }
 
   /**
@@ -89,45 +183,41 @@ export class JupiterService {
       const endpointIndex = (currentEndpointIndex + i) % JUPITER_ENDPOINTS.length;
       const baseUrl = JUPITER_ENDPOINTS[endpointIndex];
 
-      const url = new URL(`${baseUrl}/quote`);
+      // Use /quote for lite API, append /quote for others
+      const quoteUrl = baseUrl.includes("lite-api") ? `${baseUrl}/quote` : `${baseUrl}/quote`;
+
+      const url = new URL(quoteUrl);
       url.searchParams.set("inputMint", params.inputMint);
       url.searchParams.set("outputMint", params.outputMint);
       url.searchParams.set("amount", params.amount);
       url.searchParams.set("slippageBps", (params.slippageBps || 50).toString());
       url.searchParams.set("onlyDirectRoutes", "false");
-      url.searchParams.set("asLegacyTransaction", "false");
 
       console.log(`[JUPITER] Trying endpoint ${endpointIndex + 1}/${JUPITER_ENDPOINTS.length}: ${baseUrl}`);
-      console.log(`[JUPITER] Fetching quote from: ${url.toString().substring(0, 120)}...`);
       const startTime = Date.now();
 
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout per endpoint
-
         const response = await fetch(url.toString(), {
           method: "GET",
           headers: {
-            "Accept": "application/json",
+            Accept: "application/json",
             "User-Agent": "PumpLab/1.0",
           },
-          signal: controller.signal,
+          signal: AbortSignal.timeout(15000),
         });
 
-        clearTimeout(timeout);
         console.log(`[JUPITER] Response status: ${response.status} in ${Date.now() - startTime}ms`);
 
         if (!response.ok) {
           const error = await response.text();
           console.error(`[JUPITER] Error response: ${error}`);
           errors.push(`Endpoint ${endpointIndex + 1}: ${response.status} - ${error}`);
-          continue; // Try next endpoint
+          continue;
         }
 
         const data = await response.json();
         console.log(`[JUPITER] Quote received: outAmount=${data.outAmount}`);
 
-        // Remember which endpoint worked
         currentEndpointIndex = endpointIndex;
         return data;
       } catch (error) {
@@ -135,22 +225,16 @@ export class JupiterService {
         console.error(`[JUPITER] Fetch error after ${duration}ms:`, error);
 
         if (error instanceof Error) {
-          if (error.name === "AbortError") {
-            errors.push(`Endpoint ${endpointIndex + 1}: timeout after ${duration}ms`);
-          } else {
-            errors.push(`Endpoint ${endpointIndex + 1}: ${error.message}`);
-          }
+          errors.push(`Endpoint ${endpointIndex + 1}: ${error.message}`);
         }
-        // Continue to try next endpoint
       }
     }
 
-    // All endpoints failed
     throw new Error(`All Jupiter endpoints failed:\n${errors.join("\n")}`);
   }
 
   /**
-   * Get the swap transaction from Jupiter with endpoint fallback
+   * Get the swap transaction from Jupiter with optimized priority fees
    */
   async getSwapTransaction(
     quoteResponse: JupiterQuote,
@@ -158,22 +242,20 @@ export class JupiterService {
   ): Promise<VersionedTransaction> {
     const errors: string[] = [];
 
-    // Try each endpoint until one works
     for (let i = 0; i < JUPITER_ENDPOINTS.length; i++) {
       const endpointIndex = (currentEndpointIndex + i) % JUPITER_ENDPOINTS.length;
       const baseUrl = JUPITER_ENDPOINTS[endpointIndex];
 
+      const swapUrl = baseUrl.includes("lite-api") ? `${baseUrl}/swap` : `${baseUrl}/swap`;
+
       console.log(`[JUPITER] Trying swap endpoint ${endpointIndex + 1}/${JUPITER_ENDPOINTS.length}: ${baseUrl}`);
 
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 15000);
-
-        const response = await fetch(`${baseUrl}/swap`, {
+        const response = await fetch(swapUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Accept": "application/json",
+            Accept: "application/json",
             "User-Agent": "PumpLab/1.0",
           },
           body: JSON.stringify({
@@ -181,12 +263,16 @@ export class JupiterService {
             userPublicKey,
             wrapAndUnwrapSol: true,
             dynamicComputeUnitLimit: true,
-            prioritizationFeeLamports: "auto",
+            // Use Jupiter's built-in priority fee with veryHigh level
+            prioritizationFeeLamports: {
+              priorityLevelWithMaxLamports: {
+                maxLamports: 1000000, // Max 0.001 SOL for priority
+                priorityLevel: "veryHigh",
+              },
+            },
           }),
-          signal: controller.signal,
+          signal: AbortSignal.timeout(15000),
         });
-
-        clearTimeout(timeout);
 
         if (!response.ok) {
           const error = await response.text();
@@ -198,16 +284,11 @@ export class JupiterService {
         const { swapTransaction } = await response.json();
         const txBuffer = Buffer.from(swapTransaction, "base64");
 
-        // Remember which endpoint worked
         currentEndpointIndex = endpointIndex;
         return VersionedTransaction.deserialize(txBuffer);
       } catch (error) {
         if (error instanceof Error) {
-          if (error.name === "AbortError") {
-            errors.push(`Endpoint ${endpointIndex + 1}: timeout`);
-          } else {
-            errors.push(`Endpoint ${endpointIndex + 1}: ${error.message}`);
-          }
+          errors.push(`Endpoint ${endpointIndex + 1}: ${error.message}`);
         }
       }
     }
@@ -216,7 +297,59 @@ export class JupiterService {
   }
 
   /**
-   * Sign and execute a swap transaction
+   * Add Jito tip to transaction for better landing rate
+   */
+  private async addJitoTip(
+    transaction: VersionedTransaction,
+    signer: Keypair
+  ): Promise<VersionedTransaction> {
+    try {
+      // Get ALT accounts to decompile the transaction
+      const altAccountResponses = await Promise.all(
+        transaction.message.addressTableLookups.map((l) =>
+          this.connection.getAddressLookupTable(l.accountKey)
+        )
+      );
+
+      const altAccounts: AddressLookupTableAccount[] = altAccountResponses
+        .filter((item) => item.value !== null)
+        .map((item) => item.value!);
+
+      // Decompile the message
+      const decompiledMessage = TransactionMessage.decompile(transaction.message, {
+        addressLookupTableAccounts: altAccounts,
+      });
+
+      // Get dynamic tip amount
+      const tipAmount = await this.getDynamicTipAmount();
+      console.log(`[JupiterService] Adding Jito tip: ${tipAmount / LAMPORTS_PER_SOL} SOL`);
+
+      // Add tip instruction to random Jito account
+      const tipAccount = JITO_TIP_ACCOUNTS[Math.floor(Math.random() * JITO_TIP_ACCOUNTS.length)];
+      const tipIx = SystemProgram.transfer({
+        fromPubkey: signer.publicKey,
+        toPubkey: new PublicKey(tipAccount),
+        lamports: tipAmount,
+      });
+
+      decompiledMessage.instructions.push(tipIx);
+
+      // Recompile and sign
+      const newTransaction = new VersionedTransaction(
+        decompiledMessage.compileToV0Message(altAccounts)
+      );
+      newTransaction.sign([signer]);
+
+      return newTransaction;
+    } catch (error) {
+      console.warn("[JupiterService] Failed to add Jito tip, using original transaction:", error);
+      transaction.sign([signer]);
+      return transaction;
+    }
+  }
+
+  /**
+   * Sign and execute a swap transaction with Helius Sender for ultra-low latency
    */
   async executeSwap(
     transaction: VersionedTransaction,
@@ -224,53 +357,163 @@ export class JupiterService {
   ): Promise<string> {
     const signer = Keypair.fromSecretKey(secretKey);
 
-    // Sign the transaction
-    transaction.sign([signer]);
+    // Add Jito tip for better landing rate (required for Helius Sender)
+    const finalTransaction = await this.addJitoTip(transaction, signer);
 
-    console.log("[JupiterService] Sending transaction via send RPC...");
+    console.log("[JupiterService] Sending transaction via Helius Sender...");
+
+    // Use Helius Sender endpoint for ultra-low latency
+    // Falls back to standard RPC if Sender fails
 
     try {
-      // Send transaction using the dedicated send connection
-      const signature = await this.sendConnection.sendTransaction(transaction, {
-        skipPreflight: false,
-        maxRetries: 3,
+      // Try Helius Sender first (no API key needed, no credits consumed)
+      const response = await fetch(HELIUS_SENDER_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: Date.now().toString(),
+          method: "sendTransaction",
+          params: [
+            Buffer.from(finalTransaction.serialize()).toString("base64"),
+            {
+              encoding: "base64",
+              skipPreflight: true, // Required for Sender
+              maxRetries: 0,
+            },
+          ],
+        }),
+        signal: AbortSignal.timeout(10000),
       });
 
-      console.log("[JupiterService] Transaction sent:", signature);
+      const result = await response.json();
 
-      // Wait for confirmation using the send connection
-      const latestBlockhash = await this.sendConnection.getLatestBlockhash();
-      const confirmation = await this.sendConnection.confirmTransaction({
-        signature,
-        blockhash: latestBlockhash.blockhash,
-        lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-      });
+      if (result.error) {
+        console.error("[JupiterService] Sender error:", result.error);
+        throw new Error(result.error.message);
+      }
 
-      if (confirmation.value.err) {
-        throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+      const signature = result.result;
+      console.log("[JupiterService] Transaction sent via Sender:", signature);
+
+      // Use Helius RPC for confirmation polling
+      const connection = new Connection(this.getHeliusRpcUrl(), "confirmed");
+      const confirmed = await this.pollForConfirmation(connection, signature, finalTransaction);
+
+      if (!confirmed) {
+        throw new Error("Transaction failed to confirm within timeout");
       }
 
       return signature;
     } catch (error) {
-      console.error("[JupiterService] Transaction error:", error);
-      // Re-throw with user-friendly messages
-      if (error instanceof Error) {
-        if (error.message.includes("401")) {
-          throw new Error("RPC authorization failed. Your Helius plan may not support sendTransaction. Add SOLANA_SEND_RPC_URL env var.");
+      console.error("[JupiterService] Sender failed, trying standard RPC:", error);
+
+      // Fallback to standard RPC
+      const sendConnection = new Connection(this.getHeliusRpcUrl(), "confirmed");
+
+      try {
+        const signature = await sendConnection.sendTransaction(finalTransaction, {
+          skipPreflight: true,
+          maxRetries: 0,
+        });
+
+        console.log("[JupiterService] Transaction sent via standard RPC:", signature);
+
+        const confirmed = await this.pollForConfirmation(sendConnection, signature, finalTransaction);
+
+        if (!confirmed) {
+          throw new Error("Transaction failed to confirm within timeout");
         }
-        if (error.message.includes("no record of a prior credit") || error.message.includes("insufficient funds")) {
-          throw new Error("Insufficient SOL balance. Please deposit SOL to your wallet first.");
+
+        return signature;
+      } catch (fallbackError) {
+        console.error("[JupiterService] Standard RPC also failed:", fallbackError);
+
+        if (fallbackError instanceof Error) {
+          if (fallbackError.message.includes("401") || fallbackError.message.includes("Unauthorized")) {
+            throw new Error(
+              "RPC authorization failed. Check your Helius API key or add SOLANA_SEND_RPC_URL env var."
+            );
+          }
+          if (
+            fallbackError.message.includes("no record of a prior credit") ||
+            fallbackError.message.includes("insufficient funds") ||
+            fallbackError.message.includes("0x1")
+          ) {
+            throw new Error("Insufficient SOL balance. Please deposit SOL to your wallet first.");
+          }
         }
+        throw fallbackError;
       }
-      throw error;
     }
+  }
+
+  /**
+   * Poll for transaction confirmation with rebroadcast (Helius best practice)
+   */
+  private async pollForConfirmation(
+    connection: Connection,
+    signature: string,
+    transaction: VersionedTransaction,
+    maxAttempts: number = 30
+  ): Promise<boolean> {
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        // Check signature status
+        const statuses = await connection.getSignatureStatuses([signature]);
+        const status = statuses?.value?.[0];
+
+        if (status) {
+          if (status.err) {
+            console.error("[JupiterService] Transaction failed:", status.err);
+            throw new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
+          }
+
+          if (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized") {
+            console.log(`[JupiterService] Transaction confirmed: ${status.confirmationStatus}`);
+            return true;
+          }
+        }
+
+        // Check if blockhash expired
+        const currentBlockHeight = await connection.getBlockHeight();
+        if (currentBlockHeight > lastValidBlockHeight) {
+          console.log("[JupiterService] Blockhash expired");
+          return false;
+        }
+
+        // Rebroadcast every 2 seconds (Helius recommendation)
+        if (attempt > 0 && attempt % 2 === 0) {
+          console.log(`[JupiterService] Rebroadcasting transaction (attempt ${attempt + 1})...`);
+          try {
+            await connection.sendTransaction(transaction, {
+              skipPreflight: true,
+              maxRetries: 0,
+            });
+          } catch {
+            // Ignore rebroadcast errors
+          }
+        }
+
+        // Wait 1 second before next poll
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("Transaction failed")) {
+          throw error;
+        }
+        console.warn(`[JupiterService] Poll attempt ${attempt + 1} error:`, error);
+      }
+    }
+
+    return false;
   }
 
   /**
    * Get SOL balance for a wallet
    */
   async getSolBalance(walletAddress: string): Promise<number> {
-    const { PublicKey } = await import("@solana/web3.js");
     const balance = await this.connection.getBalance(new PublicKey(walletAddress));
     return balance;
   }
@@ -278,12 +521,9 @@ export class JupiterService {
   /**
    * Get token accounts for a wallet
    */
-  async getTokenAccounts(walletAddress: string): Promise<Array<{
-    mint: string;
-    balance: string;
-    decimals: number;
-  }>> {
-    const { PublicKey } = await import("@solana/web3.js");
+  async getTokenAccounts(
+    walletAddress: string
+  ): Promise<Array<{ mint: string; balance: string; decimals: number }>> {
     const { TOKEN_PROGRAM_ID } = await import("@solana/spl-token");
 
     const accounts = await this.connection.getParsedTokenAccountsByOwner(
