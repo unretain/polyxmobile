@@ -390,15 +390,6 @@ export function Header() {
                           <PieChart className="h-4 w-4" />
                           Portfolio
                         </Link>
-                        <button
-                          onClick={handleOpenWallet}
-                          className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
-                            isDark ? 'text-white/70 hover:text-white hover:bg-white/5' : 'text-black/70 hover:text-black hover:bg-black/5'
-                          }`}
-                        >
-                          <Wallet className="h-4 w-4" />
-                          Wallet
-                        </button>
                         <Link
                           href="/dashboard/license"
                           onClick={() => setShowDropdown(false)}
