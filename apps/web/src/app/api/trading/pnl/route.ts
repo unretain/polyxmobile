@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { TradeStatus } from "@prisma/client";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -78,7 +79,7 @@ export async function GET(req: NextRequest) {
     const trades = await prisma.trade.findMany({
       where: {
         userId: session.user.id,
-        status: "CONFIRMED",
+        status: TradeStatus.CONFIRMED,
         confirmedAt: {
           gte: startDate,
           lte: endDate,
