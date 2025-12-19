@@ -935,75 +935,76 @@ export default function TokenPage() {
           )}
         </div>
 
-        {/* Pulse tokens: Show Swap Widget + Holder Stats | Dashboard tokens: Show Supply Stats */}
-        {fromPulse ? (
-          <div className={`w-80 flex-shrink-0 flex flex-col gap-4 overflow-auto`}>
-            {/* Swap Widget */}
-            <SwapWidget
-              defaultOutputMint={address}
-              outputSymbol={token?.symbol || "TOKEN"}
-              outputDecimals={9}
-              isGraduated={(token as PulseTokenData)?.complete !== false}
-            />
+        {/* Sidebar: Swap Widget + Holder Stats (Pulse) or Supply Stats (Dashboard) */}
+        <div className={`w-80 flex-shrink-0 flex flex-col gap-4 overflow-auto`}>
+          {/* Swap Widget - always shown */}
+          <SwapWidget
+            defaultOutputMint={address}
+            outputSymbol={token?.symbol || "TOKEN"}
+            outputDecimals={9}
+            isGraduated={(token as PulseTokenData)?.complete !== false}
+          />
 
-            {/* Holder Stats */}
+          {fromPulse ? (
+            /* Pulse tokens: Holder Stats */
             <div className={`border backdrop-blur-md p-4 ${
               isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'
             }`}>
               <h3 className={`font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Holder Stats</h3>
               <HoldersSidebar stats={holderStats} topHolders={topHolders} isLoading={holdersLoading} isDark={isDark} />
             </div>
-          </div>
-        ) : (
-          <div className={`w-64 flex-shrink-0 border backdrop-blur-md p-4 overflow-auto ${
-            isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'
-          }`}>
-            <h3 className={`font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Supply Info</h3>
-            <div className="space-y-4">
-              <div className="space-y-1">
-                <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Total Supply</p>
-                <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {supplyData?.totalSupply ? formatNumber(supplyData.totalSupply) : "N/A"}
-                </p>
-              </div>
+          ) : (
+            /* Dashboard tokens: Supply Info */
+            <div className={`border backdrop-blur-md p-4 ${
+              isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'
+            }`}>
+              <h3 className={`font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Supply Info</h3>
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Total Supply</p>
+                  <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    {supplyData?.totalSupply ? formatNumber(supplyData.totalSupply) : "N/A"}
+                  </p>
+                </div>
 
-              <div className="space-y-1">
-                <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Max Supply</p>
-                <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {supplyData?.maxSupply ? formatNumber(supplyData.maxSupply) : "No Cap"}
-                </p>
-              </div>
+                <div className="space-y-1">
+                  <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Max Supply</p>
+                  <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    {supplyData?.maxSupply ? formatNumber(supplyData.maxSupply) : "No Cap"}
+                  </p>
+                </div>
 
-              <div className="space-y-1">
-                <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Circulating Supply</p>
-                <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {supplyData?.circulatingSupply ? formatNumber(supplyData.circulatingSupply) : "N/A"}
-                </p>
-                {supplyData?.totalSupply && supplyData.totalSupply > 0 && supplyData.circulatingSupply && (
-                  <div className="mt-2">
-                    <div className={`h-2 w-full ${isDark ? 'bg-white/10' : 'bg-black/10'}`}>
-                      <div
-                        className="h-full bg-[#FF6B4A]"
-                        style={{
-                          width: `${Math.min(100, (supplyData.circulatingSupply / supplyData.totalSupply) * 100)}%`
-                        }}
-                      />
+                <div className="space-y-1">
+                  <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Circulating Supply</p>
+                  <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    {supplyData?.circulatingSupply ? formatNumber(supplyData.circulatingSupply) : "N/A"}
+                  </p>
+                  {supplyData?.totalSupply && supplyData.totalSupply > 0 && supplyData.circulatingSupply && (
+                    <div className="mt-2">
+                      <div className={`h-2 w-full ${isDark ? 'bg-white/10' : 'bg-black/10'}`}>
+                        <div
+                          className="h-full bg-[#FF6B4A]"
+                          style={{
+                            width: `${Math.min(100, (supplyData.circulatingSupply / supplyData.totalSupply) * 100)}%`
+                          }}
+                        />
+                      </div>
+                      <p className={`mt-1 text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>
+                        {((supplyData.circulatingSupply / supplyData.totalSupply) * 100).toFixed(1)}% of total
+                      </p>
                     </div>
-                    <p className={`mt-1 text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>
-                      {((supplyData.circulatingSupply / supplyData.totalSupply) * 100).toFixed(1)}% of total
-                    </p>
-                  </div>
-                )}
-              </div>
+                  )}
+                </div>
 
-              <div className={`border-t pt-4 space-y-1 ${isDark ? 'border-white/10' : 'border-black/10'}`}>
-                <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>DEX Liquidity</p>
-                <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${formatNumber(token?.liquidity ?? 0)}</p>
-                <p className={`text-[10px] ${isDark ? 'text-white/30' : 'text-black/30'}`}>Solana DEX pools</p>
+                <div className={`border-t pt-4 space-y-1 ${isDark ? 'border-white/10' : 'border-black/10'}`}>
+                  <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>DEX Liquidity</p>
+                  <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${formatNumber(token?.liquidity ?? 0)}</p>
+                  <p className={`text-[10px] ${isDark ? 'text-white/30' : 'text-black/30'}`}>Solana DEX pools</p>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

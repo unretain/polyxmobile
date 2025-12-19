@@ -60,7 +60,23 @@ export async function GET(req: NextRequest) {
     // Get prices for SOL and all tokens with balance
     const mintsToPrice = [SOL_MINT, ...tokensWithBalance.map((t) => t.mint)];
     const prices = await jupiter.getTokenPrices(mintsToPrice);
-    const solPriceUsd = prices.get(SOL_MINT) || null;
+    let solPriceUsd = prices.get(SOL_MINT) || null;
+
+    // Fallback: fetch SOL price from CoinGecko if Jupiter failed
+    if (!solPriceUsd) {
+      try {
+        const cgRes = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd", {
+          signal: AbortSignal.timeout(5000),
+        });
+        if (cgRes.ok) {
+          const cgData = await cgRes.json();
+          solPriceUsd = cgData.solana?.usd || null;
+          console.log("[balance] SOL price from CoinGecko:", solPriceUsd);
+        }
+      } catch (e) {
+        console.warn("[balance] CoinGecko fallback failed:", e);
+      }
+    }
 
     // Calculate token values with prices
     const tokens = tokensWithBalance.map((t) => {
