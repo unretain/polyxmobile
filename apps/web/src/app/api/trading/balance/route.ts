@@ -5,6 +5,14 @@ import { getJupiterService, SOL_MINT } from "@/lib/jupiter";
 import { config } from "@/lib/config";
 import { TradeStatus } from "@prisma/client";
 
+// Cache TTL in milliseconds
+const BALANCE_CACHE_TTL_MS = 10 * 1000; // 10 seconds
+
+// Helper to check if cached balance is still valid
+function isCacheValid(updatedAt: Date): boolean {
+  return Date.now() - updatedAt.getTime() < BALANCE_CACHE_TTL_MS;
+}
+
 // GET /api/trading/balance
 export async function GET(req: NextRequest) {
   try {
@@ -35,15 +43,54 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    console.log("[balance] Fetching for wallet:", user.walletAddress.substring(0, 8) + "...");
-    const jupiter = getJupiterService();
+    const walletAddress = user.walletAddress;
+    console.log("[balance] Fetching for wallet:", walletAddress.substring(0, 8) + "...");
 
-    // Get SOL balance and token accounts in parallel
-    const [solBalance, tokenAccounts] = await Promise.all([
-      jupiter.getSolBalance(user.walletAddress),
-      jupiter.getTokenAccounts(user.walletAddress),
-    ]);
-    console.log("[balance] Success - SOL:", solBalance / 1e9, "Token accounts:", tokenAccounts.length);
+    // Check for cached balances first
+    const cachedBalances = await prisma.walletBalanceCache.findMany({
+      where: { walletAddress },
+    });
+
+    let solBalance: number;
+    let tokenAccounts: { mint: string; balance: string; decimals: number }[];
+    let usedCache = false;
+
+    // Check if we have valid cache
+    const solCache = cachedBalances.find((c) => c.tokenAddress === "SOL");
+    const tokenCaches = cachedBalances.filter((c) => c.tokenAddress !== "SOL");
+
+    if (solCache && isCacheValid(solCache.updatedAt)) {
+      // Use cached data
+      solBalance = Number(solCache.balance);
+      tokenAccounts = tokenCaches
+        .filter((c) => isCacheValid(c.updatedAt))
+        .map((c) => ({
+          mint: c.tokenAddress,
+          balance: c.balance,
+          decimals: c.decimals,
+        }));
+      usedCache = true;
+      console.log("[balance] Using cached balances (age:", Math.round((Date.now() - solCache.updatedAt.getTime()) / 1000), "s)");
+    } else {
+      // Fetch fresh data from RPC
+      const jupiter = getJupiterService();
+      const [freshSolBalance, freshTokenAccounts] = await Promise.all([
+        jupiter.getSolBalance(walletAddress),
+        jupiter.getTokenAccounts(walletAddress),
+      ]);
+
+      solBalance = freshSolBalance;
+      tokenAccounts = freshTokenAccounts;
+
+      console.log("[balance] Fresh RPC data - SOL:", solBalance / 1e9, "Token accounts:", tokenAccounts.length);
+
+      // Cache the fresh balances in the background
+      cacheBalances(walletAddress, solBalance, tokenAccounts).catch((e) =>
+        console.warn("[balance] Failed to cache balances:", e)
+      );
+    }
+
+    console.log("[balance] Success - SOL:", solBalance / 1e9, "Token accounts:", tokenAccounts.length, usedCache ? "(cached)" : "(fresh)");
     // Log all token accounts for debugging
     tokenAccounts.forEach((t, i) => {
       console.log(`[balance] Token ${i}: mint=${t.mint.substring(0, 8)}... balance=${t.balance} decimals=${t.decimals}`);
@@ -136,7 +183,8 @@ export async function GET(req: NextRequest) {
     const tokenMints = tokensWithBalance.map((t) => t.mint);
     if (tokenMints.length > 0) {
       try {
-        prices = await jupiter.getTokenPrices(tokenMints);
+        const jupiterForPrices = getJupiterService();
+        prices = await jupiterForPrices.getTokenPrices(tokenMints);
         console.log("[balance] Token prices from Jupiter:", prices.size);
       } catch (e) {
         console.warn("[balance] Jupiter token price API failed:", e);
@@ -178,4 +226,64 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// Helper to cache balances in the database
+async function cacheBalances(
+  walletAddress: string,
+  solBalance: number,
+  tokenAccounts: { mint: string; balance: string; decimals: number }[]
+): Promise<void> {
+  // Cache SOL balance
+  await prisma.walletBalanceCache.upsert({
+    where: {
+      walletAddress_tokenAddress: {
+        walletAddress,
+        tokenAddress: "SOL",
+      },
+    },
+    update: {
+      balance: solBalance.toString(),
+      decimals: 9,
+    },
+    create: {
+      walletAddress,
+      tokenAddress: "SOL",
+      balance: solBalance.toString(),
+      decimals: 9,
+    },
+  });
+
+  // Cache token balances
+  for (const token of tokenAccounts) {
+    await prisma.walletBalanceCache.upsert({
+      where: {
+        walletAddress_tokenAddress: {
+          walletAddress,
+          tokenAddress: token.mint,
+        },
+      },
+      update: {
+        balance: token.balance,
+        decimals: token.decimals,
+      },
+      create: {
+        walletAddress,
+        tokenAddress: token.mint,
+        balance: token.balance,
+        decimals: token.decimals,
+      },
+    });
+  }
+
+  // Clean up stale token caches (tokens no longer in wallet)
+  const currentMints = new Set(["SOL", ...tokenAccounts.map((t) => t.mint)]);
+  await prisma.walletBalanceCache.deleteMany({
+    where: {
+      walletAddress,
+      tokenAddress: {
+        notIn: Array.from(currentMints),
+      },
+    },
+  });
 }
