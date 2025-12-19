@@ -119,28 +119,13 @@ export class JupiterService {
   }
 
   /**
-   * Get dynamic Jito tip amount from Jito API (75th percentile)
-   * Minimum 0.0002 SOL as required by Helius Sender
+   * Get Jito tip amount
+   * Returns 0 to skip Jito tip entirely - we'll use standard RPC instead
    */
   private async getDynamicTipAmount(): Promise<number> {
-    try {
-      const response = await fetch("https://bundles.jito.wtf/api/v1/bundles/tip_floor", {
-        signal: AbortSignal.timeout(3000),
-      });
-      const data = await response.json();
-
-      if (data && data[0] && typeof data[0].landed_tips_75th_percentile === "number") {
-        const tip75th = data[0].landed_tips_75th_percentile;
-        // Use 75th percentile but minimum 0.0002 SOL (Sender requirement)
-        const tip = Math.max(tip75th, 0.0002 * LAMPORTS_PER_SOL);
-        console.log(`[JupiterService] Dynamic Jito tip: ${tip / LAMPORTS_PER_SOL} SOL`);
-        return tip;
-      }
-      return 0.0002 * LAMPORTS_PER_SOL; // Minimum required by Sender
-    } catch (error) {
-      console.warn("[JupiterService] Failed to get dynamic tip, using minimum:", error);
-      return 0.0002 * LAMPORTS_PER_SOL; // Minimum required by Sender
-    }
+    // Skip Jito tip - saves 0.0002 SOL per trade
+    // Helius Sender requires tip, so we'll fall back to standard RPC
+    return 0;
   }
 
   /**
@@ -359,8 +344,8 @@ export class JupiterService {
   }
 
   /**
-   * Sign and execute a swap transaction via Helius Sender
-   * Following Helius docs: https://docs.helius.dev/solana-rpc-nodes/helius-sender
+   * Sign and execute a swap transaction via standard RPC
+   * Skipping Helius Sender to avoid 0.0002 SOL tip requirement
    */
   async executeSwap(
     transaction: VersionedTransaction,
@@ -368,48 +353,25 @@ export class JupiterService {
   ): Promise<string> {
     const signer = Keypair.fromSecretKey(secretKey);
 
-    // Add Jito tip for Helius Sender (required, min 0.0002 SOL)
-    const finalTransaction = await this.addJitoTip(transaction, signer);
+    // Sign transaction (no Jito tip to save fees)
+    transaction.sign([signer]);
 
-    console.log("[JupiterService] Sending via Helius Sender...");
-
-    // Use Helius RPC for confirmation (with API key)
+    // Use configured RPC
     const rpcUrl = config.solanaRpcUrl || "https://api.mainnet-beta.solana.com";
-    const confirmConnection = new Connection(rpcUrl, "confirmed");
+    console.log("[JupiterService] Sending via RPC...");
+
+    const connection = new Connection(rpcUrl, "confirmed");
 
     try {
-      // Send via Helius Sender endpoint (no API key needed, no credits consumed)
-      const response = await fetch(HELIUS_SENDER_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: Date.now().toString(),
-          method: "sendTransaction",
-          params: [
-            Buffer.from(finalTransaction.serialize()).toString("base64"),
-            {
-              encoding: "base64",
-              skipPreflight: true, // Required for Sender
-              maxRetries: 0, // Required for Sender
-            },
-          ],
-        }),
-        signal: AbortSignal.timeout(15000),
+      const signature = await connection.sendTransaction(transaction, {
+        skipPreflight: false, // Let it validate first
+        maxRetries: 5,
       });
 
-      const result = await response.json();
+      console.log("[JupiterService] Transaction sent:", signature);
 
-      if (result.error) {
-        console.error("[JupiterService] Sender error:", result.error);
-        throw new Error(result.error.message || "Sender rejected transaction");
-      }
-
-      const signature = result.result;
-      console.log("[JupiterService] Transaction sent via Sender:", signature);
-
-      // Wait for confirmation using Helius RPC
-      const confirmed = await this.pollForConfirmation(confirmConnection, signature, finalTransaction);
+      // Wait for confirmation
+      const confirmed = await this.pollForConfirmation(connection, signature, transaction);
 
       if (!confirmed) {
         throw new Error("Transaction failed to confirm within timeout");
@@ -417,48 +379,25 @@ export class JupiterService {
 
       return signature;
     } catch (error) {
-      console.error("[JupiterService] Sender failed:", error);
+      console.error("[JupiterService] Transaction failed:", error);
 
-      // If Sender fails, try standard RPC as fallback
-      console.log("[JupiterService] Trying standard RPC fallback...");
-
-      try {
-        const signature = await confirmConnection.sendTransaction(finalTransaction, {
-          skipPreflight: true,
-          maxRetries: 3,
-        });
-
-        console.log("[JupiterService] Transaction sent via standard RPC:", signature);
-
-        const confirmed = await this.pollForConfirmation(confirmConnection, signature, finalTransaction);
-
-        if (!confirmed) {
-          throw new Error("Transaction failed to confirm within timeout");
+      if (error instanceof Error) {
+        if (error.message.includes("401") || error.message.includes("Unauthorized")) {
+          throw new Error("RPC authorization failed. Check your SOLANA_RPC_URL.");
         }
-
-        return signature;
-      } catch (fallbackError) {
-        console.error("[JupiterService] Standard RPC also failed:", fallbackError);
-
-        if (fallbackError instanceof Error) {
-          if (fallbackError.message.includes("401") || fallbackError.message.includes("Unauthorized")) {
-            throw new Error(
-              "RPC authorization failed. Check your SOLANA_RPC_URL has a valid Helius API key."
-            );
-          }
-          if (
-            fallbackError.message.includes("insufficient funds") ||
-            fallbackError.message.includes("0x1") ||
-            fallbackError.message.includes("Attempt to debit")
-          ) {
-            throw new Error("Insufficient SOL balance. You need more SOL for this swap (amount + fees + tip ~0.0003 SOL).");
-          }
-          if (fallbackError.message.includes("blockhash")) {
-            throw new Error("Transaction expired. Please try again.");
-          }
+        if (
+          error.message.includes("insufficient funds") ||
+          error.message.includes("0x1") ||
+          error.message.includes("Attempt to debit") ||
+          error.message.includes("Custom\":1")
+        ) {
+          throw new Error("Insufficient SOL balance for this swap (need amount + ~0.0002 SOL fees).");
         }
-        throw fallbackError;
+        if (error.message.includes("blockhash")) {
+          throw new Error("Transaction expired. Please try again.");
+        }
       }
+      throw error;
     }
   }
 
