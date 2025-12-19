@@ -154,6 +154,7 @@ function SolutionsPageContent() {
 
   // Checkout state
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState<"PRO" | "BUSINESS" | null>(null);
 
 
   // Check user's subscription status
@@ -185,13 +186,20 @@ function SolutionsPageContent() {
 
   // Handle checkout
   const handleCheckout = async (plan: "PRO" | "BUSINESS") => {
+    // Prevent double-clicks
+    if (checkoutLoading) return;
+
     // Wait for session to load before deciding
     if (sessionStatus === "loading") {
-      return; // Don't do anything while session is loading
+      // Show brief loading state
+      setCheckoutLoading(plan);
+      setTimeout(() => setCheckoutLoading(null), 2000);
+      return;
     }
 
     // If user is logged in, go directly to Stripe
     if (sessionStatus === "authenticated" && session?.user?.email) {
+      setCheckoutLoading(plan);
       try {
         const response = await fetch("/api/checkout", {
           method: "POST",
@@ -212,6 +220,7 @@ function SolutionsPageContent() {
         if (data.upgraded) {
           setShowSuccessMessage(true);
           setUserPlan(plan);
+          setCheckoutLoading(null);
           return;
         }
 
@@ -224,6 +233,7 @@ function SolutionsPageContent() {
         }
       } catch (err) {
         console.error("Checkout error:", err);
+        setCheckoutLoading(null);
         alert(err instanceof Error ? err.message : "Something went wrong");
       }
       return;
@@ -442,9 +452,17 @@ function SolutionsPageContent() {
                 ) : (
                   <button
                     onClick={() => handleCheckout("PRO")}
-                    className="w-full py-3 font-medium bg-[#FF6B4A] text-white hover:bg-[#FF5A36] transition-colors"
+                    disabled={checkoutLoading === "PRO"}
+                    className="w-full py-3 font-medium bg-[#FF6B4A] text-white hover:bg-[#FF5A36] transition-colors disabled:opacity-50"
                   >
-                    Subscribe to Pro
+                    {checkoutLoading === "PRO" ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        Processing...
+                      </span>
+                    ) : (
+                      "Subscribe to Pro"
+                    )}
                   </button>
                 )}
               </div>
@@ -491,13 +509,21 @@ function SolutionsPageContent() {
                 ) : (
                   <button
                     onClick={() => handleCheckout("BUSINESS")}
-                    className={`w-full py-3 font-medium border transition-colors ${
+                    disabled={checkoutLoading === "BUSINESS"}
+                    className={`w-full py-3 font-medium border transition-colors disabled:opacity-50 ${
                       isDark
                         ? 'border-purple-500/50 text-purple-400 hover:bg-purple-500/10'
                         : 'border-purple-500/50 text-purple-600 hover:bg-purple-500/10'
                     }`}
                   >
-                    {userPlan === "PRO" ? "Upgrade to Business" : "Subscribe to Business"}
+                    {checkoutLoading === "BUSINESS" ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        Processing...
+                      </span>
+                    ) : (
+                      userPlan === "PRO" ? "Upgrade to Business" : "Subscribe to Business"
+                    )}
                   </button>
                 )}
               </div>
