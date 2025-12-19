@@ -212,7 +212,9 @@ function ChartScene({
       if (!point) continue;
 
       const x = (dataIndex / Math.max(1, data.length - 1)) * CHART_WIDTH;
-      const date = new Date(point.t);
+      // Polymarket API returns timestamps in seconds, convert to milliseconds for Date
+      const timestamp = point.t < 10000000000 ? point.t * 1000 : point.t;
+      const date = new Date(timestamp);
       const text = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       labels.push({ x, text });
     }
