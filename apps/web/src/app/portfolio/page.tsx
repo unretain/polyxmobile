@@ -7,7 +7,6 @@ import Link from "next/link";
 import { Header } from "@/components/layout/Header";
 import { useThemeStore } from "@/stores/themeStore";
 import {
-  ExternalLink,
   Loader2,
   History,
   RefreshCw,
@@ -33,6 +32,8 @@ interface DailyPnL {
 interface Position {
   mint: string;
   symbol: string;
+  name: string;
+  image: string | null;
   totalBought: number;
   totalSold: number;
   avgBuyPrice: number;
@@ -775,17 +776,32 @@ export default function PortfolioPage() {
                       className={`${isDark ? 'hover:bg-white/5' : 'hover:bg-gray-50'} transition-colors`}
                     >
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${pos.isOpen ? 'bg-green-500' : 'bg-white/20'}`} />
-                          <div>
-                            <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{pos.symbol}</p>
-                            <Link
-                              href={`/token/${pos.mint}?source=pulse`}
-                              className={`text-xs ${isDark ? 'text-white/40 hover:text-[#FF6B4A]' : 'text-gray-500 hover:text-[#FF6B4A]'} flex items-center gap-1`}
-                            >
-                              View <ExternalLink className="h-3 w-3" />
-                            </Link>
+                        <div className="flex items-center gap-3">
+                          {/* Token image */}
+                          {pos.image ? (
+                            <img
+                              src={pos.image}
+                              alt={pos.symbol}
+                              className="w-8 h-8 rounded-full object-cover"
+                              onError={(e) => {
+                                // Fallback to initials on error
+                                e.currentTarget.style.display = 'none';
+                                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                              }}
+                            />
+                          ) : null}
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${pos.image ? 'hidden' : ''} ${isDark ? 'bg-white/10 text-white/60' : 'bg-gray-200 text-gray-600'}`}>
+                            {pos.symbol.slice(0, 2).toUpperCase()}
                           </div>
+                          {/* Status dot */}
+                          <div className={`w-2 h-2 rounded-full ${pos.isOpen ? 'bg-green-500' : isDark ? 'bg-white/20' : 'bg-gray-300'}`} />
+                          {/* Token name/symbol - clickable */}
+                          <Link
+                            href={`/token/${pos.mint}?source=pulse`}
+                            className={`font-medium transition-colors ${isDark ? 'text-white hover:text-[#FF6B4A]' : 'text-gray-900 hover:text-[#FF6B4A]'}`}
+                          >
+                            {pos.name || pos.symbol}
+                          </Link>
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right">

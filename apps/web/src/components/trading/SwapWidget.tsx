@@ -358,15 +358,15 @@ export function SwapWidget({
         {/* Amount Input */}
         <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
-            <span className={cn("text-xs uppercase tracking-wide", isDark ? "text-white/40" : "text-gray-400")}>Amount</span>
-            <div className="flex items-center gap-2">
-              <span className={cn("text-xs", isDark ? "text-white/40" : "text-gray-400")}>
+            <span className={cn("text-xs uppercase tracking-wide flex-shrink-0", isDark ? "text-white/40" : "text-gray-400")}>Amount</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={cn("text-xs truncate max-w-[120px]", isDark ? "text-white/40" : "text-gray-400")} title={`${getInputBalance().toFixed(4)} ${inputSymbol}`}>
                 {getInputBalance().toFixed(4)} {inputSymbol}
               </span>
               <button
-                onClick={fetchBalance}
-                className={cn("p-1 transition-colors", isDark ? "hover:bg-white/5" : "hover:bg-gray-100")}
-                title="Refresh"
+                onClick={() => fetchBalance()}
+                className={cn("p-1 transition-colors flex-shrink-0", isDark ? "hover:bg-white/5" : "hover:bg-gray-100")}
+                title="Refresh balance"
               >
                 <RefreshCw className={cn("w-3 h-3", isDark ? "text-white/40" : "text-gray-400")} />
               </button>
@@ -388,11 +388,11 @@ export function SwapWidget({
               onChange={(e) => setInputAmount(e.target.value)}
               placeholder="0.0"
               className={cn(
-                "flex-1 bg-transparent text-lg font-mono outline-none",
+                "flex-1 min-w-0 bg-transparent text-lg font-mono outline-none",
                 isDark ? "text-white placeholder-white/20" : "text-gray-900 placeholder-gray-300"
               )}
             />
-            <span className={cn("text-sm font-medium", isDark ? "text-white/60" : "text-gray-500")}>{inputSymbol}</span>
+            <span className={cn("text-sm font-medium truncate max-w-[80px]", isDark ? "text-white/60" : "text-gray-500")} title={inputSymbol}>{inputSymbol}</span>
           </div>
           {/* Quick amounts - different for buy vs sell */}
           {isBuy ? (

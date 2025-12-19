@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { LINE_PERIODS, CANDLE_PERIODS, PULSE_PERIOD, type ChartType } from "@/stores/chartStore";
+import { useThemeStore } from "@/stores/themeStore";
 
 interface ChartControlsProps {
   period: string;
@@ -11,6 +12,8 @@ interface ChartControlsProps {
 }
 
 export function ChartControls({ period, chartType, onPeriodChange, showPulseOption = false }: ChartControlsProps) {
+  const { isDark } = useThemeStore();
+
   // Line chart: periods are TIME RANGES (1m = last minute, 15m = last 15 minutes)
   // Candle chart: periods are CANDLE INTERVALS (1m = 1-minute candles, 1s = per-trade)
   const basePeriods = chartType === "candle" ? CANDLE_PERIODS : LINE_PERIODS;
@@ -30,7 +33,9 @@ export function ChartControls({ period, chartType, onPeriodChange, showPulseOpti
             "px-3 py-1.5 text-sm font-medium transition-colors",
             period === p.value
               ? "bg-[#FF6B4A] text-white"
-              : "text-white/50 hover:bg-white/10 hover:text-white",
+              : isDark
+                ? "text-white/50 hover:bg-white/10 hover:text-white"
+                : "text-gray-500 hover:bg-gray-100 hover:text-gray-900",
             // Highlight 1s option with a different color when available
             p.value === "1s" && period !== "1s" && "text-[#FF6B4A]/70 hover:text-[#FF6B4A]"
           )}
