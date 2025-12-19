@@ -197,6 +197,11 @@ export default function PulsePage() {
   const [searchValue, setSearchValue] = useState("");
   const [searchHistory, setSearchHistory] = useState<PulseToken[]>([]);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [isSearchingCA, setIsSearchingCA] = useState(false);
+  const [caSearchResult, setCaSearchResult] = useState<PulseToken | null>(null);
+  const [caSearchError, setCaSearchError] = useState<string | null>(null);
+
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
   // Load search history from localStorage on mount
   useEffect(() => {
@@ -224,7 +229,34 @@ export default function PulsePage() {
   const closeSearch = () => {
     setIsSearchOpen(false);
     setSearchValue("");
+    setCaSearchResult(null);
+    setCaSearchError(null);
   };
+
+  // Fetch token by CA from API if not found locally
+  const fetchTokenByCA = useCallback(async (address: string) => {
+    if (!isValidSolanaAddress(address)) return;
+
+    setIsSearchingCA(true);
+    setCaSearchError(null);
+    setCaSearchResult(null);
+
+    try {
+      const response = await fetch(`${API_URL}/api/pulse/token/${address}`);
+      if (response.ok) {
+        const data = await response.json();
+        setCaSearchResult(data);
+      } else if (response.status === 404) {
+        setCaSearchError("Token not found on pump.fun");
+      } else {
+        setCaSearchError("Failed to fetch token");
+      }
+    } catch (err) {
+      setCaSearchError("Network error");
+    } finally {
+      setIsSearchingCA(false);
+    }
+  }, [API_URL]);
 
   // Handle keyboard shortcut (Esc to close)
   useEffect(() => {
@@ -257,6 +289,21 @@ export default function PulsePage() {
       t.name.toLowerCase().includes(query)
     ).slice(0, 20);
   }, [searchValue, newPairs, graduatingPairs, graduatedPairs]);
+
+  // When user enters a valid CA and no local results, fetch from API
+  useEffect(() => {
+    const query = searchValue.trim();
+    if (isValidSolanaAddress(query) && filteredTokens.length === 0) {
+      // Debounce the API call
+      const timeout = setTimeout(() => {
+        fetchTokenByCA(query);
+      }, 300);
+      return () => clearTimeout(timeout);
+    } else {
+      setCaSearchResult(null);
+      setCaSearchError(null);
+    }
+  }, [searchValue, filteredTokens.length, fetchTokenByCA]);
 
   // Add token to search history
   const addToHistory = (token: PulseToken) => {
@@ -456,6 +503,8 @@ export default function PulsePage() {
                   if (e.key === "Enter") {
                     if (filteredTokens.length > 0) {
                       goToToken(filteredTokens[0].address, filteredTokens[0]);
+                    } else if (caSearchResult) {
+                      goToToken(caSearchResult.address, caSearchResult);
                     } else if (isValidSolanaAddress(searchValue.trim())) {
                       goToToken(searchValue.trim());
                     }
@@ -587,22 +636,85 @@ export default function PulsePage() {
 
               {/* Show "go to address" when valid address but no results */}
               {searchValue.trim() && filteredTokens.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-12 text-white/40">
+                <div className="py-2">
                   {isValidSolanaAddress(searchValue.trim()) ? (
                     <>
-                      <span className="text-sm mb-4">No matching tokens in Pulse</span>
-                      <button
-                        onClick={() => goToToken(searchValue.trim())}
-                        className="px-4 py-2 bg-[#FF6B4A]/20 border border-[#FF6B4A]/30 text-[#FF6B4A] text-sm hover:bg-[#FF6B4A]/30 transition-colors"
-                      >
-                        Go to {shortenAddress(searchValue.trim())} →
-                      </button>
+                      {/* Loading state */}
+                      {isSearchingCA && (
+                        <div className="flex items-center justify-center py-8">
+                          <RefreshCw className="h-6 w-6 animate-spin text-[#FF6B4A]" />
+                          <span className="ml-2 text-white/50">Searching for token...</span>
+                        </div>
+                      )}
+
+                      {/* Token found from API */}
+                      {!isSearchingCA && caSearchResult && (
+                        <>
+                          <div className="px-4 py-2 text-xs text-white/40 uppercase tracking-wide">
+                            Found Token
+                          </div>
+                          <button
+                            onClick={() => goToToken(caSearchResult.address, caSearchResult)}
+                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#FF6B4A]/10 transition-colors text-left"
+                          >
+                            <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full bg-white/5 ring-2 ring-white/10">
+                              {caSearchResult.logoUri ? (
+                                <Image src={caSearchResult.logoUri} alt={caSearchResult.symbol} fill className="object-cover" unoptimized />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-sm font-bold text-white/40 bg-gradient-to-br from-[#FF6B4A]/20 to-white/5">
+                                  {caSearchResult.symbol?.charAt(0) ?? "?"}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-white">{caSearchResult.symbol}</span>
+                                <span className="text-sm text-white/40 truncate">{caSearchResult.name}</span>
+                              </div>
+                              <div className="text-xs text-white/40">{shortenAddress(caSearchResult.address)}</div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-white/40 text-xs">MC</div>
+                              <div className="text-white font-medium">{formatMC(caSearchResult.marketCap)}</div>
+                            </div>
+                            <div className={cn(
+                              "px-2 py-1 text-xs font-semibold",
+                              caSearchResult.priceChange24h >= 0 ? "text-up bg-up/15" : "text-down bg-down/15"
+                            )}>
+                              {formatPercent(caSearchResult.priceChange24h)}
+                            </div>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); }}
+                              className="p-2 bg-[#FF6B4A]/20 hover:bg-[#FF6B4A]/30 text-[#FF6B4A] transition-colors"
+                            >
+                              <Zap className="h-4 w-4" />
+                            </button>
+                          </button>
+                        </>
+                      )}
+
+                      {/* Token not found - show go to address button */}
+                      {!isSearchingCA && !caSearchResult && (
+                        <div className="flex flex-col items-center justify-center py-12 text-white/40">
+                          {caSearchError ? (
+                            <span className="text-sm mb-4">{caSearchError}</span>
+                          ) : (
+                            <span className="text-sm mb-4">Token not in database</span>
+                          )}
+                          <button
+                            onClick={() => goToToken(searchValue.trim())}
+                            className="px-4 py-2 bg-[#FF6B4A]/20 border border-[#FF6B4A]/30 text-[#FF6B4A] text-sm hover:bg-[#FF6B4A]/30 transition-colors"
+                          >
+                            Go to {shortenAddress(searchValue.trim())} anyway →
+                          </button>
+                        </div>
+                      )}
                     </>
                   ) : (
-                    <>
+                    <div className="flex flex-col items-center justify-center py-12 text-white/40">
                       <Search className="h-10 w-10 mb-3 opacity-40" />
                       <span className="text-sm">No tokens found for "{searchValue}"</span>
-                    </>
+                    </div>
                   )}
                 </div>
               )}
