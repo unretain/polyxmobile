@@ -186,8 +186,8 @@ function SolutionsPageContent() {
 
   // Handle checkout
   const handleCheckout = async (plan: "PRO" | "BUSINESS") => {
-    // Prevent double-clicks
-    if (checkoutLoading) return;
+    // Allow switching to a different plan even if one is loading
+    if (checkoutLoading === plan) return;
 
     // Wait for session to load before deciding
     if (sessionStatus === "loading") {
@@ -200,6 +200,10 @@ function SolutionsPageContent() {
     // If user is logged in, go directly to Stripe
     if (sessionStatus === "authenticated" && session?.user?.email) {
       setCheckoutLoading(plan);
+
+      // Safety timeout - clear loading after 10 seconds if redirect doesn't happen
+      const timeoutId = setTimeout(() => setCheckoutLoading(null), 10000);
+
       try {
         const response = await fetch("/api/checkout", {
           method: "POST",
@@ -213,11 +217,13 @@ function SolutionsPageContent() {
         const data = await response.json();
 
         if (!response.ok) {
+          clearTimeout(timeoutId);
           throw new Error(data.error || "Failed to create checkout session");
         }
 
         // Handle upgrade response (no checkout needed)
         if (data.upgraded) {
+          clearTimeout(timeoutId);
           setShowSuccessMessage(true);
           setUserPlan(plan);
           setCheckoutLoading(null);
@@ -225,10 +231,14 @@ function SolutionsPageContent() {
         }
 
         if (data.checkoutUrl) {
+          // Keep loading state while redirecting - it will clear on page unload
           window.location.href = data.checkoutUrl;
         } else if (data.redirectUrl) {
+          clearTimeout(timeoutId);
           router.push(data.redirectUrl);
+          setCheckoutLoading(null);
         } else {
+          clearTimeout(timeoutId);
           throw new Error("No checkout URL returned");
         }
       } catch (err) {
@@ -452,7 +462,7 @@ function SolutionsPageContent() {
                 ) : (
                   <button
                     onClick={() => handleCheckout("PRO")}
-                    disabled={checkoutLoading === "PRO"}
+                    disabled={!!checkoutLoading}
                     className="w-full py-3 font-medium bg-[#FF6B4A] text-white hover:bg-[#FF5A36] transition-colors disabled:opacity-50"
                   >
                     {checkoutLoading === "PRO" ? (
@@ -509,7 +519,7 @@ function SolutionsPageContent() {
                 ) : (
                   <button
                     onClick={() => handleCheckout("BUSINESS")}
-                    disabled={checkoutLoading === "BUSINESS"}
+                    disabled={!!checkoutLoading}
                     className={`w-full py-3 font-medium border transition-colors disabled:opacity-50 ${
                       isDark
                         ? 'border-purple-500/50 text-purple-400 hover:bg-purple-500/10'
