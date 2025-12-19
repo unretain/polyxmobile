@@ -407,7 +407,7 @@ export class JupiterService {
           error.message.includes("0x1") ||
           error.message.includes("Custom\":1")
         ) {
-          throw new Error("Insufficient SOL balance (need swap amount + ~0.0003 SOL for fees).");
+          throw new Error("Insufficient SOL balance. Need swap amount + ~0.0025 SOL for fees (0.002 token account rent + 0.0003 tip/priority + network fee). First-time token swaps cost more due to account creation.");
         }
         if (error.message.includes("blockhash")) {
           throw new Error("Transaction expired. Please try again.");
