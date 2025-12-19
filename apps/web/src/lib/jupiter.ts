@@ -119,13 +119,11 @@ export class JupiterService {
   }
 
   /**
-   * Get Jito tip amount
-   * Returns 0 to skip Jito tip entirely - we'll use standard RPC instead
+   * Get Jito tip amount - minimum required for Helius Sender
    */
   private async getDynamicTipAmount(): Promise<number> {
-    // Skip Jito tip - saves 0.0002 SOL per trade
-    // Helius Sender requires tip, so we'll fall back to standard RPC
-    return 0;
+    // Use minimum tip of 0.0002 SOL required by Helius Sender
+    return 0.0002 * LAMPORTS_PER_SOL;
   }
 
   /**
@@ -344,8 +342,7 @@ export class JupiterService {
   }
 
   /**
-   * Sign and execute a swap transaction via standard RPC
-   * Skipping Helius Sender to avoid 0.0002 SOL tip requirement
+   * Sign and execute a swap transaction via Helius Sender
    */
   async executeSwap(
     transaction: VersionedTransaction,
@@ -353,25 +350,48 @@ export class JupiterService {
   ): Promise<string> {
     const signer = Keypair.fromSecretKey(secretKey);
 
-    // Sign transaction (no Jito tip to save fees)
-    transaction.sign([signer]);
+    // Add Jito tip for Helius Sender
+    const finalTransaction = await this.addJitoTip(transaction, signer);
 
-    // Use configured RPC
+    // Use Helius RPC for confirmation
     const rpcUrl = config.solanaRpcUrl || "https://api.mainnet-beta.solana.com";
-    console.log("[JupiterService] Sending via RPC...");
-
     const connection = new Connection(rpcUrl, "confirmed");
 
+    console.log("[JupiterService] Sending via Helius Sender...");
+
     try {
-      const signature = await connection.sendTransaction(transaction, {
-        skipPreflight: false, // Let it validate first
-        maxRetries: 5,
+      // Send via Helius Sender (no API key needed)
+      const response = await fetch(HELIUS_SENDER_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: Date.now().toString(),
+          method: "sendTransaction",
+          params: [
+            Buffer.from(finalTransaction.serialize()).toString("base64"),
+            {
+              encoding: "base64",
+              skipPreflight: true,
+              maxRetries: 0,
+            },
+          ],
+        }),
+        signal: AbortSignal.timeout(15000),
       });
 
+      const result = await response.json();
+
+      if (result.error) {
+        console.error("[JupiterService] Sender error:", result.error);
+        throw new Error(result.error.message || "Transaction rejected");
+      }
+
+      const signature = result.result;
       console.log("[JupiterService] Transaction sent:", signature);
 
       // Wait for confirmation
-      const confirmed = await this.pollForConfirmation(connection, signature, transaction);
+      const confirmed = await this.pollForConfirmation(connection, signature, finalTransaction);
 
       if (!confirmed) {
         throw new Error("Transaction failed to confirm within timeout");
@@ -382,16 +402,12 @@ export class JupiterService {
       console.error("[JupiterService] Transaction failed:", error);
 
       if (error instanceof Error) {
-        if (error.message.includes("401") || error.message.includes("Unauthorized")) {
-          throw new Error("RPC authorization failed. Check your SOLANA_RPC_URL.");
-        }
         if (
           error.message.includes("insufficient funds") ||
           error.message.includes("0x1") ||
-          error.message.includes("Attempt to debit") ||
           error.message.includes("Custom\":1")
         ) {
-          throw new Error("Insufficient SOL balance for this swap (need amount + ~0.0002 SOL fees).");
+          throw new Error("Insufficient SOL balance (need swap amount + ~0.0003 SOL for fees).");
         }
         if (error.message.includes("blockhash")) {
           throw new Error("Transaction expired. Please try again.");
