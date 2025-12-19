@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getJupiterService, SOL_MINT } from "@/lib/jupiter";
 import { config } from "@/lib/config";
+import { TradeStatus } from "@prisma/client";
 
 // GET /api/trading/balance
 export async function GET(req: NextRequest) {
@@ -42,13 +43,17 @@ export async function GET(req: NextRequest) {
       jupiter.getSolBalance(user.walletAddress),
       jupiter.getTokenAccounts(user.walletAddress),
     ]);
-    console.log("[balance] Success - SOL:", solBalance / 1e9, "Tokens:", tokenAccounts.length);
+    console.log("[balance] Success - SOL:", solBalance / 1e9, "Token accounts:", tokenAccounts.length);
+    // Log all token accounts for debugging
+    tokenAccounts.forEach((t, i) => {
+      console.log(`[balance] Token ${i}: mint=${t.mint.substring(0, 8)}... balance=${t.balance} decimals=${t.decimals}`);
+    });
 
     // Format SOL balance
     const solUiBalance = solBalance / 1e9; // Convert lamports to SOL
 
     // Format token balances (before prices)
-    const tokensWithBalance = tokenAccounts
+    let tokensWithBalance = tokenAccounts
       .filter((t) => Number(t.balance) > 0) // Only tokens with balance
       .map((t) => ({
         mint: t.mint,
@@ -56,6 +61,59 @@ export async function GET(req: NextRequest) {
         uiBalance: Number(t.balance) / Math.pow(10, t.decimals),
         decimals: t.decimals,
       }));
+    console.log("[balance] Tokens with balance from RPC:", tokensWithBalance.length);
+
+    // FALLBACK: If RPC returns no tokens, calculate from trade history
+    if (tokensWithBalance.length === 0) {
+      console.log("[balance] No tokens from RPC, falling back to trade history...");
+
+      const trades = await prisma.trade.findMany({
+        where: {
+          userId: session.user.id,
+          status: TradeStatus.SUCCESS,
+        },
+        orderBy: { confirmedAt: "asc" },
+      });
+
+      // Calculate token balances from trade history
+      const tokenBalances = new Map<string, { balance: number; symbol: string }>();
+
+      for (const trade of trades) {
+        const isBuy = trade.inputMint === SOL_MINT;
+        const tokenMint = isBuy ? trade.outputMint : trade.inputMint;
+        const tokenSymbol = isBuy ? trade.outputSymbol : trade.inputSymbol;
+
+        // Most pump.fun tokens have 6 decimals
+        const tokenAmount = isBuy
+          ? Number(trade.amountOut) / 1e6
+          : Number(trade.amountIn) / 1e6;
+
+        const current = tokenBalances.get(tokenMint) || { balance: 0, symbol: tokenSymbol };
+
+        if (isBuy) {
+          current.balance += tokenAmount;
+        } else {
+          current.balance -= tokenAmount;
+        }
+
+        tokenBalances.set(tokenMint, current);
+      }
+
+      // Convert to tokens array, only including positive balances
+      tokensWithBalance = Array.from(tokenBalances.entries())
+        .filter(([, data]) => data.balance > 0.000001)
+        .map(([mint, data]) => ({
+          mint,
+          balance: Math.floor(data.balance * 1e6).toString(), // Convert back to raw amount
+          uiBalance: data.balance,
+          decimals: 6, // Assume 6 decimals for pump.fun tokens
+        }));
+
+      console.log("[balance] Tokens from trade history:", tokensWithBalance.length);
+      tokensWithBalance.forEach((t, i) => {
+        console.log(`[balance] Trade history token ${i}: mint=${t.mint.substring(0, 8)}... uiBalance=${t.uiBalance}`);
+      });
+    }
 
     // Get prices for SOL and all tokens with balance
     const mintsToPrice = [SOL_MINT, ...tokensWithBalance.map((t) => t.mint)];
