@@ -958,7 +958,7 @@ export default function TokenPage() {
             <SwapWidget
               defaultOutputMint={address}
               outputSymbol={token?.symbol || "TOKEN"}
-              outputDecimals={9}
+              outputDecimals={6}
               isGraduated={(token as PulseTokenData)?.complete !== false}
             />
 
