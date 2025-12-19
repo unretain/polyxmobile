@@ -558,7 +558,7 @@ export default function PortfolioPage() {
 
                         const finalPnl = dataPoints[dataPoints.length - 1].cumPnl;
                         const isPositive = finalPnl >= 0;
-                        const lineColor = isPositive ? '#22c55e' : '#ec4899';
+                        const lineColor = isPositive ? '#22c55e' : '#ef4444';
 
                         return (
                           <>
@@ -617,7 +617,7 @@ export default function PortfolioPage() {
                               <div className="absolute top-0 bottom-0 left-1/2 w-px bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                               {/* Tooltip */}
                               <div className="absolute top-4 left-1/2 -translate-x-1/2 px-3 py-2 rounded-lg text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 bg-[#1a1a1a] border border-white/10 shadow-xl">
-                                <div className={`text-base font-semibold ${isPositive ? 'text-green-400' : 'text-pink-500'}`}>
+                                <div className={`text-base font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
                                   {formattedValue}
                                 </div>
                                 <div className="text-white/50 text-xs">
@@ -631,8 +631,8 @@ export default function PortfolioPage() {
                     </div>
 
                     {/* Logo watermark */}
-                    <div className="absolute bottom-2 left-2 opacity-30">
-                      <span className="font-bold text-lg text-white/60">📊</span>
+                    <div className="absolute bottom-3 left-3 opacity-40">
+                      <span className="font-medium text-sm text-white">[poly<span className="text-[#FF6B4A]">x</span>]</span>
                     </div>
                   </>
                 ) : (
