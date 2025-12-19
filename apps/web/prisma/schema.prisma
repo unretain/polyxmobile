@@ -221,6 +221,19 @@ model EmbedView {
 }
 
 // ==========================================
+// Price Cache (to avoid rate limiting external APIs)
+// ==========================================
+
+model PriceCache {
+  id        String   @id @default(cuid())
+  symbol    String   @unique  // e.g., "SOL", "BTC", "ETH"
+  priceUsd  Float
+  updatedAt DateTime @updatedAt
+
+  @@index([symbol])
+}
+
+// ==========================================
 // Trading Models
 // ==========================================
 
