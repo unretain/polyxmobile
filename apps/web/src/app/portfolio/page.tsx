@@ -498,15 +498,11 @@ export default function PortfolioPage() {
                       preserveAspectRatio="none"
                       className="w-full h-full"
                     >
-                      {/* Gradient definitions */}
+                      {/* Gradient for negative - fills from line UP to top, solid at line fading up */}
                       <defs>
-                        <linearGradient id="positiveGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                          <stop offset="0%" stopColor="#22c55e" stopOpacity="0.3" />
-                          <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
-                        </linearGradient>
-                        <linearGradient id="negativeGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                          <stop offset="0%" stopColor="#ef4444" stopOpacity="0" />
-                          <stop offset="100%" stopColor="#ef4444" stopOpacity="0.3" />
+                        <linearGradient id="negativeGradient" x1="0%" y1="100%" x2="0%" y2="0%">
+                          <stop offset="0%" stopColor="#ef4444" stopOpacity="0.5" />
+                          <stop offset="100%" stopColor="#ef4444" stopOpacity="0" />
                         </linearGradient>
                       </defs>
 
@@ -553,16 +549,19 @@ export default function PortfolioPage() {
                         // Create line path
                         const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
 
-                        // Area fill to bottom
-                        const areaPath = `${linePath} L ${points[points.length - 1].x} ${height - padding.bottom} L ${points[0].x} ${height - padding.bottom} Z`;
-
                         const finalPnl = dataPoints[dataPoints.length - 1].cumPnl;
                         const isPositive = finalPnl >= 0;
                         const lineColor = isPositive ? '#22c55e' : '#ef4444';
 
+                        // Area fill to TOP for negative (red gradient), no fill for positive (green)
+                        const areaPath = `${linePath} L ${points[points.length - 1].x} ${padding.top} L ${points[0].x} ${padding.top} Z`;
+
                         return (
                           <>
-                            <path d={areaPath} fill={`url(#${isPositive ? 'positiveGradient' : 'negativeGradient'})`} />
+                            {/* Only show gradient fill for negative/red */}
+                            {!isPositive && (
+                              <path d={areaPath} fill="url(#negativeGradient)" />
+                            )}
                             <path d={linePath} fill="none" stroke={lineColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                           </>
                         );
