@@ -987,17 +987,6 @@ export default function PortfolioPage() {
                     />
                   </label>
 
-                  {customBgImage && (
-                    <button
-                      onClick={() => setCustomBgImage(null)}
-                      className={`px-4 py-2.5 rounded-lg transition-colors ${
-                        isDark ? 'bg-white/5 hover:bg-white/10 border border-white/10 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-900'
-                      }`}
-                    >
-                      Reset
-                    </button>
-                  )}
-
                   {/* Copy Button */}
                   <button
                     onClick={async () => {
