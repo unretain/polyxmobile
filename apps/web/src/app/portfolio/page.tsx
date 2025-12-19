@@ -138,10 +138,13 @@ export default function PortfolioPage() {
     }
   };
 
-  // Fetch balance
-  const fetchBalance = async () => {
+  // Fetch balance (isRefresh = true means don't show loading spinner)
+  const fetchBalance = async (isRefresh = false) => {
     try {
-      setBalanceLoading(true);
+      // Only show loading on initial fetch, not on auto-refresh
+      if (!isRefresh) {
+        setBalanceLoading(true);
+      }
       const res = await fetch("/api/trading/balance");
       if (res.ok) {
         const data = await res.json();
@@ -150,16 +153,18 @@ export default function PortfolioPage() {
     } catch (err) {
       console.error("Failed to fetch balance:", err);
     } finally {
-      setBalanceLoading(false);
+      if (!isRefresh) {
+        setBalanceLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     if (status === "authenticated") {
       fetchPnL();
-      fetchBalance();
-      // Auto-refresh balance every 5 seconds
-      const interval = setInterval(fetchBalance, 5000);
+      fetchBalance(false); // Initial fetch with loading state
+      // Auto-refresh balance every 5 seconds (no loading spinner)
+      const interval = setInterval(() => fetchBalance(true), 5000);
       return () => clearInterval(interval);
     }
   }, [status, period, viewMode, calendarYear, calendarMonth]);
@@ -174,18 +179,40 @@ export default function PortfolioPage() {
   // Total portfolio value from balance API (includes SOL + all tokens)
   const totalPortfolioValueUsd = balance?.totalValueUsd ?? null;
 
-  // Filter positions
+  // Filter positions and merge with actual wallet balances
   const filteredPositions = useMemo(() => {
     if (!pnlData) return [];
+
+    // Create a map of actual wallet balances by mint
+    const walletBalances = new Map<string, number>();
+    if (balance?.tokens) {
+      for (const token of balance.tokens) {
+        walletBalances.set(token.mint, token.uiBalance);
+      }
+    }
+
+    // Get positions based on filter
+    let positions: Position[];
     switch (positionFilter) {
       case "active":
-        return pnlData.activePositions;
+        positions = pnlData.activePositions;
+        break;
       case "closed":
-        return pnlData.closedPositions;
+        positions = pnlData.closedPositions;
+        break;
       default:
-        return pnlData.positions;
+        positions = pnlData.positions;
     }
-  }, [pnlData, positionFilter]);
+
+    // Override currentBalance with actual wallet balance if available
+    return positions.map(pos => {
+      const actualBalance = walletBalances.get(pos.mint);
+      if (actualBalance !== undefined) {
+        return { ...pos, currentBalance: actualBalance };
+      }
+      return pos;
+    });
+  }, [pnlData, positionFilter, balance]);
 
   // Format helpers
   const formatSOL = (value: number) => {
