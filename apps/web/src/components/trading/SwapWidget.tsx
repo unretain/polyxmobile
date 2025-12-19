@@ -215,10 +215,6 @@ export function SwapWidget({
       setQuote(null);
       setTradingSource(null);
       fetchBalance();
-
-      if (data.explorerUrl) {
-        window.open(data.explorerUrl, "_blank");
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Swap failed");
     } finally {

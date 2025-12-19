@@ -117,15 +117,27 @@ export async function GET(req: NextRequest) {
 
     // Get prices for SOL and all tokens with balance
     const mintsToPrice = [SOL_MINT, ...tokensWithBalance.map((t) => t.mint)];
-    const prices = await jupiter.getTokenPrices(mintsToPrice);
-    let solPriceUsd = prices.get(SOL_MINT) || null;
+    let prices = new Map<string, number>();
+    let solPriceUsd: number | null = null;
+
+    // Try Jupiter Price API first
+    try {
+      prices = await jupiter.getTokenPrices(mintsToPrice);
+      solPriceUsd = prices.get(SOL_MINT) || null;
+      console.log("[balance] Jupiter prices - SOL:", solPriceUsd, "tokens:", prices.size);
+    } catch (e) {
+      console.warn("[balance] Jupiter price API failed:", e);
+    }
 
     // Fallback: fetch SOL price from CoinGecko if Jupiter failed
     if (!solPriceUsd) {
+      console.log("[balance] Jupiter SOL price missing, trying CoinGecko...");
       try {
         const cgRes = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd", {
-          signal: AbortSignal.timeout(5000),
+          headers: { "Accept": "application/json" },
+          signal: AbortSignal.timeout(10000),
         });
+        console.log("[balance] CoinGecko response status:", cgRes.status);
         if (cgRes.ok) {
           const cgData = await cgRes.json();
           solPriceUsd = cgData.solana?.usd || null;
@@ -134,6 +146,12 @@ export async function GET(req: NextRequest) {
       } catch (e) {
         console.warn("[balance] CoinGecko fallback failed:", e);
       }
+    }
+
+    // Last resort: use a hardcoded approximate price if both APIs fail
+    if (!solPriceUsd) {
+      console.warn("[balance] All price APIs failed, using approximate SOL price");
+      solPriceUsd = 200; // Approximate - better than $0
     }
 
     // Calculate token values with prices
