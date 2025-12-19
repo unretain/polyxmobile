@@ -179,6 +179,21 @@ class CandleCacheService {
     }
   }
 
+  // Get the oldest cached candle timestamp
+  async getOldestCachedTimestamp(
+    tokenAddress: string,
+    timeframe: string
+  ): Promise<number | null> {
+    const normalizedTf = normalizeTimeframe(timeframe);
+    const oldest = await prisma.candleCache.findFirst({
+      where: { tokenAddress, timeframe: normalizedTf },
+      orderBy: { timestamp: "asc" },
+      select: { timestamp: true },
+    });
+
+    return oldest ? oldest.timestamp.getTime() : null;
+  }
+
   // Get candles, using cache when possible, fetching fresh when needed
   async getCandles(
     tokenAddress: string,
@@ -189,19 +204,34 @@ class CandleCacheService {
   ): Promise<OHLCV[]> {
     const normalizedTf = normalizeTimeframe(timeframe);
 
-    // Check if we should fetch fresh data
+    // Check if we should fetch fresh data (for recent candles)
     const { shouldFetch, fetchFromTimestamp } = await this.shouldFetchFresh(
       tokenAddress,
       normalizedTf,
       toTimestamp
     );
 
-    if (shouldFetch) {
+    // Also check if we need historical data that's not cached
+    const oldestCached = await this.getOldestCachedTimestamp(tokenAddress, normalizedTf);
+    const needsHistoricalFetch = oldestCached === null || fromTimestamp < oldestCached;
+
+    if (shouldFetch || needsHistoricalFetch) {
       // Determine what range to fetch
-      const fetchFrom = fetchFromTimestamp || fromTimestamp;
+      let fetchFrom: number;
+      if (needsHistoricalFetch && !oldestCached) {
+        // No cache at all, fetch full range
+        fetchFrom = fromTimestamp;
+      } else if (needsHistoricalFetch && oldestCached && fromTimestamp < oldestCached) {
+        // Need older data than what's cached - fetch from requested start
+        fetchFrom = fromTimestamp;
+      } else {
+        // Just need recent data
+        fetchFrom = fetchFromTimestamp || fromTimestamp;
+      }
 
       try {
         // Fetch fresh candles
+        console.log(`[candleCache] Fetching ${tokenAddress.substring(0, 8)}... ${normalizedTf} from ${new Date(fetchFrom).toISOString()}`);
         const freshCandles = await fetchFn(fetchFrom, toTimestamp);
 
         if (freshCandles.length > 0) {
@@ -211,13 +241,13 @@ class CandleCacheService {
           );
         }
 
-        // If we only fetched partial data, merge with cached data
-        if (fetchFromTimestamp) {
+        // If we have cached data that might fill gaps, merge it
+        if (oldestCached && fetchFrom > fromTimestamp) {
           const cachedCandles = await this.getCachedCandles(
             tokenAddress,
             normalizedTf,
             fromTimestamp,
-            fetchFromTimestamp - 1
+            fetchFrom - 1
           );
 
           // Merge and deduplicate by timestamp
@@ -239,7 +269,8 @@ class CandleCacheService {
       }
     }
 
-    // Use cached data
+    // Use cached data - it covers the full requested range
+    console.log(`[candleCache] Serving ${tokenAddress.substring(0, 8)}... ${normalizedTf} from cache`);
     return this.getCachedCandles(tokenAddress, normalizedTf, fromTimestamp, toTimestamp);
   }
 }
