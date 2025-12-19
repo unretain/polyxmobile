@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -15,6 +15,10 @@ import {
   ChevronRight,
   Calendar,
   TrendingUp,
+  Share2,
+  X,
+  Upload,
+  Download,
 } from "lucide-react";
 
 
@@ -55,6 +59,7 @@ interface PnLResponse {
   period: string;
   startDate: string;
   endDate: string;
+  cumulativePnLBaseline: number; // PnL from trades before the display period
   summary: PnLSummary;
   dailyPnL: DailyPnL[];
   calendarData?: Record<string, DailyPnL>;
@@ -108,6 +113,15 @@ export default function PortfolioPage() {
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth() + 1);
   const [calendarData, setCalendarData] = useState<Record<string, DailyPnL>>({});
+
+  // Share card state
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [customBgImage, setCustomBgImage] = useState<string | null>(null);
+  const [isGeneratingCard, setIsGeneratingCard] = useState(false);
+  const shareCardRef = useRef<HTMLDivElement>(null);
+
+  // Selected day for share card (null = show period summary)
+  const [selectedDayForShare, setSelectedDayForShare] = useState<DailyPnL | null>(null);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -298,6 +312,21 @@ export default function PortfolioPage() {
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={() => {
+                setSelectedDayForShare(null);
+                setShowShareModal(true);
+              }}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
+                isDark
+                  ? 'bg-[#FF6B4A] hover:bg-[#ff5a35] text-white'
+                  : 'bg-[#FF6B4A] hover:bg-[#ff5a35] text-white'
+              }`}
+              title="Share PnL Card"
+            >
+              <Share2 className="h-4 w-4" />
+              <span className="text-sm font-medium">Share</span>
+            </button>
+            <button
               onClick={() => { fetchPnL(); fetchBalance(); }}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
                 isDark
@@ -388,51 +417,26 @@ export default function PortfolioPage() {
               </div>
 
               {viewMode === "chart" && (
-                <>
-                  {/* Period selector */}
-                  <div className="flex items-center gap-1">
-                    {(["1d", "7d", "30d", "all"] as Period[]).map((p) => (
-                      <button
-                        key={p}
-                        onClick={() => setPeriod(p)}
-                        className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                          period === p
-                            ? 'bg-[#FF6B4A] text-white'
-                            : isDark ? 'text-white/60 hover:bg-white/10' : 'text-gray-600 hover:bg-gray-100'
-                        }`}
-                      >
-                        {p === "all" ? "All" : p.toUpperCase()}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* USD/SOL toggle */}
-                  <div className={`flex items-center rounded-lg overflow-hidden border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                /* Period selector for chart view */
+                <div className="flex items-center gap-1">
+                  {(["1d", "7d", "30d", "all"] as Period[]).map((p) => (
                     <button
-                      onClick={() => setCurrencyMode("usd")}
-                      className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-                        currencyMode === "usd"
+                      key={p}
+                      onClick={() => setPeriod(p)}
+                      className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                        period === p
                           ? 'bg-[#FF6B4A] text-white'
-                          : isDark ? 'bg-white/5 text-white/60 hover:bg-white/10' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                          : isDark ? 'text-white/60 hover:bg-white/10' : 'text-gray-600 hover:bg-gray-100'
                       }`}
                     >
-                      USD
+                      {p === "all" ? "All" : p.toUpperCase()}
                     </button>
-                    <button
-                      onClick={() => setCurrencyMode("sol")}
-                      className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-                        currencyMode === "sol"
-                          ? 'bg-[#FF6B4A] text-white'
-                          : isDark ? 'bg-white/5 text-white/60 hover:bg-white/10' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      SOL
-                    </button>
-                  </div>
-                </>
+                  ))}
+                </div>
               )}
 
               {viewMode === "calendar" && (
+                /* Month navigation for calendar view */
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => navigateMonth(-1)}
@@ -451,6 +455,30 @@ export default function PortfolioPage() {
                   </button>
                 </div>
               )}
+
+              {/* USD/SOL toggle - available for both chart and calendar */}
+              <div className={`flex items-center rounded-lg overflow-hidden border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                <button
+                  onClick={() => setCurrencyMode("usd")}
+                  className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                    currencyMode === "usd"
+                      ? 'bg-[#FF6B4A] text-white'
+                      : isDark ? 'bg-white/5 text-white/60 hover:bg-white/10' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  USD
+                </button>
+                <button
+                  onClick={() => setCurrencyMode("sol")}
+                  className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                    currencyMode === "sol"
+                      ? 'bg-[#FF6B4A] text-white'
+                      : isDark ? 'bg-white/5 text-white/60 hover:bg-white/10' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  SOL
+                </button>
+              </div>
             </div>
           </div>
 
@@ -493,8 +521,8 @@ export default function PortfolioPage() {
                         const chartWidth = width - padding.left - padding.right;
                         const chartHeight = height - padding.top - padding.bottom;
 
-                        // Calculate cumulative PnL
-                        let cumulative = 0;
+                        // Start cumulative from the baseline (PnL before this period)
+                        let cumulative = pnlData?.cumulativePnLBaseline || 0;
                         const cumulativeData = chartData.map(d => {
                           cumulative += d.pnl;
                           return { ...d, cumPnl: cumulative };
@@ -591,7 +619,8 @@ export default function PortfolioPage() {
                     {/* Hover overlay for tooltips */}
                     <div className="absolute inset-0 flex">
                       {(() => {
-                        let cumulative = 0;
+                        // Start from baseline
+                        let cumulative = pnlData?.cumulativePnLBaseline || 0;
                         const solPrice = balance?.sol.priceUsd || 0;
                         return chartData.map((day) => {
                           cumulative += day.pnl;
@@ -657,26 +686,47 @@ export default function PortfolioPage() {
                     const day = i + 1;
                     const dateStr = `${calendarYear}-${String(calendarMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
                     const dayData = calendarData[dateStr];
-                    const pnl = dayData?.pnl || 0;
+                    const pnlSol = dayData?.pnl || 0;
                     const hasTrades = dayData?.trades > 0;
                     const isToday = new Date().toISOString().split("T")[0] === dateStr;
-                    const intensity = hasTrades ? Math.min(Math.abs(pnl) / (chartMax || 1), 1) : 0;
+                    const intensity = hasTrades ? Math.min(Math.abs(pnlSol) / (chartMax || 1), 1) : 0;
+
+                    // Convert to display value based on currency mode
+                    const solPrice = balance?.sol.priceUsd || 0;
+                    const displayValue = currencyMode === "usd" ? pnlSol * solPrice : pnlSol;
+                    const formatCalendarPnL = (val: number) => {
+                      if (currencyMode === "usd") {
+                        if (Math.abs(val) >= 1000) return `$${(val / 1000).toFixed(1)}k`;
+                        if (Math.abs(val) >= 100) return `$${val.toFixed(0)}`;
+                        if (Math.abs(val) >= 1) return `$${val.toFixed(2)}`;
+                        return `$${val.toFixed(2)}`;
+                      } else {
+                        if (Math.abs(val) >= 1) return val.toFixed(4);
+                        return val.toFixed(6);
+                      }
+                    };
 
                     return (
                       <div
                         key={day}
+                        onClick={() => {
+                          if (hasTrades && dayData) {
+                            setSelectedDayForShare(dayData);
+                            setShowShareModal(true);
+                          }
+                        }}
                         className={`aspect-square p-1.5 rounded-lg flex flex-col transition-colors ${
                           isToday ? 'ring-2 ring-[#FF6B4A]' : ''
-                        }`}
+                        } ${hasTrades ? 'cursor-pointer hover:ring-2 hover:ring-white/30' : ''}`}
                         style={{
-                          backgroundColor: hasTrades ? getPnLBgColor(pnl, intensity) : (isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)'),
+                          backgroundColor: hasTrades ? getPnLBgColor(pnlSol, intensity) : (isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)'),
                         }}
                       >
                         <span className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>{day}</span>
                         <div className="flex-1 flex items-center justify-center">
-                          <span className={`text-xs sm:text-sm font-bold ${getPnLColor(pnl, isDark)}`}>
+                          <span className={`text-xs sm:text-sm font-bold ${getPnLColor(pnlSol, isDark)}`}>
                             {hasTrades ? (
-                              <>{pnl >= 0 ? "+" : ""}{Math.abs(pnl) >= 1 ? pnl.toFixed(4) : pnl.toFixed(6)}</>
+                              <>{displayValue >= 0 ? "+" : ""}{formatCalendarPnL(displayValue)}</>
                             ) : (
                               <span className={isDark ? 'text-white/20' : 'text-gray-300'}>0</span>
                             )}
@@ -847,6 +897,168 @@ export default function PortfolioPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Share PnL Card Modal */}
+        {showShareModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+            <div className={`relative w-full max-w-lg rounded-2xl overflow-hidden ${isDark ? 'bg-[#111] border border-white/10' : 'bg-white border border-gray-200'}`}>
+              {/* Modal Header */}
+              <div className={`flex items-center justify-between p-4 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                <h3 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Share PnL Card</h3>
+                <button
+                  onClick={() => setShowShareModal(false)}
+                  className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-white/10 text-white/60' : 'hover:bg-gray-100 text-gray-500'}`}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Card Preview */}
+              <div className="p-4">
+                <div
+                  ref={shareCardRef}
+                  className="relative w-full aspect-[4/3] rounded-xl overflow-hidden"
+                  style={{
+                    background: customBgImage
+                      ? `url(${customBgImage}) center/cover`
+                      : 'linear-gradient(135deg, #FF6B4A 0%, #FF8F6B 50%, #FFB088 100%)'
+                  }}
+                >
+                  {/* Overlay for readability */}
+                  <div className="absolute inset-0 bg-black/30" />
+
+                  {/* Card Content */}
+                  <div className="relative h-full flex flex-col justify-between p-6 text-white">
+                    {/* Logo */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl font-bold">[poly<span className="text-[#FF6B4A]">x</span>]</span>
+                    </div>
+
+                    {/* PnL Display */}
+                    <div className="text-center">
+                      {selectedDayForShare ? (
+                        // Showing specific day's PnL
+                        <>
+                          <p className="text-sm opacity-80 mb-1">
+                            {new Date(selectedDayForShare.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                          </p>
+                          <p className={`text-5xl font-bold ${selectedDayForShare.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {currencyMode === "usd"
+                              ? `${selectedDayForShare.pnl >= 0 ? '+' : ''}$${Math.abs(selectedDayForShare.pnl * (balance?.sol.priceUsd || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              : `${selectedDayForShare.pnl >= 0 ? '+' : ''}${selectedDayForShare.pnl.toFixed(6)} SOL`
+                            }
+                          </p>
+                          <p className="text-sm opacity-60 mt-2">
+                            {selectedDayForShare.trades} trade{selectedDayForShare.trades !== 1 ? 's' : ''} • {selectedDayForShare.volume.toFixed(4)} SOL volume
+                          </p>
+                        </>
+                      ) : (
+                        // Showing period summary
+                        <>
+                          <p className="text-sm opacity-80 mb-1">
+                            {viewMode === "calendar"
+                              ? `${monthNames[calendarMonth - 1]} ${calendarYear}`
+                              : period === "all" ? "All Time" : `Last ${period.toUpperCase()}`
+                            } PnL
+                          </p>
+                          <p className={`text-5xl font-bold ${(pnlData?.summary.totalRealizedPnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {currencyMode === "usd"
+                              ? `${(pnlData?.summary.totalRealizedPnl || 0) >= 0 ? '+' : ''}$${Math.abs((pnlData?.summary.totalRealizedPnl || 0) * (balance?.sol.priceUsd || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              : `${(pnlData?.summary.totalRealizedPnl || 0) >= 0 ? '+' : ''}${(pnlData?.summary.totalRealizedPnl || 0).toFixed(4)} SOL`
+                            }
+                          </p>
+                          <p className="text-sm opacity-60 mt-2">
+                            {pnlData?.summary.totalTrades || 0} trades • {((pnlData?.summary.winRate || 0) * 100).toFixed(0)}% win rate
+                          </p>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Date */}
+                    <div className="flex items-center justify-between text-sm opacity-60">
+                      <span>{new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                      <span>polyx.trade</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className={`p-4 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                <div className="flex items-center gap-3">
+                  {/* Custom Background Upload */}
+                  <label className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg cursor-pointer transition-colors ${
+                    isDark ? 'bg-white/5 hover:bg-white/10 border border-white/10 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-900'
+                  }`}>
+                    <Upload className="h-4 w-4" />
+                    <span className="text-sm">{customBgImage ? 'Change BG' : 'Custom BG'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const reader = new FileReader();
+                          reader.onload = (ev) => {
+                            setCustomBgImage(ev.target?.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                    />
+                  </label>
+
+                  {customBgImage && (
+                    <button
+                      onClick={() => setCustomBgImage(null)}
+                      className={`px-4 py-2.5 rounded-lg transition-colors ${
+                        isDark ? 'bg-white/5 hover:bg-white/10 border border-white/10 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-900'
+                      }`}
+                    >
+                      Reset
+                    </button>
+                  )}
+
+                  {/* Download Button */}
+                  <button
+                    onClick={async () => {
+                      if (!shareCardRef.current) return;
+                      setIsGeneratingCard(true);
+                      try {
+                        // Use html2canvas dynamically
+                        const html2canvas = (await import('html2canvas')).default;
+                        const canvas = await html2canvas(shareCardRef.current, {
+                          scale: 2,
+                          useCORS: true,
+                          backgroundColor: null,
+                        });
+                        const link = document.createElement('a');
+                        link.download = `polyx-pnl-${new Date().toISOString().split('T')[0]}.png`;
+                        link.href = canvas.toDataURL('image/png');
+                        link.click();
+                      } catch (err) {
+                        console.error('Failed to generate card:', err);
+                        alert('Failed to generate image. Please try again.');
+                      } finally {
+                        setIsGeneratingCard(false);
+                      }
+                    }}
+                    disabled={isGeneratingCard}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#FF6B4A] hover:bg-[#ff5a35] text-white transition-colors disabled:opacity-50"
+                  >
+                    {isGeneratingCard ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    <span className="text-sm font-medium">Download</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

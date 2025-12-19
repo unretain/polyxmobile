@@ -45,52 +45,111 @@ export async function GET(req: NextRequest) {
     const year = parseInt(searchParams.get("year") || new Date().getFullYear().toString());
     const month = parseInt(searchParams.get("month") || (new Date().getMonth() + 1).toString());
 
-    // Calculate date range
-    let startDate: Date;
-    const endDate = new Date();
-    endDate.setHours(23, 59, 59, 999);
+    // Calculate date range for DISPLAY (not for fetching)
+    let displayStartDate: Date;
+    const displayEndDate = new Date();
+    displayEndDate.setHours(23, 59, 59, 999);
 
     switch (period) {
       case "1d":
-        startDate = new Date();
-        startDate.setHours(0, 0, 0, 0);
+        displayStartDate = new Date();
+        displayStartDate.setHours(0, 0, 0, 0);
         break;
       case "7d":
-        startDate = new Date();
-        startDate.setDate(startDate.getDate() - 7);
-        startDate.setHours(0, 0, 0, 0);
+        displayStartDate = new Date();
+        displayStartDate.setDate(displayStartDate.getDate() - 7);
+        displayStartDate.setHours(0, 0, 0, 0);
         break;
       case "30d":
-        startDate = new Date();
-        startDate.setDate(startDate.getDate() - 30);
-        startDate.setHours(0, 0, 0, 0);
+        displayStartDate = new Date();
+        displayStartDate.setDate(displayStartDate.getDate() - 30);
+        displayStartDate.setHours(0, 0, 0, 0);
         break;
       case "calendar":
         // Full month for calendar view
-        startDate = new Date(year, month - 1, 1);
-        endDate.setFullYear(year, month - 1);
-        endDate.setDate(new Date(year, month, 0).getDate());
+        displayStartDate = new Date(year, month - 1, 1);
+        displayEndDate.setFullYear(year, month - 1);
+        displayEndDate.setDate(new Date(year, month, 0).getDate());
         break;
       default:
-        startDate = new Date(0); // All time
+        displayStartDate = new Date(0); // All time
     }
 
-    // Fetch all confirmed trades for the user in the period
-    const trades = await prisma.trade.findMany({
+    // Fetch ALL confirmed trades for cumulative PnL calculation
+    const allTrades = await prisma.trade.findMany({
       where: {
         userId: session.user.id,
         status: TradeStatus.SUCCESS,
-        confirmedAt: {
-          gte: startDate,
-          lte: endDate,
-        },
       },
       orderBy: { confirmedAt: "asc" },
     });
 
+    // Separate trades: those before display period (for cumulative baseline) and during display period
+    const trades = allTrades.filter(t => {
+      const tradeDate = t.confirmedAt || t.createdAt;
+      return tradeDate >= displayStartDate && tradeDate <= displayEndDate;
+    });
+
+    const tradesBeforePeriod = allTrades.filter(t => {
+      const tradeDate = t.confirmedAt || t.createdAt;
+      return tradeDate < displayStartDate;
+    });
+
+    // Calculate cumulative PnL baseline from trades BEFORE the display period
+    // This is needed so the chart starts at the correct cumulative value
+    let cumulativePnLBaseline = 0;
+    const baselinePositions = new Map<string, { avgBuyPrice: number; totalBought: number; totalBuyCost: number }>();
+
+    for (const trade of tradesBeforePeriod) {
+      const isBuy = trade.inputMint === SOL_MINT;
+      const tokenMint = isBuy ? trade.outputMint : trade.inputMint;
+
+      const solAmount = isBuy
+        ? Number(trade.amountIn) / 1e9
+        : Number(trade.amountOut) / 1e9;
+      const tokenAmount = isBuy
+        ? Number(trade.amountOut) / 1e6
+        : Number(trade.amountIn) / 1e6;
+
+      if (!baselinePositions.has(tokenMint)) {
+        baselinePositions.set(tokenMint, { avgBuyPrice: 0, totalBought: 0, totalBuyCost: 0 });
+      }
+      const pos = baselinePositions.get(tokenMint)!;
+
+      if (isBuy) {
+        pos.totalBought += tokenAmount;
+        pos.totalBuyCost += solAmount;
+        pos.avgBuyPrice = pos.totalBuyCost / pos.totalBought;
+      } else {
+        // Calculate realized PnL for sells before the period
+        const costBasis = pos.avgBuyPrice * tokenAmount;
+        const tradePnl = solAmount - costBasis;
+        cumulativePnLBaseline += tradePnl;
+      }
+    }
+
     // Calculate daily PnL
     const dailyPnLMap = new Map<string, DailyPnL>();
     const positions = new Map<string, Position>();
+
+    // Initialize positions with baseline data (for accurate cost basis)
+    for (const [mint, baseline] of baselinePositions) {
+      positions.set(mint, {
+        mint,
+        symbol: "",
+        totalBought: baseline.totalBought,
+        totalSold: 0,
+        avgBuyPrice: baseline.avgBuyPrice,
+        avgSellPrice: 0,
+        totalBuyCost: baseline.totalBuyCost,
+        totalSellRevenue: 0,
+        currentBalance: baseline.totalBought, // Will be adjusted by sells
+        realizedPnl: 0, // Only track PnL during display period
+        unrealizedPnl: 0,
+        trades: 0,
+        lastTradeAt: null,
+      });
+    }
 
     for (const trade of trades) {
       const tradeDate = trade.confirmedAt || trade.createdAt;
@@ -226,8 +285,12 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       period,
-      startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
+      startDate: displayStartDate.toISOString(),
+      endDate: displayEndDate.toISOString(),
+
+      // Cumulative PnL from trades BEFORE the display period
+      // Use this as the starting point for cumulative charts
+      cumulativePnLBaseline,
 
       // Summary
       summary: {

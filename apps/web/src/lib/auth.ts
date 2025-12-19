@@ -153,7 +153,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           where: { id: token.id as string },
           select: { walletAddress: true },
         });
-        token.walletAddress = dbUser?.walletAddress;
+        token.walletAddress = dbUser?.walletAddress ?? undefined;
       }
 
       return token;
