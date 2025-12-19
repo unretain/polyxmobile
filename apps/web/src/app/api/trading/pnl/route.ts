@@ -5,6 +5,55 @@ import { TradeStatus } from "@prisma/client";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
+// Simple token stats for SwapWidget
+async function getTokenStats(userId: string, tokenMint: string) {
+  const trades = await prisma.trade.findMany({
+    where: {
+      userId,
+      status: TradeStatus.SUCCESS,
+      OR: [
+        { inputMint: SOL_MINT, outputMint: tokenMint },
+        { inputMint: tokenMint, outputMint: SOL_MINT },
+      ],
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  let totalBought = 0;
+  let totalSold = 0;
+  let totalSolSpent = 0;
+  let totalSolReceived = 0;
+
+  for (const trade of trades) {
+    const isBuy = trade.inputMint === SOL_MINT;
+
+    if (isBuy) {
+      const tokenAmount = Number(trade.amountOut) / 1e6;
+      const solAmount = Number(trade.amountIn) / 1e9;
+      totalBought += tokenAmount;
+      totalSolSpent += solAmount;
+    } else {
+      const tokenAmount = Number(trade.amountIn) / 1e6;
+      const solAmount = Number(trade.amountOut) / 1e9;
+      totalSold += tokenAmount;
+      totalSolReceived += solAmount;
+    }
+  }
+
+  const holding = Math.max(0, totalBought - totalSold);
+  let pnlPercent = 0;
+  if (totalSolSpent > 0) {
+    pnlPercent = ((totalSolReceived - totalSolSpent) / totalSolSpent) * 100;
+  }
+
+  return NextResponse.json({
+    bought: totalBought,
+    sold: totalSold,
+    holding,
+    pnlPercent,
+  });
+}
+
 interface DailyPnL {
   date: string; // YYYY-MM-DD
   pnl: number;
@@ -41,6 +90,13 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = req.nextUrl;
+    const tokenMint = searchParams.get("tokenMint");
+
+    // If tokenMint is provided, return simple stats for SwapWidget
+    if (tokenMint) {
+      return getTokenStats(session.user.id, tokenMint);
+    }
+
     const period = searchParams.get("period") || "30d"; // 1d, 7d, 30d, all
     const year = parseInt(searchParams.get("year") || new Date().getFullYear().toString());
     const month = parseInt(searchParams.get("month") || (new Date().getMonth() + 1).toString());
