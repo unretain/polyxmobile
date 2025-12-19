@@ -19,6 +19,7 @@ import {
   X,
   Upload,
   Download,
+  Copy,
 } from "lucide-react";
 
 
@@ -312,21 +313,6 @@ export default function PortfolioPage() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                setSelectedDayForShare(null);
-                setShowShareModal(true);
-              }}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
-                isDark
-                  ? 'bg-[#FF6B4A] hover:bg-[#ff5a35] text-white'
-                  : 'bg-[#FF6B4A] hover:bg-[#ff5a35] text-white'
-              }`}
-              title="Share PnL Card"
-            >
-              <Share2 className="h-4 w-4" />
-              <span className="text-sm font-medium">Share</span>
-            </button>
-            <button
               onClick={() => { fetchPnL(); fetchBalance(); }}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${
                 isDark
@@ -479,6 +465,19 @@ export default function PortfolioPage() {
                   SOL
                 </button>
               </div>
+
+              {/* Share Button */}
+              <button
+                onClick={() => {
+                  setSelectedDayForShare(null);
+                  setShowShareModal(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FF6B4A] hover:bg-[#ff5a35] text-white transition-colors"
+                title="Share PnL Card"
+              >
+                <Share2 className="h-4 w-4" />
+                <span className="text-sm font-medium">Share</span>
+              </button>
             </div>
           </div>
 
@@ -947,8 +946,8 @@ export default function PortfolioPage() {
                           </p>
                           <p className={`text-5xl font-bold ${selectedDayForShare.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                             {currencyMode === "usd"
-                              ? `${selectedDayForShare.pnl >= 0 ? '+' : ''}$${Math.abs(selectedDayForShare.pnl * (balance?.sol.priceUsd || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                              : `${selectedDayForShare.pnl >= 0 ? '+' : ''}${selectedDayForShare.pnl.toFixed(6)} SOL`
+                              ? `${selectedDayForShare.pnl >= 0 ? '+' : '-'}$${Math.abs(selectedDayForShare.pnl * (balance?.sol.priceUsd || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              : `${selectedDayForShare.pnl >= 0 ? '+' : '-'}${Math.abs(selectedDayForShare.pnl).toFixed(6)} SOL`
                             }
                           </p>
                           <p className="text-sm opacity-60 mt-2">
@@ -966,8 +965,8 @@ export default function PortfolioPage() {
                           </p>
                           <p className={`text-5xl font-bold ${(pnlData?.summary.totalRealizedPnl || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                             {currencyMode === "usd"
-                              ? `${(pnlData?.summary.totalRealizedPnl || 0) >= 0 ? '+' : ''}$${Math.abs((pnlData?.summary.totalRealizedPnl || 0) * (balance?.sol.priceUsd || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                              : `${(pnlData?.summary.totalRealizedPnl || 0) >= 0 ? '+' : ''}${(pnlData?.summary.totalRealizedPnl || 0).toFixed(4)} SOL`
+                              ? `${(pnlData?.summary.totalRealizedPnl || 0) >= 0 ? '+' : '-'}$${Math.abs((pnlData?.summary.totalRealizedPnl || 0) * (balance?.sol.priceUsd || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              : `${(pnlData?.summary.totalRealizedPnl || 0) >= 0 ? '+' : '-'}${Math.abs(pnlData?.summary.totalRealizedPnl || 0).toFixed(4)} SOL`
                             }
                           </p>
                           <p className="text-sm opacity-60 mt-2">
@@ -1022,6 +1021,46 @@ export default function PortfolioPage() {
                       Reset
                     </button>
                   )}
+
+                  {/* Copy Button */}
+                  <button
+                    onClick={async () => {
+                      if (!shareCardRef.current) return;
+                      setIsGeneratingCard(true);
+                      try {
+                        const html2canvas = (await import('html2canvas')).default;
+                        const canvas = await html2canvas(shareCardRef.current, {
+                          scale: 2,
+                          useCORS: true,
+                          backgroundColor: null,
+                        });
+                        canvas.toBlob(async (blob) => {
+                          if (blob) {
+                            try {
+                              await navigator.clipboard.write([
+                                new ClipboardItem({ 'image/png': blob })
+                              ]);
+                              alert('Copied to clipboard!');
+                            } catch {
+                              alert('Copy failed. Try downloading instead.');
+                            }
+                          }
+                        }, 'image/png');
+                      } catch (err) {
+                        console.error('Failed to copy card:', err);
+                        alert('Failed to copy. Please try downloading instead.');
+                      } finally {
+                        setIsGeneratingCard(false);
+                      }
+                    }}
+                    disabled={isGeneratingCard}
+                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50 ${
+                      isDark ? 'bg-white/5 hover:bg-white/10 border border-white/10 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-900'
+                    }`}
+                  >
+                    <Copy className="h-4 w-4" />
+                    <span className="text-sm font-medium">Copy</span>
+                  </button>
 
                   {/* Download Button */}
                   <button
