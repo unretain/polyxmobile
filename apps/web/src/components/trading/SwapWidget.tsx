@@ -231,7 +231,9 @@ export function SwapWidget({
     if (inputMint === SOL_MINT) {
       return balance.sol.uiBalance;
     }
+    // For sell mode, find the token by mint address
     const token = balance.tokens.find((t) => t.mint === inputMint);
+    console.log("[SwapWidget] getInputBalance - inputMint:", inputMint, "tokens:", balance.tokens.map(t => t.mint), "found:", token?.uiBalance);
     return token?.uiBalance || 0;
   };
 
