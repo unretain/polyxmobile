@@ -87,6 +87,7 @@ interface BalanceResponse {
 type ViewMode = "chart" | "calendar";
 type Period = "1d" | "7d" | "30d" | "all";
 type PositionFilter = "active" | "closed" | "all";
+type CurrencyMode = "usd" | "sol";
 
 export default function PortfolioPage() {
   const { isDark } = useThemeStore();
@@ -101,6 +102,7 @@ export default function PortfolioPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("chart");
   const [period, setPeriod] = useState<Period>("30d");
   const [positionFilter, setPositionFilter] = useState<PositionFilter>("all");
+  const [currencyMode, setCurrencyMode] = useState<CurrencyMode>("usd");
 
   // Calendar state
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
@@ -386,21 +388,48 @@ export default function PortfolioPage() {
               </div>
 
               {viewMode === "chart" && (
-                <div className="flex items-center gap-1">
-                  {(["1d", "7d", "30d", "all"] as Period[]).map((p) => (
+                <>
+                  {/* Period selector */}
+                  <div className="flex items-center gap-1">
+                    {(["1d", "7d", "30d", "all"] as Period[]).map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => setPeriod(p)}
+                        className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                          period === p
+                            ? 'bg-[#FF6B4A] text-white'
+                            : isDark ? 'text-white/60 hover:bg-white/10' : 'text-gray-600 hover:bg-gray-100'
+                        }`}
+                      >
+                        {p === "all" ? "All" : p.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* USD/SOL toggle */}
+                  <div className={`flex items-center rounded-lg overflow-hidden border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
                     <button
-                      key={p}
-                      onClick={() => setPeriod(p)}
-                      className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                        period === p
+                      onClick={() => setCurrencyMode("usd")}
+                      className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                        currencyMode === "usd"
                           ? 'bg-[#FF6B4A] text-white'
-                          : isDark ? 'text-white/60 hover:bg-white/10' : 'text-gray-600 hover:bg-gray-100'
+                          : isDark ? 'bg-white/5 text-white/60 hover:bg-white/10' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
                       }`}
                     >
-                      {p === "all" ? "All" : p.toUpperCase()}
+                      USD
                     </button>
-                  ))}
-                </div>
+                    <button
+                      onClick={() => setCurrencyMode("sol")}
+                      className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                        currencyMode === "sol"
+                          ? 'bg-[#FF6B4A] text-white'
+                          : isDark ? 'bg-white/5 text-white/60 hover:bg-white/10' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      SOL
+                    </button>
+                  </div>
+                </>
               )}
 
               {viewMode === "calendar" && (
@@ -563,9 +592,16 @@ export default function PortfolioPage() {
                     <div className="absolute inset-0 flex">
                       {(() => {
                         let cumulative = 0;
+                        const solPrice = balance?.sol.priceUsd || 0;
                         return chartData.map((day) => {
                           cumulative += day.pnl;
                           const isPositive = cumulative >= 0;
+                          const displayValue = currencyMode === "usd"
+                            ? cumulative * solPrice
+                            : cumulative;
+                          const formattedValue = currencyMode === "usd"
+                            ? `${isPositive ? '+' : ''}$${Math.abs(displayValue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : `${isPositive ? '+' : ''}${cumulative.toFixed(6)} SOL`;
                           return (
                             <div
                               key={day.date}
@@ -574,7 +610,7 @@ export default function PortfolioPage() {
                               {/* Tooltip */}
                               <div className="absolute top-4 left-1/2 -translate-x-1/2 px-3 py-2 rounded-lg text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 bg-[#1a1a1a] border border-white/10 shadow-xl">
                                 <div className={`text-lg font-bold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                                  {isPositive ? '+' : ''}{cumulative.toFixed(6)} SOL
+                                  {formattedValue}
                                 </div>
                                 <div className="text-white/60 text-xs">
                                   {new Date(day.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
