@@ -273,11 +273,11 @@ export class JupiterService {
             userPublicKey,
             wrapAndUnwrapSol: true,
             dynamicComputeUnitLimit: true,
-            // Use Jupiter's built-in priority fee with veryHigh level
+            // Use Jupiter's built-in priority fee - keep it low for small trades
             prioritizationFeeLamports: {
               priorityLevelWithMaxLamports: {
-                maxLamports: 1000000, // Max 0.001 SOL for priority
-                priorityLevel: "veryHigh",
+                maxLamports: 100000, // Max 0.0001 SOL for priority (reduced from 0.001)
+                priorityLevel: "high",
               },
             },
           }),
