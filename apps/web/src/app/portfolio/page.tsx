@@ -475,116 +475,167 @@ export default function PortfolioPage() {
                 <Loader2 className="h-6 w-6 animate-spin text-[#FF6B4A]" />
               </div>
             ) : viewMode === "chart" ? (
-              /* Line Chart View */
-              <div className="h-[200px] relative">
+              /* TradingView-style Line Chart */
+              <div className="h-[250px] relative bg-[#0a0a0a] rounded-lg overflow-hidden">
                 {chartData.length > 0 ? (
                   <>
                     {/* SVG Line Chart */}
                     <svg
-                      viewBox={`0 0 ${chartData.length * 20} 200`}
+                      viewBox="0 0 800 200"
                       preserveAspectRatio="none"
                       className="w-full h-full"
                     >
-                      {/* Zero line */}
-                      <line
-                        x1="0"
-                        y1="100"
-                        x2={chartData.length * 20}
-                        y2="100"
-                        stroke={isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"}
-                        strokeWidth="1"
-                      />
-
-                      {/* Gradient fill under line */}
+                      {/* Gradient definitions */}
                       <defs>
-                        <linearGradient id="lineGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                          <stop offset="0%" stopColor="#22c55e" stopOpacity="0.3" />
-                          <stop offset="50%" stopColor="#22c55e" stopOpacity="0" />
-                          <stop offset="50%" stopColor="#ef4444" stopOpacity="0" />
-                          <stop offset="100%" stopColor="#ef4444" stopOpacity="0.3" />
+                        {/* Gradient for positive (green) area */}
+                        <linearGradient id="positiveGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stopColor="#22c55e" stopOpacity="0.4" />
+                          <stop offset="100%" stopColor="#22c55e" stopOpacity="0.05" />
+                        </linearGradient>
+                        {/* Gradient for negative (red) area */}
+                        <linearGradient id="negativeGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stopColor="#ef4444" stopOpacity="0.05" />
+                          <stop offset="100%" stopColor="#ef4444" stopOpacity="0.4" />
                         </linearGradient>
                       </defs>
 
-                      {/* Area fill */}
-                      <path
-                        d={`M 10 100 ${chartData.map((d, i) => {
-                          const x = i * 20 + 10;
-                          const y = 100 - (d.pnl / chartMax) * 90;
-                          return `L ${x} ${Math.max(10, Math.min(190, y))}`;
-                        }).join(" ")} L ${(chartData.length - 1) * 20 + 10} 100 Z`}
-                        fill="url(#lineGradient)"
-                      />
+                      {/* Calculate cumulative PnL for proper line chart */}
+                      {(() => {
+                        const width = 800;
+                        const height = 200;
+                        const padding = { top: 20, bottom: 20, left: 0, right: 0 };
+                        const chartWidth = width - padding.left - padding.right;
+                        const chartHeight = height - padding.top - padding.bottom;
 
-                      {/* Main line */}
-                      <path
-                        d={`M ${chartData.map((d, i) => {
-                          const x = i * 20 + 10;
-                          const y = 100 - (d.pnl / chartMax) * 90;
-                          return `${i === 0 ? "" : "L "}${x} ${Math.max(10, Math.min(190, y))}`;
-                        }).join(" ")}`}
-                        fill="none"
-                        stroke="#FF6B4A"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
+                        // Calculate cumulative PnL
+                        let cumulative = 0;
+                        const cumulativeData = chartData.map(d => {
+                          cumulative += d.pnl;
+                          return { ...d, cumPnl: cumulative };
+                        });
 
-                      {/* Data points */}
-                      {chartData.map((d, i) => {
-                        const x = i * 20 + 10;
-                        const y = 100 - (d.pnl / chartMax) * 90;
-                        const clampedY = Math.max(10, Math.min(190, y));
+                        // Find min/max for scaling
+                        const values = cumulativeData.map(d => d.cumPnl);
+                        const minVal = Math.min(0, ...values);
+                        const maxVal = Math.max(0, ...values);
+
+                        // Calculate zero line position
+                        const zeroY = padding.top + (maxVal / (maxVal - minVal || 1)) * chartHeight;
+
+                        // Generate path points
+                        const points = cumulativeData.map((d, i) => {
+                          const x = padding.left + (i / (chartData.length - 1 || 1)) * chartWidth;
+                          const normalizedY = (d.cumPnl - minVal) / (maxVal - minVal || 1);
+                          const y = padding.top + (1 - normalizedY) * chartHeight;
+                          return { x, y, data: d };
+                        });
+
+                        // Create line path
+                        const linePath = points.map((p, i) =>
+                          `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`
+                        ).join(' ');
+
+                        // Create area path (fill to zero line)
+                        const areaPath = `${linePath} L ${points[points.length - 1]?.x || 0} ${zeroY} L ${points[0]?.x || 0} ${zeroY} Z`;
+
+                        // Determine if overall positive or negative
+                        const finalPnl = cumulativeData[cumulativeData.length - 1]?.cumPnl || 0;
+                        const isPositive = finalPnl >= 0;
+                        const lineColor = isPositive ? '#22c55e' : '#ef4444';
+                        const gradientId = isPositive ? 'positiveGradient' : 'negativeGradient';
+
                         return (
-                          <circle
-                            key={d.date}
-                            cx={x}
-                            cy={clampedY}
-                            r={d.trades > 0 ? 4 : 2}
-                            fill={d.pnl >= 0 ? "#22c55e" : "#ef4444"}
-                            stroke={isDark ? "#111" : "#fff"}
-                            strokeWidth="1"
-                            className="cursor-pointer hover:r-6"
-                          />
+                          <>
+                            {/* Horizontal grid lines */}
+                            {[0.25, 0.5, 0.75].map((ratio) => (
+                              <line
+                                key={ratio}
+                                x1={padding.left}
+                                y1={padding.top + ratio * chartHeight}
+                                x2={width - padding.right}
+                                y2={padding.top + ratio * chartHeight}
+                                stroke="rgba(255,255,255,0.05)"
+                                strokeWidth="1"
+                              />
+                            ))}
+
+                            {/* Zero line (dashed) */}
+                            <line
+                              x1={padding.left}
+                              y1={zeroY}
+                              x2={width - padding.right}
+                              y2={zeroY}
+                              stroke="rgba(255,255,255,0.2)"
+                              strokeWidth="1"
+                              strokeDasharray="4,4"
+                            />
+
+                            {/* Area fill */}
+                            <path
+                              d={areaPath}
+                              fill={`url(#${gradientId})`}
+                            />
+
+                            {/* Main line */}
+                            <path
+                              d={linePath}
+                              fill="none"
+                              stroke={lineColor}
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+
+                            {/* End point indicator */}
+                            {points.length > 0 && (
+                              <circle
+                                cx={points[points.length - 1].x}
+                                cy={points[points.length - 1].y}
+                                r="4"
+                                fill={lineColor}
+                                stroke="#0a0a0a"
+                                strokeWidth="2"
+                              />
+                            )}
+                          </>
                         );
-                      })}
+                      })()}
                     </svg>
 
                     {/* Hover overlay for tooltips */}
                     <div className="absolute inset-0 flex">
-                      {chartData.map((day) => {
-                        const isPositive = day.pnl >= 0;
-                        return (
-                          <div
-                            key={day.date}
-                            className="flex-1 group relative"
-                          >
-                            {/* Tooltip */}
-                            <div className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 ${
-                              isDark ? 'bg-[#222] border border-white/10 text-white' : 'bg-gray-800 text-white'
-                            }`}>
-                              <div className="font-medium">{new Date(day.date).toLocaleDateString()}</div>
-                              <div className={isPositive ? 'text-green-400' : 'text-red-400'}>
-                                {formatPnL(day.pnl)}
+                      {(() => {
+                        let cumulative = 0;
+                        return chartData.map((day) => {
+                          cumulative += day.pnl;
+                          const isPositive = cumulative >= 0;
+                          return (
+                            <div
+                              key={day.date}
+                              className="flex-1 group relative"
+                            >
+                              {/* Tooltip */}
+                              <div className="absolute top-4 left-1/2 -translate-x-1/2 px-3 py-2 rounded-lg text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 bg-[#1a1a1a] border border-white/10 shadow-xl">
+                                <div className={`text-lg font-bold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                                  {isPositive ? '+' : ''}{cumulative.toFixed(6)} SOL
+                                </div>
+                                <div className="text-white/60 text-xs">
+                                  {new Date(day.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                </div>
                               </div>
-                              <div className="text-white/60">{day.trades} trade{day.trades !== 1 ? 's' : ''}</div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        });
+                      })()}
                     </div>
 
-                    {/* X-axis labels */}
-                    <div className="flex justify-between mt-2 px-2">
-                      <span className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
-                        {new Date(chartData[0]?.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                      </span>
-                      <span className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
-                        {new Date(chartData[chartData.length - 1]?.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                      </span>
+                    {/* Logo watermark - bottom left */}
+                    <div className="absolute bottom-3 left-3 opacity-40">
+                      <span className="font-medium text-sm text-white">[poly<span className="text-[#FF6B4A]">x</span>]</span>
                     </div>
                   </>
                 ) : (
-                  <div className={`w-full h-full flex items-center justify-center ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
+                  <div className="w-full h-full flex items-center justify-center text-white/40">
                     No trading data for this period
                   </div>
                 )}
