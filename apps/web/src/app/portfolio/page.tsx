@@ -554,7 +554,7 @@ export default function PortfolioPage() {
                           <div>
                             <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{pos.symbol}</p>
                             <Link
-                              href={`/token/${pos.mint}`}
+                              href={`/token/${pos.mint}?source=pulse`}
                               className={`text-xs ${isDark ? 'text-white/40 hover:text-[#FF6B4A]' : 'text-gray-500 hover:text-[#FF6B4A]'} flex items-center gap-1`}
                             >
                               View <ExternalLink className="h-3 w-3" />
