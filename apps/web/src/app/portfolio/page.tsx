@@ -687,7 +687,6 @@ export default function PortfolioPage() {
                     const dayData = calendarData[dateStr];
                     const pnlSol = dayData?.pnl || 0;
                     const hasTrades = dayData?.trades > 0;
-                    const isToday = new Date().toISOString().split("T")[0] === dateStr;
                     const intensity = hasTrades ? Math.min(Math.abs(pnlSol) / (chartMax || 1), 1) : 0;
 
                     // Convert to display value based on currency mode
@@ -714,9 +713,7 @@ export default function PortfolioPage() {
                             setShowShareModal(true);
                           }
                         }}
-                        className={`aspect-square p-1.5 rounded-lg flex flex-col transition-colors ${
-                          isToday ? 'ring-2 ring-[#FF6B4A]' : ''
-                        } ${hasTrades ? 'cursor-pointer hover:ring-2 hover:ring-white/30' : ''}`}
+                        className={`aspect-square p-1.5 rounded-lg flex flex-col transition-colors ${hasTrades ? 'cursor-pointer hover:bg-white/10' : ''}`}
                         style={{
                           backgroundColor: hasTrades ? getPnLBgColor(pnlSol, intensity) : (isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)'),
                         }}
