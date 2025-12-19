@@ -169,58 +169,15 @@ export default function PortfolioPage() {
     }
   }, [status, period, viewMode, calendarYear, calendarMonth]);
 
-  // Generate all days for the selected period and fill with PnL data
+  // Only include days with actual trades (no empty days)
   const chartData = useMemo(() => {
     if (!pnlData) return [];
 
-    // Create a map of existing PnL data
-    const pnlMap = new Map<string, DailyPnL>();
-    for (const d of pnlData.dailyPnL) {
-      pnlMap.set(d.date, d);
-    }
-
-    // Determine date range based on period
-    const endDate = new Date();
-    endDate.setHours(23, 59, 59, 999);
-    let startDate: Date;
-
-    switch (period) {
-      case "1d":
-        startDate = new Date();
-        startDate.setHours(0, 0, 0, 0);
-        break;
-      case "7d":
-        startDate = new Date();
-        startDate.setDate(startDate.getDate() - 6);
-        startDate.setHours(0, 0, 0, 0);
-        break;
-      case "30d":
-        startDate = new Date();
-        startDate.setDate(startDate.getDate() - 29);
-        startDate.setHours(0, 0, 0, 0);
-        break;
-      default: // "all"
-        if (pnlData.dailyPnL.length > 0) {
-          startDate = new Date(pnlData.dailyPnL[0].date);
-        } else {
-          startDate = new Date();
-          startDate.setDate(startDate.getDate() - 29);
-        }
-        startDate.setHours(0, 0, 0, 0);
-    }
-
-    // Generate all days in range
-    const days: DailyPnL[] = [];
-    const current = new Date(startDate);
-    while (current <= endDate) {
-      const dateStr = current.toISOString().split("T")[0];
-      const existing = pnlMap.get(dateStr);
-      days.push(existing || { date: dateStr, pnl: 0, trades: 0, volume: 0 });
-      current.setDate(current.getDate() + 1);
-    }
-
-    return days;
-  }, [pnlData, period]);
+    // Filter to only days with trades, sorted by date
+    return pnlData.dailyPnL
+      .filter(d => d.trades > 0)
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [pnlData]);
 
   // Calculate chart max value for scaling (using filled chart data)
   const chartMax = useMemo(() => {
