@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, RotateCcw, Pencil, X } from "lucide-react";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -59,6 +59,13 @@ export function SwapWidget({
   const [success, setSuccess] = useState<string | null>(null);
   const [isBuy, setIsBuy] = useState(true);
   const [tradingSource, setTradingSource] = useState<"jupiter" | "pumpfun" | null>(null);
+  // Sell mode: percentage vs absolute amount toggle
+  const [sellMode, setSellMode] = useState<"percent" | "amount">("percent");
+  const [selectedPercent, setSelectedPercent] = useState<number | null>(null);
+  // Custom percentage editing
+  const [isEditingPercents, setIsEditingPercents] = useState(false);
+  const [customPercents, setCustomPercents] = useState([5, 25, 50, 100]);
+  const [editingPercents, setEditingPercents] = useState([5, 25, 50, 100]);
 
   const inputMint = isBuy ? SOL_MINT : defaultOutputMint;
   const outputMint = isBuy ? defaultOutputMint : SOL_MINT;
@@ -235,6 +242,30 @@ export function SwapWidget({
     return amount.toLocaleString(undefined, { maximumFractionDigits: 6 });
   };
 
+  // Handle sell percentage selection
+  const handleSellPercent = (percent: number) => {
+    setSelectedPercent(percent);
+    const tokenBalance = getInputBalance();
+    if (tokenBalance > 0) {
+      const amount = (tokenBalance * percent) / 100;
+      setInputAmount(amount.toString());
+    }
+  };
+
+  // Toggle sell mode between percentage and absolute amount
+  const toggleSellMode = () => {
+    setSellMode(prev => prev === "percent" ? "amount" : "percent");
+    setSelectedPercent(null);
+    setInputAmount("");
+  };
+
+  // Save custom percentages
+  const saveCustomPercents = () => {
+    const sorted = [...editingPercents].sort((a, b) => a - b);
+    setCustomPercents(sorted);
+    setIsEditingPercents(false);
+  };
+
   if (status === "loading") {
     return (
       <div className="bg-[#0d0d0d] border border-white/10 p-4">
@@ -319,18 +350,129 @@ export function SwapWidget({
             />
             <span className="text-white/60 text-sm font-medium">{inputSymbol}</span>
           </div>
-          {/* Quick amounts */}
-          <div className="flex gap-2 mt-2">
-            {[0.1, 0.25, 0.5, 1].map((amt) => (
-              <button
-                key={amt}
-                onClick={() => setInputAmount(amt.toString())}
-                className="flex-1 py-1.5 text-xs text-white/50 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors font-mono"
-              >
-                {amt}
-              </button>
-            ))}
-          </div>
+          {/* Quick amounts - different for buy vs sell */}
+          {isBuy ? (
+            /* Buy mode: SOL amounts */
+            <div className="flex gap-2 mt-2">
+              {[0.1, 0.25, 0.5, 1].map((amt) => (
+                <button
+                  key={amt}
+                  onClick={() => setInputAmount(amt.toString())}
+                  className="flex-1 py-1.5 text-xs text-white/50 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors font-mono"
+                >
+                  {amt}
+                </button>
+              ))}
+            </div>
+          ) : (
+            /* Sell mode: percentage or amount with controls */
+            <div className="mt-2">
+              {isEditingPercents ? (
+                /* Editing custom percentages */
+                <div className="space-y-2">
+                  <div className="flex gap-1">
+                    {editingPercents.map((pct, i) => (
+                      <input
+                        key={i}
+                        type="number"
+                        value={pct}
+                        onChange={(e) => {
+                          const newVal = parseInt(e.target.value) || 0;
+                          setEditingPercents(prev => {
+                            const copy = [...prev];
+                            copy[i] = Math.min(100, Math.max(1, newVal));
+                            return copy;
+                          });
+                        }}
+                        className="flex-1 py-1.5 px-2 text-xs text-white bg-white/10 border border-white/20 font-mono text-center outline-none focus:border-[#FF6B4A]"
+                        min="1"
+                        max="100"
+                      />
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={saveCustomPercents}
+                      className="flex-1 py-1.5 text-xs bg-[#FF6B4A] text-white hover:bg-[#FF6B4A]/80 transition-colors"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingPercents([...customPercents]);
+                        setIsEditingPercents(false);
+                      }}
+                      className="px-3 py-1.5 text-xs text-white/50 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Normal sell controls */
+                <div className="flex gap-1 items-center">
+                  {sellMode === "percent" ? (
+                    /* Percentage buttons */
+                    <>
+                      {customPercents.map((pct) => (
+                        <button
+                          key={pct}
+                          onClick={() => handleSellPercent(pct)}
+                          className={`flex-1 py-1.5 text-xs font-mono transition-colors border ${
+                            selectedPercent === pct
+                              ? "bg-red-500/20 text-red-400 border-red-500/50"
+                              : "text-white/50 bg-white/5 hover:bg-white/10 border-white/10"
+                          }`}
+                        >
+                          {pct}%
+                        </button>
+                      ))}
+                    </>
+                  ) : (
+                    /* Token amount buttons */
+                    <>
+                      {[0.1, 0.25, 0.5, 1].map((multiplier) => {
+                        const tokenBal = getInputBalance();
+                        const amt = tokenBal * multiplier;
+                        return (
+                          <button
+                            key={multiplier}
+                            onClick={() => setInputAmount(amt.toString())}
+                            className="flex-1 py-1.5 text-xs text-white/50 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors font-mono"
+                          >
+                            {amt >= 1000000 ? `${(amt / 1000000).toFixed(1)}M` :
+                             amt >= 1000 ? `${(amt / 1000).toFixed(1)}K` :
+                             amt.toFixed(amt < 1 ? 4 : 2)}
+                          </button>
+                        );
+                      })}
+                    </>
+                  )}
+                  {/* Rotate button */}
+                  <button
+                    onClick={toggleSellMode}
+                    className="p-1.5 text-white/40 hover:text-white/70 hover:bg-white/5 transition-colors"
+                    title={sellMode === "percent" ? "Switch to token amounts" : "Switch to percentages"}
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                  {/* Edit button (only in percent mode) */}
+                  {sellMode === "percent" && (
+                    <button
+                      onClick={() => {
+                        setEditingPercents([...customPercents]);
+                        setIsEditingPercents(true);
+                      }}
+                      className="p-1.5 text-white/40 hover:text-white/70 hover:bg-white/5 transition-colors"
+                      title="Edit percentages"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Output Display */}
