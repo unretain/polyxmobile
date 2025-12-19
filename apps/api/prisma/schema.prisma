@@ -199,3 +199,25 @@ model EmbedView {
   @@index([domain, timestamp])
   @@index([tokenAddress, timestamp])
 }
+
+// ==========================================
+// API Cache Models (to reduce external API calls)
+// ==========================================
+
+// Cache OHLCV candles by token address (no Token record required)
+model CandleCache {
+  id          String   @id @default(cuid())
+  tokenAddress String  // Token mint address
+  timeframe   String   // "1m", "5m", "15m", "1h", "4h", "1d"
+  timestamp   DateTime // Candle open time
+  open        Float
+  high        Float
+  low         Float
+  close       Float
+  volume      Float
+
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tokenAddress, timeframe, timestamp])
+  @@index([tokenAddress, timeframe, timestamp(sort: Desc)])
+}
