@@ -5,6 +5,11 @@ import { getJupiterService, SOL_MINT } from "@/lib/jupiter";
 import { config } from "@/lib/config";
 import { TradeStatus } from "@prisma/client";
 
+// Cache SOL price to avoid rate limiting (refresh every 15 seconds)
+let cachedSolPrice: number | null = null;
+let solPriceLastFetched: number = 0;
+const SOL_PRICE_CACHE_MS = 15000; // 15 seconds
+
 // GET /api/trading/balance
 export async function GET(req: NextRequest) {
   try {
@@ -120,38 +125,55 @@ export async function GET(req: NextRequest) {
     let prices = new Map<string, number>();
     let solPriceUsd: number | null = null;
 
-    // Try Jupiter Price API first
-    try {
-      prices = await jupiter.getTokenPrices(mintsToPrice);
-      solPriceUsd = prices.get(SOL_MINT) || null;
-      console.log("[balance] Jupiter prices - SOL:", solPriceUsd, "tokens:", prices.size);
-    } catch (e) {
-      console.warn("[balance] Jupiter price API failed:", e);
-    }
-
-    // Fallback: fetch SOL price from CoinGecko if Jupiter failed
-    if (!solPriceUsd) {
-      console.log("[balance] Jupiter SOL price missing, trying CoinGecko...");
+    // Check if we have a cached SOL price that's still valid
+    const now = Date.now();
+    if (cachedSolPrice && now - solPriceLastFetched < SOL_PRICE_CACHE_MS) {
+      solPriceUsd = cachedSolPrice;
+      console.log("[balance] Using cached SOL price:", solPriceUsd);
+    } else {
+      // Try Jupiter Price API first
       try {
-        const cgRes = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd", {
-          headers: { "Accept": "application/json" },
-          signal: AbortSignal.timeout(10000),
-        });
-        console.log("[balance] CoinGecko response status:", cgRes.status);
-        if (cgRes.ok) {
-          const cgData = await cgRes.json();
-          solPriceUsd = cgData.solana?.usd || null;
-          console.log("[balance] SOL price from CoinGecko:", solPriceUsd);
-        }
+        prices = await jupiter.getTokenPrices(mintsToPrice);
+        solPriceUsd = prices.get(SOL_MINT) || null;
+        console.log("[balance] Jupiter prices - SOL:", solPriceUsd, "tokens:", prices.size);
       } catch (e) {
-        console.warn("[balance] CoinGecko fallback failed:", e);
+        console.warn("[balance] Jupiter price API failed:", e);
+      }
+
+      // Fallback: fetch SOL price from CoinGecko if Jupiter failed
+      if (!solPriceUsd) {
+        console.log("[balance] Jupiter SOL price missing, trying CoinGecko...");
+        try {
+          const cgRes = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd", {
+            headers: { "Accept": "application/json" },
+            signal: AbortSignal.timeout(10000),
+          });
+          console.log("[balance] CoinGecko response status:", cgRes.status);
+          if (cgRes.ok) {
+            const cgData = await cgRes.json();
+            solPriceUsd = cgData.solana?.usd || null;
+            console.log("[balance] SOL price from CoinGecko:", solPriceUsd);
+          }
+        } catch (e) {
+          console.warn("[balance] CoinGecko fallback failed:", e);
+        }
+      }
+
+      // Update cache if we got a valid price
+      if (solPriceUsd) {
+        cachedSolPrice = solPriceUsd;
+        solPriceLastFetched = now;
+      } else if (cachedSolPrice) {
+        // Use stale cache if APIs fail but we have old data
+        solPriceUsd = cachedSolPrice;
+        console.log("[balance] Using stale cached SOL price:", solPriceUsd);
       }
     }
 
-    // Last resort: use a hardcoded approximate price if both APIs fail
+    // Last resort: use a hardcoded approximate price if everything fails
     if (!solPriceUsd) {
-      console.warn("[balance] All price APIs failed, using approximate SOL price");
-      solPriceUsd = 200; // Approximate - better than $0
+      console.warn("[balance] All price sources failed, using approximate SOL price");
+      solPriceUsd = 200;
     }
 
     // Calculate token values with prices
