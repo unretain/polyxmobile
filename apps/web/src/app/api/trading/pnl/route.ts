@@ -64,6 +64,8 @@ interface DailyPnL {
 interface Position {
   mint: string;
   symbol: string;
+  name: string; // Token name
+  image: string | null; // Token logo URL
   totalBought: number; // Total tokens bought
   totalSold: number; // Total tokens sold
   avgBuyPrice: number; // Average buy price in SOL
@@ -193,6 +195,8 @@ export async function GET(req: NextRequest) {
       positions.set(mint, {
         mint,
         symbol: "",
+        name: "",
+        image: null,
         totalBought: baseline.totalBought,
         totalSold: 0,
         avgBuyPrice: baseline.avgBuyPrice,
@@ -242,6 +246,8 @@ export async function GET(req: NextRequest) {
         positions.set(tokenMint, {
           mint: tokenMint,
           symbol: tokenSymbol,
+          name: "",
+          image: null,
           totalBought: 0,
           totalSold: 0,
           avgBuyPrice: 0,
@@ -292,6 +298,24 @@ export async function GET(req: NextRequest) {
     const positionsArray = Array.from(positions.values())
       .filter(p => p.trades > 0)
       .sort((a, b) => (b.lastTradeAt?.getTime() || 0) - (a.lastTradeAt?.getTime() || 0));
+
+    // Fetch token metadata from database
+    const tokenMints = positionsArray.map(p => p.mint);
+    const tokenMetadata = await prisma.token.findMany({
+      where: { address: { in: tokenMints } },
+      select: { address: true, name: true, symbol: true, logoUri: true },
+    });
+    const tokenMap = new Map(tokenMetadata.map(t => [t.address, t]));
+
+    // Enrich positions with token metadata
+    for (const pos of positionsArray) {
+      const token = tokenMap.get(pos.mint);
+      if (token) {
+        pos.name = token.name;
+        pos.symbol = token.symbol || pos.symbol;
+        pos.image = token.logoUri;
+      }
+    }
 
     // Calculate totals
     const totalRealizedPnl = positionsArray.reduce((sum, p) => sum + p.realizedPnl, 0);
