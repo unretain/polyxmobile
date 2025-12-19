@@ -170,10 +170,9 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Last resort: use a hardcoded approximate price if everything fails
+    // If no price available, leave it as null (frontend will show error/unavailable)
     if (!solPriceUsd) {
-      console.warn("[balance] All price sources failed, using approximate SOL price");
-      solPriceUsd = 200;
+      console.warn("[balance] All price sources failed, price unavailable");
     }
 
     // Calculate token values with prices

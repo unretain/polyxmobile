@@ -304,12 +304,12 @@ export default function PortfolioPage() {
             <div>
               <p className={`text-sm ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Total Portfolio Value</p>
               <p className={`text-4xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                {totalPortfolioValueUsd !== null
+                {balanceLoading ? "..." : totalPortfolioValueUsd !== null
                   ? `$${totalPortfolioValueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  : balanceLoading ? "..." : "$0.00"}
+                  : "Price unavailable"}
               </p>
               <p className={`text-sm mt-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
-                {balance?.sol.uiBalance.toFixed(4) || "0"} SOL {balance?.sol.priceUsd ? `@ $${balance.sol.priceUsd.toFixed(2)}` : ""}
+                {balance?.sol.uiBalance.toFixed(4) || "0"} SOL {balance?.sol.priceUsd ? `@ $${balance.sol.priceUsd.toFixed(2)}` : "(price error)"}
                 {balance?.tokens && balance.tokens.length > 0 && ` + ${balance.tokens.length} token${balance.tokens.length > 1 ? 's' : ''}`}
               </p>
             </div>
