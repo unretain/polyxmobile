@@ -488,26 +488,58 @@ export class JupiterService {
   }
 
   /**
-   * Get token accounts for a wallet
+   * Get token accounts for a wallet (includes both SPL Token and Token-2022)
    */
   async getTokenAccounts(
     walletAddress: string
   ): Promise<Array<{ mint: string; balance: string; decimals: number }>> {
-    const { TOKEN_PROGRAM_ID } = await import("@solana/spl-token");
+    console.log(`[JupiterService] getTokenAccounts for wallet: ${walletAddress}`);
 
-    const accounts = await this.connection.getParsedTokenAccountsByOwner(
-      new PublicKey(walletAddress),
-      { programId: TOKEN_PROGRAM_ID }
-    );
+    try {
+      const { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } = await import("@solana/spl-token");
 
-    return accounts.value.map((account) => {
-      const info = account.account.data.parsed.info;
-      return {
-        mint: info.mint,
-        balance: info.tokenAmount.amount,
-        decimals: info.tokenAmount.decimals,
-      };
-    });
+      console.log(`[JupiterService] Fetching SPL tokens with program: ${TOKEN_PROGRAM_ID.toBase58()}`);
+      console.log(`[JupiterService] Fetching Token-2022 with program: ${TOKEN_2022_PROGRAM_ID.toBase58()}`);
+
+      // Fetch both regular SPL tokens and Token-2022 tokens
+      const [splAccounts, token2022Accounts] = await Promise.all([
+        this.connection.getParsedTokenAccountsByOwner(
+          new PublicKey(walletAddress),
+          { programId: TOKEN_PROGRAM_ID }
+        ),
+        this.connection.getParsedTokenAccountsByOwner(
+          new PublicKey(walletAddress),
+          { programId: TOKEN_2022_PROGRAM_ID }
+        ),
+      ]);
+
+      console.log(`[JupiterService] SPL result:`, JSON.stringify({
+        count: splAccounts.value.length,
+        context: splAccounts.context,
+      }));
+      console.log(`[JupiterService] Token-2022 result:`, JSON.stringify({
+        count: token2022Accounts.value.length,
+        context: token2022Accounts.context,
+      }));
+
+      const allAccounts = [...splAccounts.value, ...token2022Accounts.value];
+      console.log(`[JupiterService] Found ${splAccounts.value.length} SPL tokens, ${token2022Accounts.value.length} Token-2022 tokens`);
+
+      const result = allAccounts.map((account) => {
+        const info = account.account.data.parsed.info;
+        console.log(`[JupiterService] Token account: mint=${info.mint}, amount=${info.tokenAmount.amount}, decimals=${info.tokenAmount.decimals}`);
+        return {
+          mint: info.mint,
+          balance: info.tokenAmount.amount,
+          decimals: info.tokenAmount.decimals,
+        };
+      });
+
+      return result;
+    } catch (error) {
+      console.error(`[JupiterService] getTokenAccounts error:`, error);
+      throw error;
+    }
   }
 
   /**
