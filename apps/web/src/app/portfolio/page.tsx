@@ -488,7 +488,7 @@ export default function PortfolioPage() {
                 <Loader2 className="h-6 w-6 animate-spin text-[#FF6B4A]" />
               </div>
             ) : viewMode === "chart" ? (
-              /* TradingView-style Line Chart */
+              /* Clean TradingView-style Line Chart */
               <div className="h-[250px] relative bg-[#0a0a0a] rounded-lg overflow-hidden">
                 {chartData.length > 0 || (pnlData?.cumulativePnLBaseline !== undefined && pnlData.cumulativePnLBaseline !== 0) ? (
                   <>
@@ -500,205 +500,92 @@ export default function PortfolioPage() {
                     >
                       {/* Gradient definitions */}
                       <defs>
-                        {/* Gradient for positive (green) area */}
                         <linearGradient id="positiveGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                          <stop offset="0%" stopColor="#22c55e" stopOpacity="0.4" />
-                          <stop offset="100%" stopColor="#22c55e" stopOpacity="0.05" />
+                          <stop offset="0%" stopColor="#22c55e" stopOpacity="0.3" />
+                          <stop offset="100%" stopColor="#22c55e" stopOpacity="0" />
                         </linearGradient>
-                        {/* Gradient for negative (red) area */}
                         <linearGradient id="negativeGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                          <stop offset="0%" stopColor="#ef4444" stopOpacity="0.05" />
-                          <stop offset="100%" stopColor="#ef4444" stopOpacity="0.4" />
+                          <stop offset="0%" stopColor="#ef4444" stopOpacity="0" />
+                          <stop offset="100%" stopColor="#ef4444" stopOpacity="0.3" />
                         </linearGradient>
                       </defs>
 
-                      {/* Calculate cumulative PnL for proper line chart */}
                       {(() => {
                         const width = 800;
                         const height = 200;
-                        const padding = { top: 20, bottom: 30, left: 60, right: 20 };
+                        const padding = { top: 10, bottom: 10, left: 10, right: 10 };
                         const chartWidth = width - padding.left - padding.right;
                         const chartHeight = height - padding.top - padding.bottom;
 
-                        // Build data points: start with baseline, then add each day's cumulative
+                        // Build cumulative data points
                         const baseline = pnlData?.cumulativePnLBaseline || 0;
                         let cumulative = baseline;
-
-                        // Create points array - always start with baseline point
-                        const dataPoints: { cumPnl: number; label: string; date?: string }[] = [
-                          { cumPnl: baseline, label: 'Start' }
-                        ];
-
-                        // Add each trading day
+                        const dataPoints = [{ cumPnl: baseline, label: 'Start' }];
                         chartData.forEach(d => {
                           cumulative += d.pnl;
-                          dataPoints.push({ cumPnl: cumulative, label: d.date, date: d.date });
+                          dataPoints.push({ cumPnl: cumulative, label: d.date });
                         });
-
-                        // If only baseline exists (no trades in period), show flat line at baseline
                         if (dataPoints.length === 1) {
                           dataPoints.push({ cumPnl: baseline, label: 'Now' });
                         }
 
-                        // Find min/max for scaling with some padding
+                        // Scale to fit
                         const values = dataPoints.map(d => d.cumPnl);
                         let minVal = Math.min(...values);
                         let maxVal = Math.max(...values);
-
-                        // Always include zero in the range for reference
-                        minVal = Math.min(minVal, 0);
-                        maxVal = Math.max(maxVal, 0);
-
-                        // Add 10% padding to the range
+                        // Add padding
                         const range = maxVal - minVal || 0.0001;
-                        const paddingAmount = range * 0.1;
-                        minVal -= paddingAmount;
-                        maxVal += paddingAmount;
+                        minVal -= range * 0.1;
+                        maxVal += range * 0.1;
 
-                        // Helper to convert value to Y coordinate
                         const valueToY = (val: number) => {
                           const normalized = (val - minVal) / (maxVal - minVal);
                           return padding.top + (1 - normalized) * chartHeight;
                         };
 
-                        // Calculate zero line position
-                        const zeroY = valueToY(0);
-
-                        // Generate path points
-                        const points = dataPoints.map((d, i) => {
-                          const x = padding.left + (i / (dataPoints.length - 1)) * chartWidth;
-                          const y = valueToY(d.cumPnl);
-                          return { x, y, data: d };
-                        });
+                        // Generate smooth curve points
+                        const points = dataPoints.map((d, i) => ({
+                          x: padding.left + (i / (dataPoints.length - 1)) * chartWidth,
+                          y: valueToY(d.cumPnl),
+                          data: d
+                        }));
 
                         // Create line path
-                        const linePath = points.map((p, i) =>
-                          `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`
-                        ).join(' ');
+                        const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
 
-                        // Create area path (fill to zero line)
-                        const areaPath = `${linePath} L ${points[points.length - 1].x} ${zeroY} L ${points[0].x} ${zeroY} Z`;
+                        // Area fill to bottom
+                        const areaPath = `${linePath} L ${points[points.length - 1].x} ${height - padding.bottom} L ${points[0].x} ${height - padding.bottom} Z`;
 
-                        // Determine if overall positive or negative
                         const finalPnl = dataPoints[dataPoints.length - 1].cumPnl;
                         const isPositive = finalPnl >= 0;
-                        const lineColor = isPositive ? '#22c55e' : '#ef4444';
-                        const gradientId = isPositive ? 'positiveGradient' : 'negativeGradient';
-
-                        // Format Y-axis labels
-                        const formatAxisValue = (val: number) => {
-                          if (Math.abs(val) >= 1) return val.toFixed(2);
-                          if (Math.abs(val) >= 0.01) return val.toFixed(4);
-                          return val.toFixed(6);
-                        };
+                        const lineColor = isPositive ? '#22c55e' : '#ec4899';
 
                         return (
                           <>
-                            {/* Y-axis labels */}
-                            <text x={padding.left - 8} y={padding.top + 4} fill="rgba(255,255,255,0.4)" fontSize="10" textAnchor="end">
-                              {formatAxisValue(maxVal)}
-                            </text>
-                            <text x={padding.left - 8} y={padding.top + chartHeight} fill="rgba(255,255,255,0.4)" fontSize="10" textAnchor="end">
-                              {formatAxisValue(minVal)}
-                            </text>
-                            {/* Zero label if in range */}
-                            {minVal < 0 && maxVal > 0 && (
-                              <text x={padding.left - 8} y={zeroY + 4} fill="rgba(255,255,255,0.6)" fontSize="10" textAnchor="end">
-                                0
-                              </text>
-                            )}
-
-                            {/* Horizontal grid lines */}
-                            {[0.25, 0.5, 0.75].map((ratio) => (
-                              <line
-                                key={ratio}
-                                x1={padding.left}
-                                y1={padding.top + ratio * chartHeight}
-                                x2={width - padding.right}
-                                y2={padding.top + ratio * chartHeight}
-                                stroke="rgba(255,255,255,0.05)"
-                                strokeWidth="1"
-                              />
-                            ))}
-
-                            {/* Zero line (dashed) - only if zero is in visible range */}
-                            {minVal <= 0 && maxVal >= 0 && (
-                              <line
-                                x1={padding.left}
-                                y1={zeroY}
-                                x2={width - padding.right}
-                                y2={zeroY}
-                                stroke="rgba(255,255,255,0.3)"
-                                strokeWidth="1"
-                                strokeDasharray="4,4"
-                              />
-                            )}
-
-                            {/* Area fill */}
-                            <path
-                              d={areaPath}
-                              fill={`url(#${gradientId})`}
-                            />
-
-                            {/* Main line */}
-                            <path
-                              d={linePath}
-                              fill="none"
-                              stroke={lineColor}
-                              strokeWidth="2.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-
-                            {/* Data points */}
-                            {points.map((p, i) => (
-                              <circle
-                                key={i}
-                                cx={p.x}
-                                cy={p.y}
-                                r={i === points.length - 1 ? 5 : 3}
-                                fill={lineColor}
-                                stroke="#0a0a0a"
-                                strokeWidth="2"
-                              />
-                            ))}
+                            <path d={areaPath} fill={`url(#${isPositive ? 'positiveGradient' : 'negativeGradient'})`} />
+                            <path d={linePath} fill="none" stroke={lineColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                           </>
                         );
                       })()}
                     </svg>
 
-                    {/* Current PnL display - top right */}
-                    <div className="absolute top-3 right-3">
+                    {/* Hover zones for tooltips */}
+                    <div className="absolute inset-0 flex">
                       {(() => {
                         const baseline = pnlData?.cumulativePnLBaseline || 0;
-                        const periodPnl = chartData.reduce((sum, d) => sum + d.pnl, 0);
-                        const totalPnl = baseline + periodPnl;
                         const solPrice = balance?.sol.priceUsd || 0;
-                        const isPositive = totalPnl >= 0;
-                        const displayValue = currencyMode === "usd" ? totalPnl * solPrice : totalPnl;
-                        const formattedValue = currencyMode === "usd"
-                          ? `${isPositive ? '+' : '-'}$${Math.abs(displayValue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                          : `${isPositive ? '+' : '-'}${Math.abs(totalPnl).toFixed(6)} SOL`;
-                        return (
-                          <div className={`text-2xl font-bold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
-                            {formattedValue}
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    {/* Hover overlay for tooltips */}
-                    <div className="absolute inset-0 flex" style={{ left: 60, right: 20 }}>
-                      {(() => {
-                        // Include baseline as first point
-                        const baseline = pnlData?.cumulativePnLBaseline || 0;
-                        const solPrice = balance?.sol.priceUsd || 0;
-                        const allPoints: { cumPnl: number; label: string }[] = [{ cumPnl: baseline, label: 'Start' }];
+                        const allPoints: { cumPnl: number; label: string; dailyPnl?: number }[] = [];
                         let cumulative = baseline;
+
+                        // Add baseline
+                        allPoints.push({ cumPnl: baseline, label: 'Start' });
+
+                        // Add each day
                         chartData.forEach(day => {
                           cumulative += day.pnl;
-                          allPoints.push({ cumPnl: cumulative, label: day.date });
+                          allPoints.push({ cumPnl: cumulative, label: day.date, dailyPnl: day.pnl });
                         });
+
                         if (allPoints.length === 1) {
                           allPoints.push({ cumPnl: baseline, label: 'Now' });
                         }
@@ -706,23 +593,34 @@ export default function PortfolioPage() {
                         return allPoints.map((point, idx) => {
                           const isPositive = point.cumPnl >= 0;
                           const displayValue = currencyMode === "usd" ? point.cumPnl * solPrice : point.cumPnl;
-                          const formattedValue = currencyMode === "usd"
-                            ? `${isPositive ? '+' : '-'}$${Math.abs(displayValue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                            : `${isPositive ? '+' : '-'}${Math.abs(point.cumPnl).toFixed(6)} SOL`;
+
+                          // Format like reference: -$1.82K or +$500
+                          let formattedValue: string;
+                          if (currencyMode === "usd") {
+                            const absVal = Math.abs(displayValue);
+                            if (absVal >= 1000) {
+                              formattedValue = `${isPositive ? '' : '-'}$${(absVal / 1000).toFixed(2)}K`;
+                            } else {
+                              formattedValue = `${isPositive ? '' : '-'}$${absVal.toFixed(2)}`;
+                            }
+                          } else {
+                            formattedValue = `${isPositive ? '' : '-'}${Math.abs(point.cumPnl).toFixed(6)} SOL`;
+                          }
+
                           const dateLabel = point.label === 'Start' ? 'Starting Point'
                             : point.label === 'Now' ? 'Current'
-                            : new Date(point.label).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+                            : new Date(point.label).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+
                           return (
-                            <div
-                              key={idx}
-                              className="flex-1 group relative"
-                            >
+                            <div key={idx} className="flex-1 group relative h-full">
+                              {/* Vertical hover line */}
+                              <div className="absolute top-0 bottom-0 left-1/2 w-px bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
                               {/* Tooltip */}
-                              <div className="absolute top-12 left-1/2 -translate-x-1/2 px-3 py-2 rounded-lg text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 bg-[#1a1a1a] border border-white/10 shadow-xl">
-                                <div className={`text-lg font-bold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                              <div className="absolute top-4 left-1/2 -translate-x-1/2 px-3 py-2 rounded-lg text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 bg-[#1a1a1a] border border-white/10 shadow-xl">
+                                <div className={`text-base font-semibold ${isPositive ? 'text-green-400' : 'text-pink-500'}`}>
                                   {formattedValue}
                                 </div>
-                                <div className="text-white/60 text-xs">
+                                <div className="text-white/50 text-xs">
                                   {dateLabel}
                                 </div>
                               </div>
@@ -732,9 +630,9 @@ export default function PortfolioPage() {
                       })()}
                     </div>
 
-                    {/* Logo watermark - bottom left */}
-                    <div className="absolute bottom-3 left-3 opacity-40">
-                      <span className="font-medium text-sm text-white">[poly<span className="text-[#FF6B4A]">x</span>]</span>
+                    {/* Logo watermark */}
+                    <div className="absolute bottom-2 left-2 opacity-30">
+                      <span className="font-bold text-lg text-white/60">📊</span>
                     </div>
                   </>
                 ) : (
