@@ -61,7 +61,7 @@ class CandleCacheService {
       orderBy: { timestamp: "asc" },
     });
 
-    return candles.map((c) => ({
+    return candles.map((c: { timestamp: Date; open: number; high: number; low: number; close: number; volume: number }) => ({
       timestamp: c.timestamp.getTime(),
       open: c.open,
       high: c.high,
