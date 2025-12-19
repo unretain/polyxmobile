@@ -489,7 +489,7 @@ export default function PortfolioPage() {
               </div>
             ) : viewMode === "chart" ? (
               /* Clean TradingView-style Line Chart */
-              <div className="h-[250px] relative bg-[#0a0a0a] rounded-lg overflow-hidden">
+              <div className={`h-[250px] relative rounded-lg overflow-hidden ${isDark ? 'bg-[#0a0a0a]' : 'bg-gray-100'}`}>
                 {chartData.length > 0 || (pnlData?.cumulativePnLBaseline !== undefined && pnlData.cumulativePnLBaseline !== 0) ? (
                   <>
                     {/* SVG Line Chart */}
@@ -613,13 +613,13 @@ export default function PortfolioPage() {
                           return (
                             <div key={idx} className="flex-1 group relative h-full">
                               {/* Vertical hover line */}
-                              <div className="absolute top-0 bottom-0 left-1/2 w-px bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                              <div className={`absolute top-0 bottom-0 left-1/2 w-px opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none ${isDark ? 'bg-white/20' : 'bg-black/20'}`} />
                               {/* Tooltip */}
-                              <div className="absolute top-4 left-1/2 -translate-x-1/2 px-3 py-2 rounded-lg text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 bg-[#1a1a1a] border border-white/10 shadow-xl">
-                                <div className={`text-base font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                              <div className={`absolute top-4 left-1/2 -translate-x-1/2 px-3 py-2 rounded-lg text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl ${isDark ? 'bg-[#1a1a1a] border border-white/10' : 'bg-white border border-gray-200'}`}>
+                                <div className={`text-base font-semibold ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
                                   {formattedValue}
                                 </div>
-                                <div className="text-white/50 text-xs">
+                                <div className={`text-xs ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
                                   {dateLabel}
                                 </div>
                               </div>
@@ -631,11 +631,11 @@ export default function PortfolioPage() {
 
                     {/* Logo watermark */}
                     <div className="absolute bottom-3 left-3 opacity-40">
-                      <span className="font-medium text-sm text-white">[poly<span className="text-[#FF6B4A]">x</span>]</span>
+                      <span className={`font-medium text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>[poly<span className="text-[#FF6B4A]">x</span>]</span>
                     </div>
                   </>
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-white/40">
+                  <div className={`w-full h-full flex items-center justify-center ${isDark ? 'text-white/40' : 'text-gray-400'}`}>
                     No trading data for this period
                   </div>
                 )}
