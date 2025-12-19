@@ -85,13 +85,19 @@ export class JupiterService {
 
   constructor() {
     const rpcUrl = config.solanaRpcUrl || "https://api.mainnet-beta.solana.com";
-    console.log("[JupiterService] Initializing with RPC:", rpcUrl.substring(0, 40) + "...");
+    console.log("[JupiterService] RPC URL:", rpcUrl);
+
+    // Warn if not using Helius
+    if (!rpcUrl.includes("helius")) {
+      console.warn("[JupiterService] WARNING: Not using Helius RPC. Set SOLANA_RPC_URL to https://mainnet.helius-rpc.com/?api-key=YOUR_KEY");
+    }
+
     this.connection = new Connection(rpcUrl, "confirmed");
 
     // Extract Helius API key from RPC URL if present
     this.heliusApiKey = this.extractHeliusApiKey(rpcUrl);
     if (this.heliusApiKey) {
-      console.log("[JupiterService] Helius API key detected");
+      console.log("[JupiterService] Helius API key detected:", this.heliusApiKey.substring(0, 8) + "...");
     }
   }
 
@@ -112,25 +118,12 @@ export class JupiterService {
   }
 
   /**
-   * Get dynamic Jito tip amount based on recent landed tips
+   * Get Jito tip amount - using a small fixed amount for reliability
    */
   private async getDynamicTipAmount(): Promise<number> {
-    try {
-      const response = await fetch("https://bundles.jito.wtf/api/v1/bundles/tip_floor", {
-        signal: AbortSignal.timeout(5000),
-      });
-      const data = await response.json();
-
-      if (data && data[0] && typeof data[0].landed_tips_75th_percentile === "number") {
-        const tip75th = data[0].landed_tips_75th_percentile;
-        // Use 75th percentile but minimum 0.0002 SOL, max 0.001 SOL
-        return Math.max(Math.min(tip75th, 0.001 * LAMPORTS_PER_SOL), 0.0002 * LAMPORTS_PER_SOL);
-      }
-      return 0.0002 * LAMPORTS_PER_SOL; // Default minimum tip
-    } catch (error) {
-      console.warn("[JupiterService] Failed to get dynamic tip, using default:", error);
-      return 0.0002 * LAMPORTS_PER_SOL;
-    }
+    // Use a small fixed tip of 0.0001 SOL (100,000 lamports)
+    // This is enough to get good landing rates without eating into small trades
+    return 0.0001 * LAMPORTS_PER_SOL;
   }
 
   /**
@@ -349,7 +342,7 @@ export class JupiterService {
   }
 
   /**
-   * Sign and execute a swap transaction with Helius Sender for ultra-low latency
+   * Sign and execute a swap transaction
    */
   async executeSwap(
     transaction: VersionedTransaction,
@@ -357,48 +350,24 @@ export class JupiterService {
   ): Promise<string> {
     const signer = Keypair.fromSecretKey(secretKey);
 
-    // Add Jito tip for better landing rate (required for Helius Sender)
+    // Add Jito tip for better landing rate
     const finalTransaction = await this.addJitoTip(transaction, signer);
 
-    console.log("[JupiterService] Sending transaction via Helius Sender...");
+    // Use the configured RPC directly (should be Helius with API key)
+    const rpcUrl = config.solanaRpcUrl || "https://api.mainnet-beta.solana.com";
+    console.log("[JupiterService] Sending transaction via RPC:", rpcUrl.substring(0, 50) + "...");
 
-    // Use Helius Sender endpoint for ultra-low latency
-    // Falls back to standard RPC if Sender fails
+    const sendConnection = new Connection(rpcUrl, "confirmed");
 
     try {
-      // Try Helius Sender first (no API key needed, no credits consumed)
-      const response = await fetch(HELIUS_SENDER_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: Date.now().toString(),
-          method: "sendTransaction",
-          params: [
-            Buffer.from(finalTransaction.serialize()).toString("base64"),
-            {
-              encoding: "base64",
-              skipPreflight: true, // Required for Sender
-              maxRetries: 0,
-            },
-          ],
-        }),
-        signal: AbortSignal.timeout(10000),
+      const signature = await sendConnection.sendTransaction(finalTransaction, {
+        skipPreflight: true,
+        maxRetries: 3,
       });
 
-      const result = await response.json();
+      console.log("[JupiterService] Transaction sent:", signature);
 
-      if (result.error) {
-        console.error("[JupiterService] Sender error:", result.error);
-        throw new Error(result.error.message);
-      }
-
-      const signature = result.result;
-      console.log("[JupiterService] Transaction sent via Sender:", signature);
-
-      // Use Helius RPC for confirmation polling
-      const connection = new Connection(this.getHeliusRpcUrl(), "confirmed");
-      const confirmed = await this.pollForConfirmation(connection, signature, finalTransaction);
+      const confirmed = await this.pollForConfirmation(sendConnection, signature, finalTransaction);
 
       if (!confirmed) {
         throw new Error("Transaction failed to confirm within timeout");
@@ -406,45 +375,28 @@ export class JupiterService {
 
       return signature;
     } catch (error) {
-      console.error("[JupiterService] Sender failed, trying standard RPC:", error);
+      console.error("[JupiterService] Transaction failed:", error);
 
-      // Fallback to standard RPC
-      const sendConnection = new Connection(this.getHeliusRpcUrl(), "confirmed");
-
-      try {
-        const signature = await sendConnection.sendTransaction(finalTransaction, {
-          skipPreflight: true,
-          maxRetries: 0,
-        });
-
-        console.log("[JupiterService] Transaction sent via standard RPC:", signature);
-
-        const confirmed = await this.pollForConfirmation(sendConnection, signature, finalTransaction);
-
-        if (!confirmed) {
-          throw new Error("Transaction failed to confirm within timeout");
+      if (error instanceof Error) {
+        // Check for specific errors
+        if (error.message.includes("401") || error.message.includes("Unauthorized")) {
+          throw new Error(
+            "RPC authorization failed. Check your SOLANA_RPC_URL environment variable has a valid Helius API key."
+          );
         }
-
-        return signature;
-      } catch (fallbackError) {
-        console.error("[JupiterService] Standard RPC also failed:", fallbackError);
-
-        if (fallbackError instanceof Error) {
-          if (fallbackError.message.includes("401") || fallbackError.message.includes("Unauthorized")) {
-            throw new Error(
-              "RPC authorization failed. Check your Helius API key or add SOLANA_SEND_RPC_URL env var."
-            );
-          }
-          if (
-            fallbackError.message.includes("no record of a prior credit") ||
-            fallbackError.message.includes("insufficient funds") ||
-            fallbackError.message.includes("0x1")
-          ) {
-            throw new Error("Insufficient SOL balance. Please deposit SOL to your wallet first.");
-          }
+        if (
+          error.message.includes("no record of a prior credit") ||
+          error.message.includes("insufficient funds") ||
+          error.message.includes("0x1") ||
+          error.message.includes("Attempt to debit")
+        ) {
+          throw new Error("Insufficient SOL balance. You need more SOL for this swap (amount + fees + Jito tip).");
         }
-        throw fallbackError;
+        if (error.message.includes("blockhash not found") || error.message.includes("block height exceeded")) {
+          throw new Error("Transaction expired. Please try again.");
+        }
       }
+      throw error;
     }
   }
 
