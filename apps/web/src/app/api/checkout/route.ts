@@ -17,9 +17,11 @@ const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY, {
 }) : null;
 
 export async function POST(req: NextRequest) {
+  let plan: string | undefined;
   try {
     const body = await req.json();
-    const { plan, email, successUrl, cancelUrl } = body;
+    plan = body.plan;
+    const { email, successUrl, cancelUrl } = body;
 
     if (!plan || !email) {
       return NextResponse.json(
@@ -37,9 +39,10 @@ export async function POST(req: NextRequest) {
 
     const priceId = PRICE_IDS[plan];
     if (!priceId) {
+      console.error(`Missing STRIPE_PRICE_${plan} environment variable`);
       return NextResponse.json(
-        { error: `Price not configured for ${plan} plan` },
-        { status: 400 }
+        { error: `Stripe price not configured for ${plan} plan. Please set STRIPE_PRICE_${plan} environment variable to a recurring subscription price ID.` },
+        { status: 500 }
       );
     }
 
@@ -122,6 +125,17 @@ export async function POST(req: NextRequest) {
 
   } catch (error: unknown) {
     console.error("Checkout error:", error);
+
+    // Handle specific Stripe errors
+    if (error instanceof Stripe.errors.StripeInvalidRequestError) {
+      if (error.message.includes("recurring price")) {
+        return NextResponse.json(
+          { error: `The configured price ID is not a recurring subscription price. Please create a subscription product in Stripe Dashboard and use that price ID for STRIPE_PRICE_${plan || 'PRO'}.` },
+          { status: 500 }
+        );
+      }
+    }
+
     const message = error instanceof Error ? error.message : "Failed to create checkout session";
     return NextResponse.json(
       { error: message },
