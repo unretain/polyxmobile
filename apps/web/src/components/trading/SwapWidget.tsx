@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { Loader2, RefreshCw, RotateCcw, Pencil, X } from "lucide-react";
+import { useThemeStore } from "@/stores/themeStore";
+import { cn } from "@/lib/utils";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -42,15 +44,23 @@ interface SwapWidgetProps {
   isGraduated?: boolean;
 }
 
+interface TokenStats {
+  bought: number;
+  sold: number;
+  holding: number;
+  pnlPercent: number;
+}
+
 export function SwapWidget({
   defaultOutputMint,
   outputSymbol = "TOKEN",
   outputDecimals = 9,
   isGraduated = true,
 }: SwapWidgetProps) {
+  const { isDark } = useThemeStore();
   const { data: session, status } = useSession();
   const [inputAmount, setInputAmount] = useState("");
-  const [slippage, setSlippage] = useState(100);
+  const [slippage] = useState(3000); // 30% default slippage for memecoins
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -66,6 +76,8 @@ export function SwapWidget({
   const [isEditingPercents, setIsEditingPercents] = useState(false);
   const [customPercents, setCustomPercents] = useState([5, 25, 50, 100]);
   const [editingPercents, setEditingPercents] = useState([5, 25, 50, 100]);
+  // Token stats (bought/sold/holding/PnL)
+  const [tokenStats, setTokenStats] = useState<TokenStats | null>(null);
 
   const inputMint = isBuy ? SOL_MINT : defaultOutputMint;
   const outputMint = isBuy ? defaultOutputMint : SOL_MINT;
@@ -85,12 +97,29 @@ export function SwapWidget({
     }
   }, [status]);
 
+  const fetchTokenStats = useCallback(async () => {
+    if (status !== "authenticated" || !defaultOutputMint) return;
+    try {
+      const res = await fetch(`/api/trading/pnl?tokenMint=${defaultOutputMint}`);
+      if (res.ok) {
+        const data = await res.json();
+        setTokenStats(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch token stats:", err);
+    }
+  }, [status, defaultOutputMint]);
+
   useEffect(() => {
     fetchBalance();
+    fetchTokenStats();
     // Auto-refresh balance every 5 seconds
-    const interval = setInterval(fetchBalance, 5000);
+    const interval = setInterval(() => {
+      fetchBalance();
+      fetchTokenStats();
+    }, 5000);
     return () => clearInterval(interval);
-  }, [fetchBalance]);
+  }, [fetchBalance, fetchTokenStats]);
 
   useEffect(() => {
     const fetchQuote = async () => {
@@ -266,9 +295,12 @@ export function SwapWidget({
 
   if (status === "loading") {
     return (
-      <div className="bg-[#0d0d0d] border border-white/10 p-4">
+      <div className={cn(
+        "border p-4",
+        isDark ? "bg-[#0d0d0d] border-white/10" : "bg-white border-gray-200"
+      )}>
         <div className="flex items-center justify-center h-32">
-          <Loader2 className="w-5 h-5 animate-spin text-white/40" />
+          <Loader2 className={cn("w-5 h-5 animate-spin", isDark ? "text-white/40" : "text-gray-400")} />
         </div>
       </div>
     );
@@ -276,8 +308,11 @@ export function SwapWidget({
 
   if (status === "unauthenticated") {
     return (
-      <div className="bg-[#0d0d0d] border border-white/10 p-4">
-        <p className="text-white/50 text-sm text-center mb-3">Sign in to trade</p>
+      <div className={cn(
+        "border p-4",
+        isDark ? "bg-[#0d0d0d] border-white/10" : "bg-white border-gray-200"
+      )}>
+        <p className={cn("text-sm text-center mb-3", isDark ? "text-white/50" : "text-gray-500")}>Sign in to trade</p>
         <a
           href="/auth/signin"
           className="block w-full py-2 bg-[#00ffa3] text-black text-center text-sm font-medium hover:bg-[#00dd8a] transition-colors"
@@ -289,26 +324,31 @@ export function SwapWidget({
   }
 
   return (
-    <div className="bg-[#0d0d0d] border border-white/10">
+    <div className={cn(
+      "border",
+      isDark ? "bg-[#0d0d0d] border-white/10" : "bg-white border-gray-200"
+    )}>
       {/* Tabs */}
-      <div className="flex border-b border-white/10">
+      <div className={cn("flex border-b", isDark ? "border-white/10" : "border-gray-200")}>
         <button
           onClick={() => setIsBuy(true)}
-          className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+          className={cn(
+            "flex-1 py-2.5 text-sm font-medium transition-colors",
             isBuy
               ? "bg-[#00ffa3]/10 text-[#00ffa3] border-b-2 border-[#00ffa3]"
-              : "text-white/50 hover:text-white/70"
-          }`}
+              : isDark ? "text-white/50 hover:text-white/70" : "text-gray-400 hover:text-gray-600"
+          )}
         >
           Buy
         </button>
         <button
           onClick={() => setIsBuy(false)}
-          className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+          className={cn(
+            "flex-1 py-2.5 text-sm font-medium transition-colors",
             !isBuy
               ? "bg-red-500/10 text-red-400 border-b-2 border-red-400"
-              : "text-white/50 hover:text-white/70"
-          }`}
+              : isDark ? "text-white/50 hover:text-white/70" : "text-gray-400 hover:text-gray-600"
+          )}
         >
           Sell
         </button>
@@ -318,17 +358,17 @@ export function SwapWidget({
         {/* Amount Input */}
         <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-white/40 uppercase tracking-wide">Amount</span>
+            <span className={cn("text-xs uppercase tracking-wide", isDark ? "text-white/40" : "text-gray-400")}>Amount</span>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-white/40">
+              <span className={cn("text-xs", isDark ? "text-white/40" : "text-gray-400")}>
                 {getInputBalance().toFixed(4)} {inputSymbol}
               </span>
               <button
                 onClick={fetchBalance}
-                className="p-1 hover:bg-white/5 transition-colors"
+                className={cn("p-1 transition-colors", isDark ? "hover:bg-white/5" : "hover:bg-gray-100")}
                 title="Refresh"
               >
-                <RefreshCw className="w-3 h-3 text-white/40" />
+                <RefreshCw className={cn("w-3 h-3", isDark ? "text-white/40" : "text-gray-400")} />
               </button>
             </div>
           </div>
@@ -338,15 +378,21 @@ export function SwapWidget({
               Low balance. First-time swaps need ~0.003 SOL for fees (token account + tip).
             </div>
           )}
-          <div className="flex items-center gap-2 bg-black/40 border border-white/10 p-3">
+          <div className={cn(
+            "flex items-center gap-2 border p-3",
+            isDark ? "bg-black/40 border-white/10" : "bg-gray-50 border-gray-200"
+          )}>
             <input
               type="number"
               value={inputAmount}
               onChange={(e) => setInputAmount(e.target.value)}
               placeholder="0.0"
-              className="flex-1 bg-transparent text-white text-lg font-mono outline-none placeholder-white/20"
+              className={cn(
+                "flex-1 bg-transparent text-lg font-mono outline-none",
+                isDark ? "text-white placeholder-white/20" : "text-gray-900 placeholder-gray-300"
+              )}
             />
-            <span className="text-white/60 text-sm font-medium">{inputSymbol}</span>
+            <span className={cn("text-sm font-medium", isDark ? "text-white/60" : "text-gray-500")}>{inputSymbol}</span>
           </div>
           {/* Quick amounts - different for buy vs sell */}
           {isBuy ? (
@@ -356,7 +402,12 @@ export function SwapWidget({
                 <button
                   key={amt}
                   onClick={() => setInputAmount(amt.toString())}
-                  className="flex-1 py-1.5 text-xs text-white/50 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors font-mono"
+                  className={cn(
+                    "flex-1 py-1.5 text-xs font-mono transition-colors border",
+                    isDark
+                      ? "text-white/50 bg-white/5 hover:bg-white/10 border-white/10"
+                      : "text-gray-500 bg-gray-50 hover:bg-gray-100 border-gray-200"
+                  )}
                 >
                   {amt}
                 </button>
@@ -382,7 +433,12 @@ export function SwapWidget({
                             return copy;
                           });
                         }}
-                        className="flex-1 py-1.5 px-2 text-xs text-white bg-white/10 border border-white/20 font-mono text-center outline-none focus:border-[#FF6B4A]"
+                        className={cn(
+                          "flex-1 py-1.5 px-2 text-xs font-mono text-center outline-none",
+                          isDark
+                            ? "text-white bg-white/10 border border-white/20 focus:border-[#FF6B4A]"
+                            : "text-gray-900 bg-gray-100 border border-gray-300 focus:border-[#FF6B4A]"
+                        )}
                         min="1"
                         max="100"
                       />
@@ -400,7 +456,12 @@ export function SwapWidget({
                         setEditingPercents([...customPercents]);
                         setIsEditingPercents(false);
                       }}
-                      className="px-3 py-1.5 text-xs text-white/50 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+                      className={cn(
+                        "px-3 py-1.5 text-xs transition-colors border",
+                        isDark
+                          ? "text-white/50 bg-white/5 hover:bg-white/10 border-white/10"
+                          : "text-gray-500 bg-gray-50 hover:bg-gray-100 border-gray-200"
+                      )}
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -416,11 +477,14 @@ export function SwapWidget({
                         <button
                           key={pct}
                           onClick={() => handleSellPercent(pct)}
-                          className={`flex-1 py-1.5 text-xs font-mono transition-colors border ${
+                          className={cn(
+                            "flex-1 py-1.5 text-xs font-mono transition-colors border",
                             selectedPercent === pct
                               ? "bg-red-500/20 text-red-400 border-red-500/50"
-                              : "text-white/50 bg-white/5 hover:bg-white/10 border-white/10"
-                          }`}
+                              : isDark
+                                ? "text-white/50 bg-white/5 hover:bg-white/10 border-white/10"
+                                : "text-gray-500 bg-gray-50 hover:bg-gray-100 border-gray-200"
+                          )}
                         >
                           {pct}%
                         </button>
@@ -436,7 +500,12 @@ export function SwapWidget({
                           <button
                             key={multiplier}
                             onClick={() => setInputAmount(amt.toString())}
-                            className="flex-1 py-1.5 text-xs text-white/50 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors font-mono"
+                            className={cn(
+                              "flex-1 py-1.5 text-xs font-mono transition-colors border",
+                              isDark
+                                ? "text-white/50 bg-white/5 hover:bg-white/10 border-white/10"
+                                : "text-gray-500 bg-gray-50 hover:bg-gray-100 border-gray-200"
+                            )}
                           >
                             {amt >= 1000000 ? `${(amt / 1000000).toFixed(1)}M` :
                              amt >= 1000 ? `${(amt / 1000).toFixed(1)}K` :
@@ -449,7 +518,10 @@ export function SwapWidget({
                   {/* Rotate button */}
                   <button
                     onClick={toggleSellMode}
-                    className="p-1.5 text-white/40 hover:text-white/70 hover:bg-white/5 transition-colors"
+                    className={cn(
+                      "p-1.5 transition-colors",
+                      isDark ? "text-white/40 hover:text-white/70 hover:bg-white/5" : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                    )}
                     title={sellMode === "percent" ? "Switch to token amounts" : "Switch to percentages"}
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
@@ -461,7 +533,10 @@ export function SwapWidget({
                         setEditingPercents([...customPercents]);
                         setIsEditingPercents(true);
                       }}
-                      className="p-1.5 text-white/40 hover:text-white/70 hover:bg-white/5 transition-colors"
+                      className={cn(
+                        "p-1.5 transition-colors",
+                        isDark ? "text-white/40 hover:text-white/70 hover:bg-white/5" : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                      )}
                       title="Edit percentages"
                     >
                       <Pencil className="w-3.5 h-3.5" />
@@ -474,14 +549,17 @@ export function SwapWidget({
         </div>
 
         {/* Output Display */}
-        <div className="mb-4 p-3 bg-black/20 border border-white/5">
+        <div className={cn(
+          "mb-4 p-3 border",
+          isDark ? "bg-black/20 border-white/5" : "bg-gray-50 border-gray-100"
+        )}>
           <div className="flex items-center justify-between">
-            <span className="text-xs text-white/40 uppercase tracking-wide">You Receive</span>
-            <span className="text-white/60 text-sm">{isBuy ? outputSymbol : "SOL"}</span>
+            <span className={cn("text-xs uppercase tracking-wide", isDark ? "text-white/40" : "text-gray-400")}>You Receive</span>
+            <span className={cn("text-sm", isDark ? "text-white/60" : "text-gray-500")}>{isBuy ? outputSymbol : "SOL"}</span>
           </div>
-          <div className="mt-2 text-xl font-mono text-white">
+          <div className={cn("mt-2 text-xl font-mono", isDark ? "text-white" : "text-gray-900")}>
             {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin text-white/40" />
+              <Loader2 className={cn("w-4 h-4 animate-spin", isDark ? "text-white/40" : "text-gray-400")} />
             ) : (
               formatOutputAmount()
             )}
@@ -492,55 +570,33 @@ export function SwapWidget({
         {quote && (
           <div className="mb-4 space-y-2 text-xs">
             <div className="flex justify-between">
-              <span className="text-white/40">Price Impact</span>
+              <span className={isDark ? "text-white/40" : "text-gray-400"}>Price Impact</span>
               <span
-                className={`font-mono ${
+                className={cn(
+                  "font-mono",
                   quote.priceImpactPct > 5
                     ? "text-red-400"
                     : quote.priceImpactPct > 1
                     ? "text-yellow-400"
                     : "text-[#00ffa3]"
-                }`}
+                )}
               >
                 {quote.priceImpactPct.toFixed(2)}%
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-white/40">Slippage</span>
-              <span className="text-white/60 font-mono">{slippage / 100}%</span>
-            </div>
             <div className="flex justify-between items-center">
-              <span className="text-white/40">Route</span>
-              <span className={`px-2 py-0.5 text-xs font-medium ${
+              <span className={isDark ? "text-white/40" : "text-gray-400"}>Route</span>
+              <span className={cn(
+                "px-2 py-0.5 text-xs font-medium",
                 tradingSource === "pumpfun"
                   ? "bg-pink-500/20 text-pink-400"
                   : "bg-[#00ffa3]/20 text-[#00ffa3]"
-              }`}>
+              )}>
                 {tradingSource === "pumpfun" ? "Pump.fun" : "Jupiter"}
               </span>
             </div>
           </div>
         )}
-
-        {/* Slippage */}
-        <div className="mb-4">
-          <span className="text-xs text-white/40 uppercase tracking-wide">Slippage</span>
-          <div className="flex gap-2 mt-2">
-            {[50, 100, 300].map((bps) => (
-              <button
-                key={bps}
-                onClick={() => setSlippage(bps)}
-                className={`flex-1 py-1.5 text-xs font-mono transition-colors border ${
-                  slippage === bps
-                    ? "bg-[#00ffa3]/10 text-[#00ffa3] border-[#00ffa3]/50"
-                    : "text-white/50 border-white/10 hover:border-white/20"
-                }`}
-              >
-                {bps / 100}%
-              </button>
-            ))}
-          </div>
-        </div>
 
         {/* Error/Success Messages */}
         {error && (
@@ -558,13 +614,14 @@ export function SwapWidget({
         <button
           onClick={handleSwap}
           disabled={!quote || swapping || loading}
-          className={`w-full py-3 text-sm font-medium transition-colors ${
+          className={cn(
+            "w-full py-3 text-sm font-medium transition-colors",
             !quote || swapping || loading
-              ? "bg-white/5 text-white/30 cursor-not-allowed"
+              ? isDark ? "bg-white/5 text-white/30 cursor-not-allowed" : "bg-gray-100 text-gray-400 cursor-not-allowed"
               : isBuy
               ? "bg-[#00ffa3] text-black hover:bg-[#00dd8a]"
               : "bg-red-500 text-white hover:bg-red-600"
-          }`}
+          )}
         >
           {swapping ? (
             <span className="flex items-center justify-center gap-2">
@@ -582,22 +639,44 @@ export function SwapWidget({
 
         {/* Stats Row */}
         {balance && (
-          <div className="mt-4 pt-3 border-t border-white/5 grid grid-cols-4 gap-2 text-center">
+          <div className={cn(
+            "mt-4 pt-3 border-t grid grid-cols-4 gap-2 text-center",
+            isDark ? "border-white/5" : "border-black/5"
+          )}>
             <div>
-              <div className="text-[10px] text-white/30 uppercase">Bought</div>
-              <div className="text-xs text-white/50 font-mono">0</div>
+              <div className={cn("text-[10px] uppercase", isDark ? "text-white/30" : "text-gray-400")}>Bought</div>
+              <div className={cn("text-xs font-mono", isDark ? "text-white/50" : "text-gray-500")}>
+                {tokenStats ? (tokenStats.bought >= 1000000 ? `${(tokenStats.bought / 1000000).toFixed(1)}M` :
+                  tokenStats.bought >= 1000 ? `${(tokenStats.bought / 1000).toFixed(1)}K` :
+                  tokenStats.bought.toFixed(tokenStats.bought < 1 ? 4 : 2)) : "0"}
+              </div>
             </div>
             <div>
-              <div className="text-[10px] text-white/30 uppercase">Sold</div>
-              <div className="text-xs text-white/50 font-mono">0</div>
+              <div className={cn("text-[10px] uppercase", isDark ? "text-white/30" : "text-gray-400")}>Sold</div>
+              <div className={cn("text-xs font-mono", isDark ? "text-white/50" : "text-gray-500")}>
+                {tokenStats ? (tokenStats.sold >= 1000000 ? `${(tokenStats.sold / 1000000).toFixed(1)}M` :
+                  tokenStats.sold >= 1000 ? `${(tokenStats.sold / 1000).toFixed(1)}K` :
+                  tokenStats.sold.toFixed(tokenStats.sold < 1 ? 4 : 2)) : "0"}
+              </div>
             </div>
             <div>
-              <div className="text-[10px] text-white/30 uppercase">Holding</div>
-              <div className="text-xs text-white/50 font-mono">0</div>
+              <div className={cn("text-[10px] uppercase", isDark ? "text-white/30" : "text-gray-400")}>Holding</div>
+              <div className={cn("text-xs font-mono", isDark ? "text-white/50" : "text-gray-500")}>
+                {tokenStats ? (tokenStats.holding >= 1000000 ? `${(tokenStats.holding / 1000000).toFixed(1)}M` :
+                  tokenStats.holding >= 1000 ? `${(tokenStats.holding / 1000).toFixed(1)}K` :
+                  tokenStats.holding.toFixed(tokenStats.holding < 1 ? 4 : 2)) : "0"}
+              </div>
             </div>
             <div>
-              <div className="text-[10px] text-white/30 uppercase">PnL</div>
-              <div className="text-xs text-white/50 font-mono">+0%</div>
+              <div className={cn("text-[10px] uppercase", isDark ? "text-white/30" : "text-gray-400")}>PnL</div>
+              <div className={cn(
+                "text-xs font-mono",
+                tokenStats && tokenStats.pnlPercent !== 0
+                  ? tokenStats.pnlPercent > 0 ? "text-green-400" : "text-red-400"
+                  : isDark ? "text-white/50" : "text-gray-500"
+              )}>
+                {tokenStats ? `${tokenStats.pnlPercent >= 0 ? "+" : ""}${tokenStats.pnlPercent.toFixed(1)}%` : "+0%"}
+              </div>
             </div>
           </div>
         )}
