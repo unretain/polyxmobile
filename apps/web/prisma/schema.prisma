@@ -253,11 +253,6 @@ model Trade {
   pricePerToken   Float?      // Price per output token in input token
   priceImpact     Float?      // Price impact percentage
 
-  // USD values at time of trade (for PnL calculations)
-  inputUsdValue   Float?      // USD value of input at trade time
-  outputUsdValue  Float?      // USD value of output at trade time
-  solPriceUsd     Float?      // SOL/USD price at trade time
-
   // Transaction
   txSignature     String?     @unique
   status          TradeStatus @default(PENDING)
