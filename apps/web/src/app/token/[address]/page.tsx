@@ -650,8 +650,24 @@ export default function TokenPage() {
     fetchHolders();
   }, [address]);
 
-  const handleCopyAddress = () => {
-    navigator.clipboard.writeText(address);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyAddress = async () => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      // Fallback for older browsers
+      const textArea = document.createElement("textarea");
+      textArea.value = address;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
   };
 
   const isPositive = (token?.priceChange24h ?? 0) >= 0;
@@ -708,10 +724,10 @@ export default function TokenPage() {
                 <button
                   onClick={handleCopyAddress}
                   className={`flex items-center gap-1 text-xs transition-colors ${
-                    isDark ? 'text-white/50 hover:text-white' : 'text-black/50 hover:text-black'
+                    copied ? 'text-[#00ffa3]' : isDark ? 'text-white/50 hover:text-white' : 'text-black/50 hover:text-black'
                   }`}
                 >
-                  {shortenAddress(address, 6)}
+                  {copied ? "Copied!" : shortenAddress(address, 6)}
                   <Copy className="h-3 w-3" />
                 </button>
 
