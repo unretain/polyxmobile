@@ -5,6 +5,8 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Key, Copy, Check, RefreshCw, Globe, Eye, AlertCircle, Plus, Trash2, ExternalLink, BarChart3, Loader2, CreditCard } from "lucide-react";
+import { useThemeStore } from "@/stores/themeStore";
+import { Header } from "@/components/layout/Header";
 
 interface SubscriptionStatus {
   plan: "FREE" | "PRO" | "BUSINESS";
@@ -38,6 +40,7 @@ interface LicenseData {
 export default function LicenseDashboard() {
   const { data: session, status: sessionStatus } = useSession();
   const router = useRouter();
+  const { isDark } = useThemeStore();
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -178,7 +181,7 @@ export default function LicenseDashboard() {
   // Loading state
   if (sessionStatus === "loading" || (sessionStatus === "authenticated" && isLoading)) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] text-white flex items-center justify-center">
+      <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-[#0a0a0a] text-white' : 'bg-gray-50 text-gray-900'}`}>
         <Loader2 className="h-8 w-8 animate-spin text-[#FF6B4A]" />
       </div>
     );
@@ -193,37 +196,20 @@ export default function LicenseDashboard() {
   const canAddDomain = domains.length < maxDomains;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white">
-      {/* Header */}
-      <header className="border-b border-white/10 bg-[#0a0a0a]/80 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <span className="text-xl font-bold tracking-tight">
-              [poly<span className="text-[#FF6B4A]">x</span>]
-            </span>
-          </Link>
-          <nav className="flex items-center gap-4">
-            <Link href="/dashboard" className="text-sm text-white/60 hover:text-white transition-colors">
-              Dashboard
-            </Link>
-            <Link href="/solutions" className="text-sm text-white/60 hover:text-white transition-colors">
-              Solutions
-            </Link>
-          </nav>
-        </div>
-      </header>
+    <div className={`min-h-screen ${isDark ? 'bg-[#0a0a0a] text-white' : 'bg-gray-50 text-gray-900'}`}>
+      <Header />
 
       <main className="max-w-4xl mx-auto px-6 py-12">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2 flex items-center gap-3">
+          <h1 className={`text-3xl font-bold mb-2 flex items-center gap-3 ${isDark ? 'text-white' : 'text-gray-900'}`}>
             <Key className="h-8 w-8 text-[#FF6B4A]" />
             License Dashboard
           </h1>
-          <p className="text-white/60">
+          <p className={isDark ? 'text-white/60' : 'text-gray-600'}>
             Manage your embed license keys and domain restrictions.
           </p>
           {session?.user?.email && (
-            <p className="text-sm text-white/40 mt-1">
+            <p className={`text-sm mt-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
               Signed in as {session.user.email}
             </p>
           )}
@@ -245,42 +231,42 @@ export default function LicenseDashboard() {
         {subscription && (
           <div className="space-y-6">
             {/* Plan Overview */}
-            <div className="p-6 bg-white/5 rounded-xl border border-white/10">
+            <div className={`p-6 rounded-xl border ${isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200'}`}>
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold">Subscription Status</h2>
+                <h2 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Subscription Status</h2>
                 <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                   subscription.plan === "BUSINESS"
-                    ? "bg-purple-500/20 text-purple-400"
+                    ? "bg-purple-500/20 text-purple-500"
                     : subscription.plan === "PRO"
                     ? "bg-[#FF6B4A]/20 text-[#FF6B4A]"
-                    : "bg-white/10 text-white/60"
+                    : isDark ? "bg-white/10 text-white/60" : "bg-gray-100 text-gray-600"
                 }`}>
                   {subscription.plan}
                 </span>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="p-4 bg-white/5 rounded-lg">
-                  <div className="text-xs text-white/40 mb-1">Status</div>
-                  <div className={`font-medium ${subscription.hasSubscription ? "text-green-400" : "text-white/60"}`}>
+                <div className={`p-4 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+                  <div className={`text-xs mb-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Status</div>
+                  <div className={`font-medium ${subscription.hasSubscription ? "text-green-500" : isDark ? "text-white/60" : "text-gray-600"}`}>
                     {subscription.hasSubscription ? "Active" : "Free Tier"}
                   </div>
                 </div>
-                <div className="p-4 bg-white/5 rounded-lg">
-                  <div className="text-xs text-white/40 mb-1">Domains</div>
-                  <div className="font-medium">
+                <div className={`p-4 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+                  <div className={`text-xs mb-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Domains</div>
+                  <div className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
                     {subscription.features.domains === -1 ? "Unlimited" : subscription.features.domains}
                   </div>
                 </div>
-                <div className="p-4 bg-white/5 rounded-lg">
-                  <div className="text-xs text-white/40 mb-1">Views/Month</div>
-                  <div className="font-medium">
+                <div className={`p-4 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+                  <div className={`text-xs mb-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Views/Month</div>
+                  <div className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
                     {subscription.features.viewsPerMonth === -1 ? "Unlimited" : subscription.features.viewsPerMonth.toLocaleString()}
                   </div>
                 </div>
-                <div className="p-4 bg-white/5 rounded-lg">
-                  <div className="text-xs text-white/40 mb-1">Watermark</div>
-                  <div className={`font-medium ${subscription.features.watermark ? "text-white/60" : "text-green-400"}`}>
+                <div className={`p-4 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+                  <div className={`text-xs mb-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Watermark</div>
+                  <div className={`font-medium ${subscription.features.watermark ? (isDark ? "text-white/60" : "text-gray-600") : "text-green-500"}`}>
                     {subscription.features.watermark ? "Yes" : "Removed"}
                   </div>
                 </div>
@@ -297,7 +283,7 @@ export default function LicenseDashboard() {
               ) : (
                 <button
                   onClick={openBillingPortal}
-                  className="mt-6 w-full flex items-center justify-center gap-2 px-6 py-3 border border-white/20 text-white font-medium rounded-lg hover:bg-white/10 transition-colors"
+                  className={`mt-6 w-full flex items-center justify-center gap-2 px-6 py-3 border font-medium rounded-lg transition-colors ${isDark ? 'border-white/20 text-white hover:bg-white/10' : 'border-gray-300 text-gray-900 hover:bg-gray-100'}`}
                 >
                   <CreditCard className="h-4 w-4" />
                   Manage Subscription
@@ -307,30 +293,30 @@ export default function LicenseDashboard() {
 
             {/* Usage Statistics */}
             {subscription.usage && (
-              <div className="p-6 bg-white/5 rounded-xl border border-white/10">
+              <div className={`p-6 rounded-xl border ${isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200'}`}>
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <h2 className={`text-lg font-semibold flex items-center gap-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
                     <BarChart3 className="h-5 w-5 text-[#FF6B4A]" />
                     Usage This Period
                   </h2>
                   <button
                     onClick={loadSubscription}
-                    className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                    className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-white/10' : 'hover:bg-gray-100'}`}
                     title="Refresh usage"
                   >
-                    <RefreshCw className="h-4 w-4 text-white/40" />
+                    <RefreshCw className={`h-4 w-4 ${isDark ? 'text-white/40' : 'text-gray-400'}`} />
                   </button>
                 </div>
 
                 {/* Usage Progress Bar */}
                 <div className="mb-4">
                   <div className="flex items-center justify-between text-sm mb-2">
-                    <span className="text-white/60">Embed Views</span>
-                    <span className="font-mono">
+                    <span className={isDark ? 'text-white/60' : 'text-gray-600'}>Embed Views</span>
+                    <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
                       {subscription.usage.embedViews.toLocaleString()} / {subscription.usage.limit === -1 ? "∞" : subscription.usage.limit.toLocaleString()}
                     </span>
                   </div>
-                  <div className="h-3 bg-white/10 rounded-full overflow-hidden">
+                  <div className={`h-3 rounded-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-gray-200'}`}>
                     <div
                       className={`h-full transition-all ${
                         subscription.usage.limit !== -1 && subscription.usage.embedViews / subscription.usage.limit > 0.9
@@ -349,19 +335,19 @@ export default function LicenseDashboard() {
                 </div>
 
                 <div className="grid grid-cols-3 gap-4">
-                  <div className="p-3 bg-white/5 rounded-lg text-center">
-                    <div className="text-xs text-white/40 mb-1">Used</div>
-                    <div className="font-bold text-lg">{subscription.usage.embedViews.toLocaleString()}</div>
+                  <div className={`p-3 rounded-lg text-center ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+                    <div className={`text-xs mb-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Used</div>
+                    <div className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>{subscription.usage.embedViews.toLocaleString()}</div>
                   </div>
-                  <div className="p-3 bg-white/5 rounded-lg text-center">
-                    <div className="text-xs text-white/40 mb-1">Remaining</div>
-                    <div className="font-bold text-lg">
+                  <div className={`p-3 rounded-lg text-center ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+                    <div className={`text-xs mb-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Remaining</div>
+                    <div className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
                       {subscription.usage.remaining === -1 ? "∞" : subscription.usage.remaining.toLocaleString()}
                     </div>
                   </div>
-                  <div className="p-3 bg-white/5 rounded-lg text-center">
-                    <div className="text-xs text-white/40 mb-1">Resets</div>
-                    <div className="font-medium text-sm">
+                  <div className={`p-3 rounded-lg text-center ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+                    <div className={`text-xs mb-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Resets</div>
+                    <div className={`font-medium text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
                       {new Date(subscription.usage.resetAt).toLocaleDateString()}
                     </div>
                   </div>
@@ -378,35 +364,35 @@ export default function LicenseDashboard() {
 
             {/* License Key - Only for paid subscribers */}
             {subscription.hasSubscription && license && (
-              <div className="p-6 bg-white/5 rounded-xl border border-white/10">
-                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <div className={`p-6 rounded-xl border ${isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200'}`}>
+                <h2 className={`text-lg font-semibold mb-4 flex items-center gap-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
                   <Key className="h-5 w-5 text-[#FF6B4A]" />
                   Your License Key
                 </h2>
 
-                <p className="text-sm text-white/60 mb-4">
+                <p className={`text-sm mb-4 ${isDark ? 'text-white/60' : 'text-gray-600'}`}>
                   Use this license key to embed charts without watermark. Add allowed domains below to restrict where it can be used.
                 </p>
 
                 {/* License Key Display */}
                 <div className="relative">
-                  <div className="p-4 bg-[#111] rounded-lg border border-white/10 font-mono text-sm break-all pr-12">
+                  <div className={`p-4 rounded-lg border font-mono text-sm break-all pr-12 ${isDark ? 'bg-[#111] border-white/10 text-white' : 'bg-gray-100 border-gray-200 text-gray-900'}`}>
                     {license.licenseKey}
                   </div>
                   <button
                     onClick={copyLicense}
-                    className="absolute top-1/2 right-3 -translate-y-1/2 p-2 hover:bg-white/10 rounded transition-colors"
+                    className={`absolute top-1/2 right-3 -translate-y-1/2 p-2 rounded transition-colors ${isDark ? 'hover:bg-white/10' : 'hover:bg-gray-200'}`}
                     title="Copy license key"
                   >
                     {copied ? (
                       <Check className="h-4 w-4 text-green-400" />
                     ) : (
-                      <Copy className="h-4 w-4 text-white/40" />
+                      <Copy className={`h-4 w-4 ${isDark ? 'text-white/40' : 'text-gray-400'}`} />
                     )}
                   </button>
                 </div>
 
-                <div className="mt-4 text-sm text-white/40">
+                <div className={`mt-4 text-sm ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
                   Add <code className="text-[#FF6B4A]">?license={license.licenseKey.slice(0, 20)}...</code> to your embed URL
                 </div>
               </div>
@@ -415,11 +401,11 @@ export default function LicenseDashboard() {
             {/* Upgrade prompt for free users */}
             {!subscription.hasSubscription && (
               <div className="p-6 bg-gradient-to-r from-[#FF6B4A]/10 to-purple-500/10 rounded-xl border border-[#FF6B4A]/30">
-                <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
+                <h2 className={`text-lg font-semibold mb-2 flex items-center gap-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
                   <Key className="h-5 w-5 text-[#FF6B4A]" />
                   Get Your License Key
                 </h2>
-                <p className="text-white/60 mb-4">
+                <p className={`mb-4 ${isDark ? 'text-white/60' : 'text-gray-600'}`}>
                   Upgrade to Pro or Business to generate license keys for embedding charts on your website without watermarks.
                 </p>
                 <Link
@@ -434,29 +420,29 @@ export default function LicenseDashboard() {
 
             {/* Domain Management - Only for paid subscribers */}
             {subscription.hasSubscription && (
-              <div className="p-6 bg-white/5 rounded-xl border border-white/10">
-                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <div className={`p-6 rounded-xl border ${isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200'}`}>
+                <h2 className={`text-lg font-semibold mb-4 flex items-center gap-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
                   <Globe className="h-5 w-5 text-[#FF6B4A]" />
                   Registered Domains
                 </h2>
 
-                <p className="text-sm text-white/60 mb-4">
+                <p className={`text-sm mb-4 ${isDark ? 'text-white/60' : 'text-gray-600'}`}>
                   Register domains to restrict your license key usage. Using a wildcard (*) allows any domain.
                 </p>
 
                 {/* Domain List */}
                 <div className="space-y-2 mb-4">
                   {domains.length === 0 ? (
-                    <div className="p-4 bg-white/5 rounded-lg text-white/40 text-sm text-center">
+                    <div className={`p-4 rounded-lg text-sm text-center ${isDark ? 'bg-white/5 text-white/40' : 'bg-gray-50 text-gray-500'}`}>
                       No domains registered. Using wildcard (*) - any domain allowed.
                     </div>
                   ) : (
                     domains.map((domain) => (
                       <div
                         key={domain}
-                        className="flex items-center justify-between p-3 bg-white/5 rounded-lg"
+                        className={`flex items-center justify-between p-3 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}
                       >
-                        <span className="font-mono text-sm">{domain}</span>
+                        <span className={`font-mono text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>{domain}</span>
                         <button
                           onClick={() => removeDomain(domain)}
                           className="p-1 hover:bg-red-500/20 rounded text-red-400 transition-colors"
@@ -477,7 +463,7 @@ export default function LicenseDashboard() {
                       value={newDomain}
                       onChange={(e) => setNewDomain(e.target.value)}
                       placeholder="example.com"
-                      className="flex-1 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white placeholder:text-white/40 focus:outline-none focus:border-[#FF6B4A]/50 font-mono text-sm"
+                      className={`flex-1 px-4 py-2 border rounded-lg font-mono text-sm focus:outline-none focus:border-[#FF6B4A]/50 ${isDark ? 'bg-white/5 border-white/10 text-white placeholder:text-white/40' : 'bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-400'}`}
                       onKeyDown={(e) => e.key === "Enter" && addDomain()}
                     />
                     <button
@@ -491,7 +477,7 @@ export default function LicenseDashboard() {
                   </div>
                 )}
 
-                <div className="mt-4 text-xs text-white/40">
+                <div className={`mt-4 text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
                   {domains.length} / {maxDomains === Infinity ? "∞" : maxDomains} domains used
                 </div>
               </div>
@@ -499,14 +485,14 @@ export default function LicenseDashboard() {
 
             {/* Usage Example - Only for paid subscribers */}
             {subscription.hasSubscription && license && (
-              <div className="p-6 bg-white/5 rounded-xl border border-white/10">
-                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <div className={`p-6 rounded-xl border ${isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200'}`}>
+                <h2 className={`text-lg font-semibold mb-4 flex items-center gap-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
                   <Eye className="h-5 w-5 text-[#FF6B4A]" />
                   Usage Example
                 </h2>
 
-                <pre className="p-4 bg-[#111] rounded-lg border border-white/10 overflow-x-auto text-sm">
-                  <code className="text-white/80">{`<iframe
+                <pre className={`p-4 rounded-lg border overflow-x-auto text-sm ${isDark ? 'bg-[#111] border-white/10' : 'bg-gray-100 border-gray-200'}`}>
+                  <code className={isDark ? 'text-white/80' : 'text-gray-800'}>{`<iframe
   src="https://polyx.xyz/embed/TOKEN_ADDRESS?license=${license.licenseKey}"
   width="100%"
   height="500"
