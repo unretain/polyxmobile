@@ -14,7 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Calendar,
-  BarChart3,
+  TrendingUp,
 } from "lucide-react";
 
 
@@ -169,12 +169,65 @@ export default function PortfolioPage() {
     }
   }, [status, period, viewMode, calendarYear, calendarMonth]);
 
-  // Calculate chart max value for scaling
+  // Generate all days for the selected period and fill with PnL data
+  const chartData = useMemo(() => {
+    if (!pnlData) return [];
+
+    // Create a map of existing PnL data
+    const pnlMap = new Map<string, DailyPnL>();
+    for (const d of pnlData.dailyPnL) {
+      pnlMap.set(d.date, d);
+    }
+
+    // Determine date range based on period
+    const endDate = new Date();
+    endDate.setHours(23, 59, 59, 999);
+    let startDate: Date;
+
+    switch (period) {
+      case "1d":
+        startDate = new Date();
+        startDate.setHours(0, 0, 0, 0);
+        break;
+      case "7d":
+        startDate = new Date();
+        startDate.setDate(startDate.getDate() - 6);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+      case "30d":
+        startDate = new Date();
+        startDate.setDate(startDate.getDate() - 29);
+        startDate.setHours(0, 0, 0, 0);
+        break;
+      default: // "all"
+        if (pnlData.dailyPnL.length > 0) {
+          startDate = new Date(pnlData.dailyPnL[0].date);
+        } else {
+          startDate = new Date();
+          startDate.setDate(startDate.getDate() - 29);
+        }
+        startDate.setHours(0, 0, 0, 0);
+    }
+
+    // Generate all days in range
+    const days: DailyPnL[] = [];
+    const current = new Date(startDate);
+    while (current <= endDate) {
+      const dateStr = current.toISOString().split("T")[0];
+      const existing = pnlMap.get(dateStr);
+      days.push(existing || { date: dateStr, pnl: 0, trades: 0, volume: 0 });
+      current.setDate(current.getDate() + 1);
+    }
+
+    return days;
+  }, [pnlData, period]);
+
+  // Calculate chart max value for scaling (using filled chart data)
   const chartMax = useMemo(() => {
-    if (!pnlData?.dailyPnL.length) return 1;
-    const max = Math.max(...pnlData.dailyPnL.map(d => Math.abs(d.pnl)));
-    return max || 1;
-  }, [pnlData]);
+    if (!chartData.length) return 1;
+    const max = Math.max(...chartData.map(d => Math.abs(d.pnl)));
+    return max || 0.0001; // Small default for when all values are 0
+  }, [chartData]);
 
   // Total portfolio value from balance API (includes SOL + all tokens)
   const totalPortfolioValueUsd = balance?.totalValueUsd ?? null;
@@ -361,7 +414,7 @@ export default function PortfolioPage() {
                       : isDark ? 'bg-white/5 text-white/60 hover:bg-white/10' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
                 >
-                  <BarChart3 className="h-4 w-4" />
+                  <TrendingUp className="h-4 w-4" />
                 </button>
                 <button
                   onClick={() => setViewMode("calendar")}
@@ -422,37 +475,114 @@ export default function PortfolioPage() {
                 <Loader2 className="h-6 w-6 animate-spin text-[#FF6B4A]" />
               </div>
             ) : viewMode === "chart" ? (
-              /* Bar Chart View */
-              <div className="h-[200px] flex items-end gap-1">
-                {pnlData?.dailyPnL.length ? (
-                  pnlData.dailyPnL.map((day) => {
-                    const height = Math.abs(day.pnl) / chartMax * 100;
-                    const isPositive = day.pnl >= 0;
-                    return (
-                      <div
-                        key={day.date}
-                        className="flex-1 flex flex-col items-center justify-end group relative"
-                        style={{ minWidth: "8px", maxWidth: "40px" }}
-                      >
-                        <div
-                          className={`w-full rounded-t transition-all ${
-                            isPositive ? 'bg-green-500' : 'bg-red-500'
-                          } hover:opacity-80`}
-                          style={{ height: `${Math.max(height, 2)}%` }}
-                        />
-                        {/* Tooltip */}
-                        <div className={`absolute bottom-full mb-2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 ${
-                          isDark ? 'bg-white/10 text-white' : 'bg-gray-800 text-white'
-                        }`}>
-                          <div className="font-medium">{new Date(day.date).toLocaleDateString()}</div>
-                          <div className={isPositive ? 'text-green-400' : 'text-red-400'}>
-                            {formatPnL(day.pnl)}
+              /* Line Chart View */
+              <div className="h-[200px] relative">
+                {chartData.length > 0 ? (
+                  <>
+                    {/* SVG Line Chart */}
+                    <svg
+                      viewBox={`0 0 ${chartData.length * 20} 200`}
+                      preserveAspectRatio="none"
+                      className="w-full h-full"
+                    >
+                      {/* Zero line */}
+                      <line
+                        x1="0"
+                        y1="100"
+                        x2={chartData.length * 20}
+                        y2="100"
+                        stroke={isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.1)"}
+                        strokeWidth="1"
+                      />
+
+                      {/* Gradient fill under line */}
+                      <defs>
+                        <linearGradient id="lineGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                          <stop offset="0%" stopColor="#22c55e" stopOpacity="0.3" />
+                          <stop offset="50%" stopColor="#22c55e" stopOpacity="0" />
+                          <stop offset="50%" stopColor="#ef4444" stopOpacity="0" />
+                          <stop offset="100%" stopColor="#ef4444" stopOpacity="0.3" />
+                        </linearGradient>
+                      </defs>
+
+                      {/* Area fill */}
+                      <path
+                        d={`M 10 100 ${chartData.map((d, i) => {
+                          const x = i * 20 + 10;
+                          const y = 100 - (d.pnl / chartMax) * 90;
+                          return `L ${x} ${Math.max(10, Math.min(190, y))}`;
+                        }).join(" ")} L ${(chartData.length - 1) * 20 + 10} 100 Z`}
+                        fill="url(#lineGradient)"
+                      />
+
+                      {/* Main line */}
+                      <path
+                        d={`M ${chartData.map((d, i) => {
+                          const x = i * 20 + 10;
+                          const y = 100 - (d.pnl / chartMax) * 90;
+                          return `${i === 0 ? "" : "L "}${x} ${Math.max(10, Math.min(190, y))}`;
+                        }).join(" ")}`}
+                        fill="none"
+                        stroke="#FF6B4A"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+
+                      {/* Data points */}
+                      {chartData.map((d, i) => {
+                        const x = i * 20 + 10;
+                        const y = 100 - (d.pnl / chartMax) * 90;
+                        const clampedY = Math.max(10, Math.min(190, y));
+                        return (
+                          <circle
+                            key={d.date}
+                            cx={x}
+                            cy={clampedY}
+                            r={d.trades > 0 ? 4 : 2}
+                            fill={d.pnl >= 0 ? "#22c55e" : "#ef4444"}
+                            stroke={isDark ? "#111" : "#fff"}
+                            strokeWidth="1"
+                            className="cursor-pointer hover:r-6"
+                          />
+                        );
+                      })}
+                    </svg>
+
+                    {/* Hover overlay for tooltips */}
+                    <div className="absolute inset-0 flex">
+                      {chartData.map((day) => {
+                        const isPositive = day.pnl >= 0;
+                        return (
+                          <div
+                            key={day.date}
+                            className="flex-1 group relative"
+                          >
+                            {/* Tooltip */}
+                            <div className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 ${
+                              isDark ? 'bg-[#222] border border-white/10 text-white' : 'bg-gray-800 text-white'
+                            }`}>
+                              <div className="font-medium">{new Date(day.date).toLocaleDateString()}</div>
+                              <div className={isPositive ? 'text-green-400' : 'text-red-400'}>
+                                {formatPnL(day.pnl)}
+                              </div>
+                              <div className="text-white/60">{day.trades} trade{day.trades !== 1 ? 's' : ''}</div>
+                            </div>
                           </div>
-                          <div className="text-white/60">{day.trades} trades</div>
-                        </div>
-                      </div>
-                    );
-                  })
+                        );
+                      })}
+                    </div>
+
+                    {/* X-axis labels */}
+                    <div className="flex justify-between mt-2 px-2">
+                      <span className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
+                        {new Date(chartData[0]?.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </span>
+                      <span className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
+                        {new Date(chartData[chartData.length - 1]?.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </span>
+                    </div>
+                  </>
                 ) : (
                   <div className={`w-full h-full flex items-center justify-center ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
                     No trading data for this period
