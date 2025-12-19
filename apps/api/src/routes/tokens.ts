@@ -7,6 +7,7 @@ import { geckoTerminalService } from "../services/geckoterminal";
 import { pumpPortalService } from "../services/pumpportal";
 import { coinGeckoService } from "../services/coingecko";
 import { solPriceService } from "../services/solPrice";
+import { candleCacheService } from "../services/candleCache";
 import { cache } from "../lib/cache";
 
 export const tokenRoutes = Router();
@@ -522,11 +523,31 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
     } else {
       // Use Birdeye for main dashboard tokens (established tokens with history)
       // Pulse tokens use /api/pulse/ohlcv endpoint which goes to PumpPortal
+      // Now with database caching to reduce Birdeye API calls
+      const fromMs = (from || 0) * 1000;
+      const toMs = (to || Math.floor(Date.now() / 1000)) * 1000;
+
       try {
-        ohlcv = await birdeyeService.getOHLCV(address, timeframe, { from, to, limit });
+        ohlcv = await candleCacheService.getCandles(
+          address,
+          timeframe,
+          fromMs,
+          toMs,
+          async (fetchFromMs, fetchToMs) => {
+            // Convert back to seconds for Birdeye API
+            const fetchFromSec = Math.floor(fetchFromMs / 1000);
+            const fetchToSec = Math.floor(fetchToMs / 1000);
+            console.log(`[OHLCV] Fetching from Birdeye: ${address.substring(0, 8)}... ${timeframe} ${new Date(fetchFromMs).toISOString()} to ${new Date(fetchToMs).toISOString()}`);
+            return birdeyeService.getOHLCV(address, timeframe, {
+              from: fetchFromSec,
+              to: fetchToSec,
+              limit,
+            });
+          }
+        );
       } catch (birdeyeError) {
-        // Birdeye failed (rate limit, etc.) - return empty array instead of 500
-        console.warn(`Birdeye OHLCV failed for ${address}:`, birdeyeError instanceof Error ? birdeyeError.message : birdeyeError);
+        // Failed - return empty array instead of 500
+        console.warn(`OHLCV failed for ${address}:`, birdeyeError instanceof Error ? birdeyeError.message : birdeyeError);
         ohlcv = [];
       }
     }
