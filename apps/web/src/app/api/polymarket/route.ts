@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
 // Polymarket Gamma API endpoint
 const GAMMA_API = "https://gamma-api.polymarket.com";
 const CLOB_API = "https://clob.polymarket.com";
+
+// Cache duration in seconds
+const CACHE_MAX_AGE = 60; // 1 minute for fresh data
+const STALE_WHILE_REVALIDATE = 300; // 5 minutes stale-while-revalidate
 
 interface GammaMarket {
   id: string;
@@ -105,9 +110,112 @@ export async function GET(request: Request) {
   const category = searchParams.get("category");
 
   try {
-    // Fetch ALL events (including multi-outcome) sorted by volume
-    // Using /events endpoint which returns complete market data for each event
+    // Fetch markets from database cache first
     if (action === "markets") {
+      // Try to get from database cache
+      const cachedEvents = await prisma.polymarketEvent.findMany({
+        where: {
+          active: true,
+          closed: false,
+        },
+        include: {
+          markets: true,
+        },
+        orderBy: {
+          volume: "desc",
+        },
+        take: 200,
+      });
+
+      // If we have cached data, transform and return it
+      if (cachedEvents.length > 0) {
+        const transformedMarkets: any[] = [];
+
+        for (const event of cachedEvents) {
+          if (event.markets.length === 0) continue;
+
+          const isMultiOutcome = event.markets.length > 1;
+
+          if (isMultiOutcome) {
+            // Multi-outcome event
+            const sortedMarkets = [...event.markets].sort((a, b) => b.probability - a.probability);
+
+            transformedMarkets.push({
+              id: event.id,
+              question: event.title,
+              slug: event.slug,
+              description: event.description,
+              outcomes: sortedMarkets.map((m) => m.outcome),
+              outcomeProbabilities: sortedMarkets.map((m) => m.probability),
+              outcomeTokenIds: sortedMarkets.map((m) => m.tokenId || ""),
+              outcomeVolumes: sortedMarkets.map((m) => m.volume),
+              isMultiOutcome: true,
+              volume: event.volume,
+              liquidity: event.liquidity,
+              endDate: event.endDate.toISOString(),
+              startDate: event.startDate?.toISOString(),
+              category: event.category || "Other",
+              image: event.image,
+              icon: event.icon,
+              tags: [],
+            });
+          } else {
+            // Binary Yes/No market
+            const market = event.markets[0];
+            const yesProbability = market.probability;
+
+            transformedMarkets.push({
+              id: event.id,
+              question: event.title,
+              slug: event.slug,
+              description: event.description,
+              outcomes: ["Yes", "No"],
+              outcomeProbabilities: [yesProbability, 1 - yesProbability],
+              outcomeTokenIds: [market.tokenId || "", ""],
+              outcomeVolumes: [event.volume * yesProbability, event.volume * (1 - yesProbability)],
+              isMultiOutcome: false,
+              volume: event.volume,
+              liquidity: event.liquidity,
+              endDate: event.endDate.toISOString(),
+              startDate: event.startDate?.toISOString(),
+              category: event.category || "Other",
+              image: event.image,
+              icon: event.icon,
+              tags: [],
+            });
+          }
+        }
+
+        // Filter by category if specified
+        const categoryMap: Record<string, string> = {
+          sports: "Sports",
+          politics: "Politics",
+          crypto: "Crypto",
+          business: "Business",
+          "pop-culture": "Culture",
+          science: "Science",
+        };
+
+        if (category && category !== "all" && categoryMap[category]) {
+          const targetCategory = categoryMap[category];
+          const filtered = transformedMarkets.filter((m) => m.category === targetCategory);
+          return NextResponse.json(filtered, {
+            headers: {
+              "Cache-Control": `public, max-age=${CACHE_MAX_AGE}, stale-while-revalidate=${STALE_WHILE_REVALIDATE}`,
+            },
+          });
+        }
+
+        return NextResponse.json(transformedMarkets, {
+          headers: {
+            "Cache-Control": `public, max-age=${CACHE_MAX_AGE}, stale-while-revalidate=${STALE_WHILE_REVALIDATE}`,
+          },
+        });
+      }
+
+      // No cached data - fall back to live API (and trigger sync in background)
+      console.log("[Polymarket API] Cache miss, fetching from live API");
+
       const allEvents: GammaEvent[] = [];
       const BATCH_SIZE = 100;
       let offset = 0;
@@ -134,8 +242,8 @@ export async function GET(request: Request) {
           allEvents.push(...batch);
           offset += BATCH_SIZE;
 
-          // Safety limit - max 1000 events (each can have many markets)
-          if (offset >= 1000 || batch.length < BATCH_SIZE) {
+          // Safety limit - max 500 events
+          if (offset >= 500 || batch.length < BATCH_SIZE) {
             hasMore = false;
           }
         }

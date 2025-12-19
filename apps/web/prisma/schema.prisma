@@ -234,6 +234,66 @@ model PriceCache {
 }
 
 // ==========================================
+// Polymarket Cache (to avoid rate limiting)
+// ==========================================
+
+model PolymarketEvent {
+  id              String   @id  // Polymarket event ID
+  slug            String   @unique
+  title           String
+  description     String?  @db.Text
+  category        String?
+  image           String?
+  icon            String?
+  volume          Float    @default(0)
+  liquidity       Float    @default(0)
+  startDate       DateTime?
+  endDate         DateTime
+  active          Boolean  @default(true)
+  closed          Boolean  @default(false)
+
+  markets         PolymarketMarket[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([category])
+  @@index([volume])
+  @@index([active, closed])
+}
+
+model PolymarketMarket {
+  id              String   @id  // Polymarket market ID
+  eventId         String
+  event           PolymarketEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  question        String
+  outcome         String   // "Yes", "No", or specific outcome name
+  probability     Float    @default(0.5)
+  tokenId         String?  // CLOB token ID for price history
+  volume          Float    @default(0)
+
+  priceHistory    PolymarketPriceHistory[]
+
+  updatedAt       DateTime @updatedAt
+
+  @@index([eventId])
+  @@index([tokenId])
+}
+
+model PolymarketPriceHistory {
+  id              String   @id @default(cuid())
+  marketId        String
+  market          PolymarketMarket @relation(fields: [marketId], references: [id], onDelete: Cascade)
+
+  timestamp       DateTime
+  probability     Float
+
+  @@unique([marketId, timestamp])
+  @@index([marketId, timestamp])
+}
+
+// ==========================================
 // Trading Models
 // ==========================================
 
