@@ -80,6 +80,9 @@ export function SwapWidget({
 
   useEffect(() => {
     fetchBalance();
+    // Auto-refresh balance every 5 seconds
+    const interval = setInterval(fetchBalance, 5000);
+    return () => clearInterval(interval);
   }, [fetchBalance]);
 
   useEffect(() => {

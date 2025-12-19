@@ -158,6 +158,9 @@ export default function PortfolioPage() {
     if (status === "authenticated") {
       fetchPnL();
       fetchBalance();
+      // Auto-refresh balance every 5 seconds
+      const interval = setInterval(fetchBalance, 5000);
+      return () => clearInterval(interval);
     }
   }, [status, period, viewMode, calendarYear, calendarMonth]);
 
