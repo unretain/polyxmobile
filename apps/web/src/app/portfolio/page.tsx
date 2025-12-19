@@ -502,9 +502,9 @@ export default function PortfolioPage() {
                         <div className="flex-1 flex items-center justify-center">
                           <span className={`text-xs sm:text-sm font-bold ${getPnLColor(pnl, isDark)}`}>
                             {hasTrades ? (
-                              <>{pnl >= 0 ? "+" : ""}{pnl >= 100 || pnl <= -100 ? `$${Math.round(pnl)}` : `$${pnl.toFixed(2)}`}</>
+                              <>{pnl >= 0 ? "+" : ""}{Math.abs(pnl) >= 1 ? pnl.toFixed(4) : pnl.toFixed(6)}</>
                             ) : (
-                              <span className={isDark ? 'text-white/20' : 'text-gray-300'}>$0</span>
+                              <span className={isDark ? 'text-white/20' : 'text-gray-300'}>0</span>
                             )}
                           </span>
                         </div>
