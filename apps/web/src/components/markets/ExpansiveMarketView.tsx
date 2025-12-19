@@ -338,14 +338,14 @@ export function ExpansiveMarketView({
             />
           </div>
 
-          {/* Trade buttons */}
+          {/* Price indicators */}
           <div className="flex gap-2">
-            <button className="flex-1 py-3 bg-green-500/10 border border-green-500/30 text-green-400 font-medium hover:bg-green-500/20 transition-colors">
-              Buy Yes {Math.round(currentProbability * 100)}¢
-            </button>
-            <button className="flex-1 py-3 bg-red-500/10 border border-red-500/30 text-red-400 font-medium hover:bg-red-500/20 transition-colors">
-              Buy No {Math.round((1 - currentProbability) * 100)}¢
-            </button>
+            <div className="flex-1 py-3 bg-green-500/10 border border-green-500/30 text-green-400 font-medium text-center">
+              {Math.round(currentProbability * 100)}¢ Yes
+            </div>
+            <div className="flex-1 py-3 bg-red-500/10 border border-red-500/30 text-red-400 font-medium text-center">
+              {Math.round((1 - currentProbability) * 100)}¢ No
+            </div>
           </div>
         </div>
       </div>
