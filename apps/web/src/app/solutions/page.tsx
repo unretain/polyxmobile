@@ -145,7 +145,7 @@ function SolutionsPageContent() {
   const [tokenPrice, setTokenPrice] = useState<number | null>(null);
   const [embedWidth, setEmbedWidth] = useState("800");
   const [embedHeight, setEmbedHeight] = useState("500");
-  const [embedTheme, setEmbedTheme] = useState<"dark" | "light">("dark");
+  const [embedTheme, setEmbedTheme] = useState<"dark" | "light">(isDark ? "dark" : "light");
   const [embedTimeframe, setEmbedTimeframe] = useState("1h");
   const [isPlaying, setIsPlaying] = useState(true);
 
@@ -156,6 +156,11 @@ function SolutionsPageContent() {
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState<"PRO" | "BUSINESS" | null>(null);
 
+
+  // Sync embed theme with site theme when user toggles
+  useEffect(() => {
+    setEmbedTheme(isDark ? "dark" : "light");
+  }, [isDark]);
 
   // Check user's subscription status
   useEffect(() => {
