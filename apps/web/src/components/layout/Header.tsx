@@ -458,10 +458,10 @@ export function Header() {
       {/* Wallet Modal */}
       {showWalletModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowWalletModal(false)} />
-          <div className="relative w-full max-w-md border rounded-2xl shadow-2xl bg-[#0f0f0f] border-white/10">
-            <div className="p-6 border-b border-white/10">
-              <h2 className="text-xl font-bold flex items-center gap-2 text-white">
+          <div className={`absolute inset-0 backdrop-blur-sm ${isDark ? 'bg-black/80' : 'bg-black/50'}`} onClick={() => setShowWalletModal(false)} />
+          <div className={`relative w-full max-w-md border rounded-2xl shadow-2xl ${isDark ? 'bg-[#0f0f0f] border-white/10' : 'bg-white border-gray-200'}`}>
+            <div className={`p-6 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+              <h2 className={`text-xl font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 <Wallet className="h-5 w-5 text-[#FF6B4A]" />
                 Wallet
               </h2>
@@ -469,13 +469,13 @@ export function Header() {
 
             <div className="p-6 space-y-4">
               {/* Balance */}
-              <div className="p-4 rounded-xl border bg-white/5 border-white/10">
+              <div className={`p-4 rounded-xl border ${isDark ? 'bg-white/5 border-white/10' : 'bg-gray-50 border-gray-200'}`}>
                 <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm text-white/60">Balance</p>
+                  <p className={`text-sm ${isDark ? 'text-white/60' : 'text-gray-600'}`}>Balance</p>
                   <button
                     onClick={fetchBalance}
                     disabled={balanceLoading}
-                    className="text-xs text-white/40 hover:text-white transition-colors"
+                    className={`text-xs transition-colors ${isDark ? 'text-white/40 hover:text-white' : 'text-gray-400 hover:text-gray-900'}`}
                   >
                     {balanceLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Refresh"}
                   </button>
@@ -489,7 +489,7 @@ export function Header() {
                     className="rounded-full"
                   />
                   <div>
-                    <p className="text-2xl font-bold text-white">
+                    <p className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                       {balance ? balance.sol.uiBalance.toFixed(4) : "0.0000"} SOL
                     </p>
                   </div>
@@ -497,8 +497,8 @@ export function Header() {
               </div>
 
               {/* Deposit Address */}
-              <div className="p-4 rounded-xl border bg-white/5 border-white/10">
-                <p className="text-sm text-white/60 mb-2">Deposit Address</p>
+              <div className={`p-4 rounded-xl border ${isDark ? 'bg-white/5 border-white/10' : 'bg-gray-50 border-gray-200'}`}>
+                <p className={`text-sm mb-2 ${isDark ? 'text-white/60' : 'text-gray-600'}`}>Deposit Address</p>
                 <div className="flex items-center gap-2">
                   <p className="font-mono text-xs break-all text-[#FF6B4A] flex-1">
                     {walletAddress}
@@ -511,36 +511,36 @@ export function Header() {
                         setTimeout(() => setCopied(false), 2000);
                       }
                     }}
-                    className="p-2 hover:bg-white/5 rounded-lg transition-colors"
+                    className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-white/5' : 'hover:bg-gray-100'}`}
                   >
                     {copied ? (
                       <Check className="h-4 w-4 text-green-400" />
                     ) : (
-                      <Copy className="h-4 w-4 text-white/40" />
+                      <Copy className={`h-4 w-4 ${isDark ? 'text-white/40' : 'text-gray-400'}`} />
                     )}
                   </button>
                 </div>
-                <p className="text-xs text-white/30 mt-2">Send SOL to this address to deposit</p>
+                <p className={`text-xs mt-2 ${isDark ? 'text-white/30' : 'text-gray-400'}`}>Send SOL to this address to deposit</p>
               </div>
 
               {/* Withdraw Section */}
-              <div className="p-4 rounded-xl border bg-white/5 border-white/10">
-                <p className="text-sm text-white/60 mb-3">Withdraw SOL</p>
+              <div className={`p-4 rounded-xl border ${isDark ? 'bg-white/5 border-white/10' : 'bg-gray-50 border-gray-200'}`}>
+                <p className={`text-sm mb-3 ${isDark ? 'text-white/60' : 'text-gray-600'}`}>Withdraw SOL</p>
 
                 <div className="space-y-3">
                   <div>
-                    <label className="text-xs text-white/40 mb-1 block">Destination Address</label>
+                    <label className={`text-xs mb-1 block ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Destination Address</label>
                     <input
                       type="text"
                       value={withdrawAddress}
                       onChange={(e) => setWithdrawAddress(e.target.value)}
                       placeholder="Solana wallet address..."
-                      className="w-full bg-black/30 text-white px-3 py-2 rounded-lg border border-white/10 outline-none focus:border-[#FF6B4A]/50 text-sm font-mono"
+                      className={`w-full px-3 py-2 rounded-lg border outline-none focus:border-[#FF6B4A]/50 text-sm font-mono ${isDark ? 'bg-black/30 text-white border-white/10 placeholder:text-white/30' : 'bg-white text-gray-900 border-gray-200 placeholder:text-gray-400'}`}
                     />
                   </div>
 
                   <div>
-                    <div className="flex justify-between text-xs text-white/40 mb-1">
+                    <div className={`flex justify-between text-xs mb-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
                       <label>Amount (SOL)</label>
                       <button
                         onClick={() => setWithdrawAmount(balance?.sol.uiBalance.toString() || "0")}
@@ -554,7 +554,7 @@ export function Header() {
                       value={withdrawAmount}
                       onChange={(e) => setWithdrawAmount(e.target.value)}
                       placeholder="0.0"
-                      className="w-full bg-black/30 text-white px-3 py-2 rounded-lg border border-white/10 outline-none focus:border-[#FF6B4A]/50 text-sm"
+                      className={`w-full px-3 py-2 rounded-lg border outline-none focus:border-[#FF6B4A]/50 text-sm ${isDark ? 'bg-black/30 text-white border-white/10 placeholder:text-white/30' : 'bg-white text-gray-900 border-gray-200 placeholder:text-gray-400'}`}
                     />
                   </div>
 
@@ -570,7 +570,7 @@ export function Header() {
                     disabled={!withdrawAddress || !withdrawAmount || withdrawing}
                     className={`w-full py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${
                       !withdrawAddress || !withdrawAmount || withdrawing
-                        ? "bg-white/10 text-white/40 cursor-not-allowed"
+                        ? isDark ? "bg-white/10 text-white/40 cursor-not-allowed" : "bg-gray-100 text-gray-400 cursor-not-allowed"
                         : "bg-[#FF6B4A] text-white hover:bg-[#FF8F6B]"
                     }`}
                   >
@@ -604,7 +604,7 @@ export function Header() {
                     href={`https://solscan.io/account/${walletAddress}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center justify-center gap-2 text-sm text-white/40 hover:text-white transition-colors"
+                    className={`flex items-center justify-center gap-2 text-sm transition-colors ${isDark ? 'text-white/40 hover:text-white' : 'text-gray-400 hover:text-gray-900'}`}
                   >
                     <ExternalLink className="h-4 w-4" />
                     View on Solscan
@@ -613,10 +613,10 @@ export function Header() {
               </div>
             </div>
 
-            <div className="p-6 border-t border-white/10">
+            <div className={`p-6 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
               <button
                 onClick={() => setShowWalletModal(false)}
-                className="w-full font-medium py-2.5 rounded-lg transition-colors bg-white/5 hover:bg-white/10 border border-white/10 text-white"
+                className={`w-full font-medium py-2.5 rounded-lg transition-colors border ${isDark ? 'bg-white/5 hover:bg-white/10 border-white/10 text-white' : 'bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-900'}`}
               >
                 Close
               </button>
@@ -628,33 +628,19 @@ export function Header() {
       {/* Security Modal */}
       {showSecurityModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowSecurityModal(false)} />
-          <div className="relative w-full max-w-md border rounded-2xl shadow-2xl bg-[#0f0f0f] border-white/10">
-            <div className="p-6 border-b border-white/10">
-              <h2 className="text-xl font-bold flex items-center gap-2 text-white">
+          <div className={`absolute inset-0 backdrop-blur-sm ${isDark ? 'bg-black/80' : 'bg-black/50'}`} onClick={() => setShowSecurityModal(false)} />
+          <div className={`relative w-full max-w-md border rounded-2xl shadow-2xl ${isDark ? 'bg-[#0f0f0f] border-white/10' : 'bg-white border-gray-200'}`}>
+            <div className={`p-6 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+              <h2 className={`text-xl font-bold flex items-center gap-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 <Shield className="h-5 w-5 text-[#FF6B4A]" />
                 Security
               </h2>
             </div>
 
             <div className="p-6 space-y-4">
-              {/* 2FA Status */}
-              <div className="flex items-center justify-between p-4 rounded-xl border bg-white/5 border-white/10">
-                <div className="flex items-center gap-3">
-                  <Shield className={`h-5 w-5 ${twoFactorEnabled ? 'text-green-500' : 'text-white/40'}`} />
-                  <div>
-                    <p className="text-sm font-medium text-white">Two-Factor Authentication</p>
-                    <p className="text-xs text-white/40">{twoFactorEnabled ? 'Enabled' : 'Not enabled'}</p>
-                  </div>
-                </div>
-                <div className={`px-2 py-1 rounded-full text-xs font-medium ${twoFactorEnabled ? 'bg-green-500/20 text-green-400' : 'bg-white/10 text-white/40'}`}>
-                  {twoFactorEnabled ? 'Active' : 'Off'}
-                </div>
-              </div>
-
               {/* Wallet Info */}
               {walletAddress && (
-                <div className="p-4 rounded-xl border bg-white/5 border-white/10">
+                <div className={`p-4 rounded-xl border ${isDark ? 'bg-white/5 border-white/10' : 'bg-gray-50 border-gray-200'}`}>
                   <div className="flex items-center gap-3 mb-3">
                     <Image
                       src="/solana-logo.png"
@@ -663,9 +649,9 @@ export function Header() {
                       height={20}
                       className="rounded-full"
                     />
-                    <p className="text-sm font-medium text-white">Wallet Address</p>
+                    <p className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>Wallet Address</p>
                   </div>
-                  <p className="font-mono text-xs break-all select-all rounded-lg p-3 text-white/60 bg-black/30">
+                  <p className={`font-mono text-xs break-all select-all rounded-lg p-3 ${isDark ? 'text-white/60 bg-black/30' : 'text-gray-600 bg-gray-100'}`}>
                     {walletAddress}
                   </p>
                 </div>
@@ -678,17 +664,17 @@ export function Header() {
                     <Key className="h-5 w-5 text-red-400" />
                     <p className="text-sm font-medium text-red-400">Private Key</p>
                   </div>
-                  <p className="text-xs mb-3 text-white/50">
+                  <p className={`text-xs mb-3 ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
                     Warning: Never share your private key with anyone. Anyone with your private key can access your funds.
                   </p>
                   {privateKeyLoading ? (
-                    <div className="flex items-center gap-2 text-xs text-white/40">
+                    <div className={`flex items-center gap-2 text-xs ${isDark ? 'text-white/40' : 'text-gray-400'}`}>
                       <Loader2 className="h-3 w-3 animate-spin" />
                       Loading...
                     </div>
                   ) : privateKey ? (
                     <div className="space-y-2">
-                      <p className="font-mono text-xs break-all select-all rounded-lg p-3 text-white/60 bg-black/30">
+                      <p className={`font-mono text-xs break-all select-all rounded-lg p-3 ${isDark ? 'text-white/60 bg-black/30' : 'text-gray-600 bg-gray-100'}`}>
                         {privateKey}
                       </p>
                       <button
@@ -709,7 +695,7 @@ export function Header() {
                       </button>
                     </div>
                   ) : (
-                    <p className="text-xs italic text-white/40">
+                    <p className={`text-xs italic ${isDark ? 'text-white/40' : 'text-gray-400'}`}>
                       Failed to load private key. Please try again.
                     </p>
                   )}
@@ -717,10 +703,10 @@ export function Header() {
               )}
             </div>
 
-            <div className="p-6 border-t border-white/10">
+            <div className={`p-6 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
               <button
                 onClick={() => setShowSecurityModal(false)}
-                className="w-full font-medium py-2.5 rounded-lg transition-colors bg-white/5 hover:bg-white/10 border border-white/10 text-white"
+                className={`w-full font-medium py-2.5 rounded-lg transition-colors border ${isDark ? 'bg-white/5 hover:bg-white/10 border-white/10 text-white' : 'bg-gray-50 hover:bg-gray-100 border-gray-200 text-gray-900'}`}
               >
                 Close
               </button>
