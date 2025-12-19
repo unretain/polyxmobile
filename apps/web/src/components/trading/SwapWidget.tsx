@@ -303,6 +303,12 @@ export function SwapWidget({
               </button>
             </div>
           </div>
+          {/* Fee warning for low balance */}
+          {isBuy && balance && balance.sol.uiBalance < 0.01 && (
+            <div className="mb-2 p-2 bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-[10px]">
+              Low balance. First-time swaps need ~0.003 SOL for fees (token account + tip).
+            </div>
+          )}
           <div className="flex items-center gap-2 bg-black/40 border border-white/10 p-3">
             <input
               type="number"
