@@ -480,21 +480,101 @@ export class JupiterService {
   }
 
   /**
-   * Get SOL balance for a wallet
+   * Get SOL balance for a wallet using Helius DAS API (with RPC fallback)
    */
   async getSolBalance(walletAddress: string): Promise<number> {
+    // Try Helius DAS API first if we have an API key
+    if (this.heliusApiKey) {
+      try {
+        const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${this.heliusApiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: "sol-balance",
+            method: "getAssetsByOwner",
+            params: {
+              ownerAddress: walletAddress,
+              displayOptions: {
+                showNativeBalance: true,
+                showFungible: false,
+              },
+              page: 1,
+              limit: 1,
+            },
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.result?.nativeBalance?.lamports !== undefined) {
+            console.log(`[JupiterService] SOL balance from Helius DAS: ${data.result.nativeBalance.lamports / LAMPORTS_PER_SOL} SOL`);
+            return data.result.nativeBalance.lamports;
+          }
+        }
+      } catch (e) {
+        console.warn("[JupiterService] Helius DAS API failed for SOL balance, falling back to RPC:", e);
+      }
+    }
+
+    // Fallback to standard RPC
     const balance = await this.connection.getBalance(new PublicKey(walletAddress));
     return balance;
   }
 
   /**
-   * Get token accounts for a wallet (includes both SPL Token and Token-2022)
+   * Get token accounts for a wallet using Helius DAS API (with RPC fallback)
    */
   async getTokenAccounts(
     walletAddress: string
   ): Promise<Array<{ mint: string; balance: string; decimals: number }>> {
     console.log(`[JupiterService] getTokenAccounts for wallet: ${walletAddress}`);
 
+    // Try Helius DAS API first if we have an API key
+    if (this.heliusApiKey) {
+      try {
+        console.log("[JupiterService] Using Helius DAS API for token accounts");
+        const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${this.heliusApiKey}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: "token-accounts",
+            method: "getAssetsByOwner",
+            params: {
+              ownerAddress: walletAddress,
+              displayOptions: {
+                showFungible: true,
+                showNativeBalance: false,
+              },
+              page: 1,
+              limit: 100,
+            },
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.result?.items) {
+            const tokens = data.result.items
+              .filter((item: any) => item.interface === "FungibleToken" || item.interface === "FungibleAsset")
+              .map((item: any) => ({
+                mint: item.id,
+                balance: item.token_info?.balance?.toString() || "0",
+                decimals: item.token_info?.decimals || 6,
+              }))
+              .filter((t: any) => Number(t.balance) > 0);
+
+            console.log(`[JupiterService] Helius DAS returned ${tokens.length} fungible tokens`);
+            return tokens;
+          }
+        }
+      } catch (e) {
+        console.warn("[JupiterService] Helius DAS API failed for tokens, falling back to RPC:", e);
+      }
+    }
+
+    // Fallback to standard RPC
     try {
       const { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } = await import("@solana/spl-token");
 
