@@ -15,7 +15,7 @@ export async function POST() {
   try {
     const session = await auth();
 
-    if (!session?.user?.email) {
+    if (!session?.user?.id) {
       return NextResponse.json(
         { error: "Authentication required" },
         { status: 401 }
@@ -29,9 +29,9 @@ export async function POST() {
       );
     }
 
-    // Get subscription from database
-    const subscription = await prisma.subscription.findUnique({
-      where: { email: session.user.email },
+    // Get subscription by user ID (works for Phantom wallet users too)
+    const subscription = await prisma.subscription.findFirst({
+      where: { userId: session.user.id },
     });
 
     if (!subscription?.stripeCustomerId) {
