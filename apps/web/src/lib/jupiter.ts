@@ -480,97 +480,93 @@ export class JupiterService {
   }
 
   /**
-   * Get SOL balance for a wallet using Helius DAS API (with RPC fallback)
+   * Get SOL balance for a wallet using Moralis API (with RPC fallback)
    */
   async getSolBalance(walletAddress: string): Promise<number> {
-    // Try Helius DAS API first if we have an API key
-    if (this.heliusApiKey) {
+    const moralisKey = config.moralisApiKey;
+
+    // Try Moralis API first
+    if (moralisKey) {
       try {
-        const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${this.heliusApiKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: "sol-balance",
-            method: "getAssetsByOwner",
-            params: {
-              ownerAddress: walletAddress,
-              displayOptions: {
-                showNativeBalance: true,
-                showFungible: false,
-              },
-              page: 1,
-              limit: 1,
+        console.log("[JupiterService] Using Moralis API for SOL balance");
+        const response = await fetch(
+          `https://solana-gateway.moralis.io/account/mainnet/${walletAddress}/balance`,
+          {
+            headers: {
+              "X-API-Key": moralisKey,
+              "Accept": "application/json",
             },
-          }),
-        });
+            signal: AbortSignal.timeout(10000),
+          }
+        );
 
         if (response.ok) {
           const data = await response.json();
-          if (data.result?.nativeBalance?.lamports !== undefined) {
-            console.log(`[JupiterService] SOL balance from Helius DAS: ${data.result.nativeBalance.lamports / LAMPORTS_PER_SOL} SOL`);
-            return data.result.nativeBalance.lamports;
+          // Moralis returns { solana: "1.234", lamports: "1234000000" }
+          if (data.lamports !== undefined) {
+            const lamports = parseInt(data.lamports, 10);
+            console.log(`[JupiterService] SOL balance from Moralis: ${lamports / LAMPORTS_PER_SOL} SOL`);
+            return lamports;
           }
+        } else {
+          console.warn("[JupiterService] Moralis balance API failed:", response.status, await response.text());
         }
       } catch (e) {
-        console.warn("[JupiterService] Helius DAS API failed for SOL balance, falling back to RPC:", e);
+        console.warn("[JupiterService] Moralis API failed for SOL balance, falling back to RPC:", e);
       }
     }
 
     // Fallback to standard RPC
+    console.log("[JupiterService] Using RPC fallback for SOL balance");
     const balance = await this.connection.getBalance(new PublicKey(walletAddress));
     return balance;
   }
 
   /**
-   * Get token accounts for a wallet using Helius DAS API (with RPC fallback)
+   * Get token accounts for a wallet using Moralis API (with RPC fallback)
    */
   async getTokenAccounts(
     walletAddress: string
   ): Promise<Array<{ mint: string; balance: string; decimals: number }>> {
     console.log(`[JupiterService] getTokenAccounts for wallet: ${walletAddress}`);
 
-    // Try Helius DAS API first if we have an API key
-    if (this.heliusApiKey) {
+    const moralisKey = config.moralisApiKey;
+
+    // Try Moralis API first
+    if (moralisKey) {
       try {
-        console.log("[JupiterService] Using Helius DAS API for token accounts");
-        const response = await fetch(`https://mainnet.helius-rpc.com/?api-key=${this.heliusApiKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: "token-accounts",
-            method: "getAssetsByOwner",
-            params: {
-              ownerAddress: walletAddress,
-              displayOptions: {
-                showFungible: true,
-                showNativeBalance: false,
-              },
-              page: 1,
-              limit: 100,
+        console.log("[JupiterService] Using Moralis API for token accounts");
+        const response = await fetch(
+          `https://solana-gateway.moralis.io/account/mainnet/${walletAddress}/tokens`,
+          {
+            headers: {
+              "X-API-Key": moralisKey,
+              "Accept": "application/json",
             },
-          }),
-        });
+            signal: AbortSignal.timeout(10000),
+          }
+        );
 
         if (response.ok) {
           const data = await response.json();
-          if (data.result?.items) {
-            const tokens = data.result.items
-              .filter((item: any) => item.interface === "FungibleToken" || item.interface === "FungibleAsset")
-              .map((item: any) => ({
-                mint: item.id,
-                balance: item.token_info?.balance?.toString() || "0",
-                decimals: item.token_info?.decimals || 6,
-              }))
-              .filter((t: any) => Number(t.balance) > 0);
+          // Moralis returns array of tokens: [{ associatedTokenAddress, mint, amount, decimals, ... }]
+          if (Array.isArray(data)) {
+            const tokens = data
+              .filter((token: any) => token.amount && token.amount !== "0")
+              .map((token: any) => ({
+                mint: token.mint,
+                balance: token.amount,
+                decimals: parseInt(token.decimals, 10) || 6,
+              }));
 
-            console.log(`[JupiterService] Helius DAS returned ${tokens.length} fungible tokens`);
+            console.log(`[JupiterService] Moralis returned ${tokens.length} tokens with balance`);
             return tokens;
           }
+        } else {
+          console.warn("[JupiterService] Moralis tokens API failed:", response.status, await response.text());
         }
       } catch (e) {
-        console.warn("[JupiterService] Helius DAS API failed for tokens, falling back to RPC:", e);
+        console.warn("[JupiterService] Moralis API failed for tokens, falling back to RPC:", e);
       }
     }
 
