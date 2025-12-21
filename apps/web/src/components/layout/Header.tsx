@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { LogOut, User, Shield, Copy, Check, Key, ChevronDown, Sun, Moon, CreditCard, Wallet, Loader2, ExternalLink, ArrowUpRight, Mail, PieChart } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 import { useAuthStore } from "@/stores/authStore";
@@ -42,7 +42,6 @@ const protectedRoutes = ["/dashboard", "/pulse", "/markets", "/token"];
 export function Header() {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { data: session, status } = useSession();
   const { logout } = useAuthStore();
   const { isDark, toggleTheme } = useThemeStore();
@@ -102,18 +101,20 @@ export function Header() {
 
   // Check for redirect param in URL (from middleware auth redirect)
   useEffect(() => {
-    const redirectPath = searchParams.get("redirect");
+    // Use window.location instead of useSearchParams to avoid hydration issues
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    const redirectPath = url.searchParams.get("redirect");
     if (redirectPath && !isAuthenticated && status !== "loading") {
       // User was redirected here by middleware - open auth modal
       setPendingRedirect(redirectPath);
       setAuthMode("signin");
       setIsAuthModalOpen(true);
       // Clean up URL
-      const url = new URL(window.location.href);
       url.searchParams.delete("redirect");
       window.history.replaceState({}, "", url.pathname);
     }
-  }, [searchParams, isAuthenticated, status]);
+  }, [isAuthenticated, status]);
 
   // Watch for auth state changes to handle redirect after login
   useEffect(() => {
