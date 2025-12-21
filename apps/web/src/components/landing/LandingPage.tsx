@@ -422,8 +422,8 @@ export function LandingPage() {
                       rel="noopener noreferrer"
                       className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${isDark ? 'hover:bg-white/5' : 'hover:bg-black/5'}`}
                     >
-                      <div className="w-11 h-11 rounded-xl bg-[#FF6B4A] flex items-center justify-center">
-                        <span className="text-white font-bold text-xs">[<span className="text-white">x</span>]</span>
+                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${isDark ? 'bg-white/10' : 'bg-black/10'}`}>
+                        <span className={`font-bold text-[10px] ${isDark ? 'text-white' : 'text-black'}`}>[poly<span className="text-[#FF6B4A]">x</span>]</span>
                       </div>
                       <div className="flex-1">
                         <div className="font-medium">[polyx]</div>
