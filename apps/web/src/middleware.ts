@@ -11,6 +11,8 @@ const publicRoutes = ["/", "/solutions", "/tos", "/privacy", "/embed", "/api"];
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  console.log(`[middleware] Path: ${pathname}`);
+
   // Check if this is a protected route
   const isProtectedRoute = protectedRoutes.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`)
@@ -21,6 +23,8 @@ export async function middleware(request: NextRequest) {
     (route) => pathname === route || pathname.startsWith(`${route}/`)
   );
 
+  console.log(`[middleware] isProtected: ${isProtectedRoute}, isPublic: ${isPublicRoute}`);
+
   // If it's a public route, allow access
   if (isPublicRoute && !isProtectedRoute) {
     return NextResponse.next();
@@ -28,15 +32,21 @@ export async function middleware(request: NextRequest) {
 
   // If it's a protected route, check for authentication
   if (isProtectedRoute) {
+    const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+    console.log(`[middleware] Auth secret exists: ${!!secret}`);
+
     const token = await getToken({
       req: request,
-      secret: process.env.AUTH_SECRET,
+      secret,
     });
+
+    console.log(`[middleware] Token exists: ${!!token}, userId: ${token?.id || 'none'}`);
 
     // If not authenticated, redirect to landing page
     if (!token) {
       const url = new URL("/", request.url);
       url.searchParams.set("redirect", pathname);
+      console.log(`[middleware] Redirecting to: ${url.toString()}`);
       return NextResponse.redirect(url);
     }
   }
