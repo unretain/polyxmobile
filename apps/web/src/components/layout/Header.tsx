@@ -234,7 +234,7 @@ export function Header() {
 
   return (
     <>
-      <header className={`fixed top-0 left-0 right-0 z-50 px-6 md:px-10 lg:px-16 py-5 ${isDark ? '' : 'bg-gray-50/80 backdrop-blur-sm'}`}>
+      <header className="fixed top-0 left-0 right-0 z-50 px-6 md:px-10 lg:px-16 py-5">
         <div className="max-w-[1600px] mx-auto flex items-center relative">
           {/* Left - Logo */}
           <Link href="/" className={`flex items-center px-4 py-2 rounded-full border backdrop-blur-sm ${
