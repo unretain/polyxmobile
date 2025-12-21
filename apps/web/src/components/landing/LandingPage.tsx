@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { ChevronRight, ExternalLink, Minus, TrendingUp, MoveHorizontal, MoveVertical, Pencil, Trash2, MousePointer2, Code2 } from "lucide-react";
+import { ChevronRight, ExternalLink, Minus, TrendingUp, MoveHorizontal, MoveVertical, Pencil, Trash2, MousePointer2 } from "lucide-react";
 import type { DrawingToolbarRenderProps } from "@/components/charts/Chart3D";
 import { Header } from "@/components/layout/Header";
 import { useThemeStore } from "@/stores/themeStore";
@@ -443,7 +443,7 @@ export function LandingPage() {
                       className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${isDark ? 'hover:bg-white/5' : 'hover:bg-black/5'}`}
                     >
                       <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${isDark ? 'bg-white/10' : 'bg-black/10'}`}>
-                        <Code2 className={`w-5 h-5 ${isDark ? 'text-white/60' : 'text-black/60'}`} />
+                        <span className={`font-bold text-sm ${isDark ? 'text-white' : 'text-black'}`}>&lt;<span className="text-[#FF6B4A]">/</span>&gt;</span>
                       </div>
                       <div className="flex-1">
                         <div className="font-medium">Developer</div>
