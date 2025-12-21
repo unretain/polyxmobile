@@ -410,6 +410,23 @@ pulseRoutes.get("/token/:address", async (req, res) => {
       }
     }
 
+    // Enrich with volume from DexScreener if volume24h is 0 or missing
+    if (!tokenData.volume24h || tokenData.volume24h === 0) {
+      try {
+        const pairs = await dexScreenerService.getTokenPairs(address);
+        if (pairs.length > 0) {
+          const pair = pairs[0];
+          const dexVolume = pair.volume?.h24 || 0;
+          if (dexVolume > 0) {
+            tokenData.volume24h = dexVolume;
+            console.log(`📈 Enriched volume24h from DexScreener: $${dexVolume.toLocaleString()}`);
+          }
+        }
+      } catch (err) {
+        console.log(`Could not enrich volume from DexScreener for ${address}`);
+      }
+    }
+
     res.json(tokenData);
   } catch (error) {
     console.error("Error fetching token data:", error);
@@ -733,13 +750,31 @@ pulseRoutes.get("/stats/:address", async (req, res) => {
 
     const mainPair = pairs?.find((p) => !p.inactivePair) || pairs?.[0];
 
+    let volume24h = mainPair?.volume24hrUsd || tokenData?.volume24h || 0;
+
+    // If volume is still 0, try DexScreener
+    if (volume24h === 0) {
+      try {
+        const dexPairs = await dexScreenerService.getTokenPairs(address);
+        if (dexPairs.length > 0) {
+          const dexVolume = dexPairs[0].volume?.h24 || 0;
+          if (dexVolume > 0) {
+            volume24h = dexVolume;
+            console.log(`📈 Stats enriched volume24h from DexScreener: $${dexVolume.toLocaleString()}`);
+          }
+        }
+      } catch (err) {
+        console.log(`Could not enrich stats volume from DexScreener for ${address}`);
+      }
+    }
+
     const response = {
       address,
       price: tokenData?.price || 0,
       priceChange24h: tokenData?.priceChange24h || 0,
       marketCap: tokenData?.marketCap || 0,
       liquidity: mainPair?.liquidityUsd || tokenData?.liquidity || 0,
-      volume24h: mainPair?.volume24hrUsd || tokenData?.volume24h || 0,
+      volume24h,
       stats: tokenStats || {},
       exchange: mainPair?.exchangeName || "Unknown",
       pairAddress: mainPair?.pairAddress,
