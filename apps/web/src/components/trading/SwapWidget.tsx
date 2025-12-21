@@ -113,11 +113,11 @@ export function SwapWidget({
   useEffect(() => {
     fetchBalance();
     fetchTokenStats();
-    // Auto-refresh balance every 5 seconds
+    // Auto-refresh balance every 30 seconds (balance updates immediately after swaps anyway)
     const interval = setInterval(() => {
       fetchBalance();
       fetchTokenStats();
-    }, 5000);
+    }, 30000);
     return () => clearInterval(interval);
   }, [fetchBalance, fetchTokenStats]);
 
