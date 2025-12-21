@@ -105,7 +105,14 @@ export function Header() {
     if (typeof window === "undefined") return;
     const url = new URL(window.location.href);
     const redirectPath = url.searchParams.get("redirect");
-    if (redirectPath && !isAuthenticated && status !== "loading") {
+
+    // Security: Only allow internal paths (must start with / and not //)
+    const isValidRedirect = redirectPath &&
+      redirectPath.startsWith("/") &&
+      !redirectPath.startsWith("//") &&
+      !redirectPath.includes(":");
+
+    if (isValidRedirect && !isAuthenticated && status !== "loading") {
       // User was redirected here by middleware - open auth modal
       setPendingRedirect(redirectPath);
       setAuthMode("signin");
@@ -119,7 +126,10 @@ export function Header() {
   // Watch for auth state changes to handle redirect after login
   useEffect(() => {
     if (isAuthenticated && pendingRedirect) {
-      router.push(pendingRedirect);
+      // Double-check redirect is internal path before navigating
+      if (pendingRedirect.startsWith("/") && !pendingRedirect.startsWith("//")) {
+        router.push(pendingRedirect);
+      }
       setPendingRedirect(null);
       setIsAuthModalOpen(false);
     }
