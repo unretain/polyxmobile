@@ -32,7 +32,7 @@ export async function middleware(request: NextRequest) {
 
   // If it's a protected route, check for authentication
   if (isProtectedRoute) {
-    const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+    const secret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET;
     console.log(`[middleware] Auth secret exists: ${!!secret}`);
 
     const token = await getToken({
