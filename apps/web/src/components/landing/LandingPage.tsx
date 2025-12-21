@@ -368,28 +368,6 @@ export function LandingPage() {
                 </div>
               </div>
 
-              {/* Event Card */}
-              <div className={`rounded-2xl border p-5 card-shine ${
-                isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
-              }`}>
-                <div className="flex items-center gap-4">
-                  <div className={`text-center px-4 py-3 rounded-xl ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
-                    <div className="text-2xl font-bold">3D</div>
-                    <div className={`text-xs uppercase ${isDark ? 'text-white/40' : 'text-black/40'}`}>Charts</div>
-                  </div>
-                  <div className="flex-1">
-                    <div className={`text-xs uppercase tracking-wider ${isDark ? 'text-white/40' : 'text-black/40'}`}>[POLYX]</div>
-                    <div className="font-medium">Immersive Trading</div>
-                  </div>
-                  <div className={`w-9 h-9 rounded-full border flex items-center justify-center ${isDark ? 'border-white/10' : 'border-black/10'}`}>
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M12 8v8M8 12h8" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-
               {/* Info Section */}
               <div className={`rounded-2xl border p-7 card-shine ${
                 isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
