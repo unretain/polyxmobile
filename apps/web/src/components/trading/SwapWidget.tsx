@@ -78,6 +78,10 @@ export function SwapWidget({
   const [isEditingPercents, setIsEditingPercents] = useState(false);
   const [customPercents, setCustomPercents] = useState([5, 25, 50, 100]);
   const [editingPercents, setEditingPercents] = useState([5, 25, 50, 100]);
+  // Custom SOL buy amounts editing
+  const [isEditingSolAmounts, setIsEditingSolAmounts] = useState(false);
+  const [customSolAmounts, setCustomSolAmounts] = useState([0.1, 0.25, 0.5, 1]);
+  const [editingSolAmounts, setEditingSolAmounts] = useState([0.1, 0.25, 0.5, 1]);
   // Token stats (bought/sold/holding/PnL)
   const [tokenStats, setTokenStats] = useState<TokenStats | null>(null);
 
@@ -295,6 +299,13 @@ export function SwapWidget({
     setIsEditingPercents(false);
   };
 
+  // Save custom SOL amounts
+  const saveCustomSolAmounts = () => {
+    const sorted = [...editingSolAmounts].sort((a, b) => a - b);
+    setCustomSolAmounts(sorted);
+    setIsEditingSolAmounts(false);
+  };
+
   if (status === "loading") {
     return (
       <div className={cn(
@@ -360,26 +371,86 @@ export function SwapWidget({
 
         {/* Quick amount buttons */}
         {isBuy ? (
-          <div className="flex gap-1.5">
-            {[0.1, 0.25, 0.5, 1].map((amt) => (
-              <button
-                key={amt}
-                onClick={() => {
-                  setInputAmount(amt.toString());
-                  // Trigger swap immediately after setting amount
-                }}
-                className={cn(
-                  "flex-1 py-2.5 text-xs font-mono transition-colors border",
-                  inputAmount === amt.toString()
-                    ? "bg-[#00ffa3]/20 text-[#00ffa3] border-[#00ffa3]/50"
-                    : isDark
-                      ? "text-white/60 bg-white/5 hover:bg-white/10 border-white/10"
-                      : "text-gray-600 bg-gray-50 hover:bg-gray-100 border-gray-200"
-                )}
-              >
-                {amt} SOL
-              </button>
-            ))}
+          <div className="flex gap-1.5 items-center">
+            {isEditingSolAmounts ? (
+              /* Editing SOL amounts */
+              <div className="flex-1 flex gap-1">
+                {editingSolAmounts.map((amt, i) => (
+                  <input
+                    key={i}
+                    type="number"
+                    value={amt}
+                    onChange={(e) => {
+                      const newVal = parseFloat(e.target.value) || 0;
+                      setEditingSolAmounts(prev => {
+                        const copy = [...prev];
+                        copy[i] = Math.max(0.01, newVal);
+                        return copy;
+                      });
+                    }}
+                    className={cn(
+                      "w-12 py-2 px-1 text-xs font-mono text-center outline-none",
+                      isDark
+                        ? "text-white bg-white/10 border border-white/20"
+                        : "text-gray-900 bg-gray-100 border border-gray-300"
+                    )}
+                    step="0.01"
+                    min="0.01"
+                  />
+                ))}
+                <button
+                  onClick={saveCustomSolAmounts}
+                  className="px-2 py-2 text-xs bg-[#00ffa3] text-black"
+                >
+                  ✓
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingSolAmounts([...customSolAmounts]);
+                    setIsEditingSolAmounts(false);
+                  }}
+                  className={cn(
+                    "px-2 py-2 text-xs",
+                    isDark ? "text-white/50 bg-white/5" : "text-gray-500 bg-gray-50"
+                  )}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ) : (
+              /* Normal SOL amount buttons */
+              <>
+                {customSolAmounts.map((amt) => (
+                  <button
+                    key={amt}
+                    onClick={() => setInputAmount(amt.toString())}
+                    className={cn(
+                      "flex-1 py-2.5 text-xs font-mono transition-colors border",
+                      inputAmount === amt.toString()
+                        ? "bg-[#00ffa3]/20 text-[#00ffa3] border-[#00ffa3]/50"
+                        : isDark
+                          ? "text-white/60 bg-white/5 hover:bg-white/10 border-white/10"
+                          : "text-gray-600 bg-gray-50 hover:bg-gray-100 border-gray-200"
+                    )}
+                  >
+                    {amt}
+                  </button>
+                ))}
+                <button
+                  onClick={() => {
+                    setEditingSolAmounts([...customSolAmounts]);
+                    setIsEditingSolAmounts(true);
+                  }}
+                  className={cn(
+                    "p-2 transition-colors",
+                    isDark ? "text-white/40 hover:text-white/70" : "text-gray-400 hover:text-gray-600"
+                  )}
+                  title="Edit SOL amounts"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              </>
+            )}
           </div>
         ) : (
           /* Sell mode: percentage buttons with pencil */
@@ -612,22 +683,93 @@ export function SwapWidget({
           </div>
           {/* Quick amounts - different for buy vs sell */}
           {isBuy ? (
-            /* Buy mode: SOL amounts */
-            <div className="flex gap-2 mt-2">
-              {[0.1, 0.25, 0.5, 1].map((amt) => (
-                <button
-                  key={amt}
-                  onClick={() => setInputAmount(amt.toString())}
-                  className={cn(
-                    "flex-1 py-1.5 text-xs font-mono transition-colors border",
-                    isDark
-                      ? "text-white/50 bg-white/5 hover:bg-white/10 border-white/10"
-                      : "text-gray-500 bg-gray-50 hover:bg-gray-100 border-gray-200"
-                  )}
-                >
-                  {amt}
-                </button>
-              ))}
+            /* Buy mode: SOL amounts with editing */
+            <div className="mt-2">
+              {isEditingSolAmounts ? (
+                /* Editing SOL amounts */
+                <div className="space-y-2">
+                  <div className="flex gap-1">
+                    {editingSolAmounts.map((amt, i) => (
+                      <input
+                        key={i}
+                        type="number"
+                        value={amt}
+                        onChange={(e) => {
+                          const newVal = parseFloat(e.target.value) || 0;
+                          setEditingSolAmounts(prev => {
+                            const copy = [...prev];
+                            copy[i] = Math.max(0.01, newVal);
+                            return copy;
+                          });
+                        }}
+                        className={cn(
+                          "flex-1 py-1.5 px-2 text-xs font-mono text-center outline-none",
+                          isDark
+                            ? "text-white bg-white/10 border border-white/20 focus:border-[#00ffa3]"
+                            : "text-gray-900 bg-gray-100 border border-gray-300 focus:border-[#00ffa3]"
+                        )}
+                        step="0.01"
+                        min="0.01"
+                      />
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={saveCustomSolAmounts}
+                      className="flex-1 py-1.5 text-xs bg-[#00ffa3] text-black hover:bg-[#00ffa3]/80 transition-colors"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingSolAmounts([...customSolAmounts]);
+                        setIsEditingSolAmounts(false);
+                      }}
+                      className={cn(
+                        "px-3 py-1.5 text-xs transition-colors border",
+                        isDark
+                          ? "text-white/50 bg-white/5 hover:bg-white/10 border-white/10"
+                          : "text-gray-500 bg-gray-50 hover:bg-gray-100 border-gray-200"
+                      )}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* Normal SOL amount buttons */
+                <div className="flex gap-1 items-center">
+                  {customSolAmounts.map((amt) => (
+                    <button
+                      key={amt}
+                      onClick={() => setInputAmount(amt.toString())}
+                      className={cn(
+                        "flex-1 py-1.5 text-xs font-mono transition-colors border",
+                        inputAmount === amt.toString()
+                          ? "bg-[#00ffa3]/20 text-[#00ffa3] border-[#00ffa3]/50"
+                          : isDark
+                            ? "text-white/50 bg-white/5 hover:bg-white/10 border-white/10"
+                            : "text-gray-500 bg-gray-50 hover:bg-gray-100 border-gray-200"
+                      )}
+                    >
+                      {amt}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => {
+                      setEditingSolAmounts([...customSolAmounts]);
+                      setIsEditingSolAmounts(true);
+                    }}
+                    className={cn(
+                      "p-1.5 transition-colors",
+                      isDark ? "text-white/40 hover:text-white/70 hover:bg-white/5" : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                    )}
+                    title="Edit SOL amounts"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             /* Sell mode: percentage or amount with controls */
