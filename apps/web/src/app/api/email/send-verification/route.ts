@@ -14,7 +14,10 @@ export async function POST(request: NextRequest) {
   try {
     const { email, code, type = "verification" } = await request.json();
 
+    console.log(`[send-verification] Request received - email: ${email}, type: ${type}`);
+
     if (!email || !code) {
+      console.log(`[send-verification] Missing email or code`);
       return NextResponse.json(
         { error: "Email and code are required" },
         { status: 400 }
@@ -46,8 +49,13 @@ export async function POST(request: NextRequest) {
     }
 
     const resend = getResend();
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "Polyx <onboarding@resend.dev>";
+    console.log(`[send-verification] Sending email from: ${fromEmail} to: ${email}`);
+    console.log(`[send-verification] RESEND_API_KEY exists: ${!!process.env.RESEND_API_KEY}`);
+    console.log(`[send-verification] RESEND_FROM_EMAIL: ${process.env.RESEND_FROM_EMAIL}`);
+
     const { data, error } = await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL || "Polyx <onboarding@resend.dev>",
+      from: fromEmail,
       to: email,
       subject,
       html: `
@@ -138,16 +146,19 @@ export async function POST(request: NextRequest) {
     });
 
     if (error) {
-      console.error("Resend error:", error);
+      console.error("[send-verification] Resend error:", error);
+      console.error("[send-verification] Error name:", error.name);
+      console.error("[send-verification] Error message:", error.message);
       return NextResponse.json(
         { error: "Failed to send email", details: error.message },
         { status: 500 }
       );
     }
 
+    console.log(`[send-verification] Email sent successfully! ID: ${data?.id}`);
     return NextResponse.json({ success: true, messageId: data?.id });
   } catch (error) {
-    console.error("Email API error:", error);
+    console.error("[send-verification] Email API error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
