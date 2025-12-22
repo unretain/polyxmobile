@@ -56,6 +56,7 @@ export function Header() {
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [withdrawAddress, setWithdrawAddress] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [withdrawCloseAccount, setWithdrawCloseAccount] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
   const [withdrawSuccess, setWithdrawSuccess] = useState<string | null>(null);
@@ -215,8 +216,8 @@ export function Header() {
     }
   };
 
-  const handleWithdraw = async (closeAccount = false) => {
-    if (!withdrawAddress || (!withdrawAmount && !closeAccount)) return;
+  const handleWithdraw = async () => {
+    if (!withdrawAddress || (!withdrawAmount && !withdrawCloseAccount)) return;
 
     setWithdrawing(true);
     setWithdrawError(null);
@@ -228,9 +229,9 @@ export function Header() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           destinationAddress: withdrawAddress,
-          amount: closeAccount ? undefined : withdrawAmount,
+          amount: withdrawCloseAccount ? undefined : withdrawAmount,
           tokenMint: null, // SOL
-          closeAccount,
+          closeAccount: withdrawCloseAccount,
         }),
       });
 
@@ -240,13 +241,14 @@ export function Header() {
         throw new Error(data.error || "Withdrawal failed");
       }
 
-      if (closeAccount) {
+      if (withdrawCloseAccount) {
         setWithdrawSuccess(`✓ Claimed all SOL (account closed)`);
       } else {
         setWithdrawSuccess(`✓ Sent ${withdrawAmount} SOL`);
       }
       setWithdrawAddress("");
       setWithdrawAmount("");
+      setWithdrawCloseAccount(false);
       fetchBalance();
 
       // Open Solscan in new tab
@@ -577,13 +579,19 @@ export function Header() {
                       <label>Amount (SOL)</label>
                       <button
                         onClick={() => {
-                          // Match the API's calculation exactly:
-                          // RENT_EXEMPT_MINIMUM = 890880 lamports = 0.00089088 SOL
-                          // TX_FEE = 5000 lamports = 0.000005 SOL
-                          // Total reserve: 0.000895880 SOL, round up to 0.0009 for safety
-                          const RENT_AND_FEE = 0.0009; // ~895880 lamports
-                          const maxAmount = Math.max(0, (balance?.sol.uiBalance || 0) - RENT_AND_FEE);
-                          setWithdrawAmount(maxAmount > 0 ? maxAmount.toFixed(6) : "0");
+                          const bal = balance?.sol.uiBalance || 0;
+                          const RENT_AND_FEE = 0.0009;
+
+                          if (bal < 0.001) {
+                            // Balance too small for normal withdraw - use close account mode
+                            setWithdrawAmount(bal.toFixed(6));
+                            setWithdrawCloseAccount(true);
+                          } else {
+                            // Normal max - leave rent behind
+                            const maxAmount = Math.max(0, bal - RENT_AND_FEE);
+                            setWithdrawAmount(maxAmount > 0 ? maxAmount.toFixed(6) : "0");
+                            setWithdrawCloseAccount(false);
+                          }
                         }}
                         className="text-[#FF6B4A] hover:underline"
                       >
@@ -606,11 +614,17 @@ export function Header() {
                     <p className="text-xs text-green-400 bg-green-500/10 p-2 rounded">{withdrawSuccess}</p>
                   )}
 
+                  {withdrawCloseAccount && (
+                    <p className={`text-xs p-2 rounded ${isDark ? 'text-yellow-400 bg-yellow-500/10' : 'text-yellow-600 bg-yellow-50'}`}>
+                      Will close account and claim all SOL
+                    </p>
+                  )}
+
                   <button
-                    onClick={() => handleWithdraw(false)}
-                    disabled={!withdrawAddress || !withdrawAmount || withdrawing}
+                    onClick={handleWithdraw}
+                    disabled={!withdrawAddress || (!withdrawAmount && !withdrawCloseAccount) || withdrawing}
                     className={`w-full py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${
-                      !withdrawAddress || !withdrawAmount || withdrawing
+                      !withdrawAddress || (!withdrawAmount && !withdrawCloseAccount) || withdrawing
                         ? isDark ? "bg-white/10 text-white/40 cursor-not-allowed" : "bg-gray-100 text-gray-400 cursor-not-allowed"
                         : "bg-[#FF6B4A] text-white hover:bg-[#FF8F6B]"
                     }`}
@@ -620,6 +634,11 @@ export function Header() {
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Sending...
                       </>
+                    ) : withdrawCloseAccount ? (
+                      <>
+                        <ArrowUpRight className="h-4 w-4" />
+                        Claim All SOL
+                      </>
                     ) : (
                       <>
                         <ArrowUpRight className="h-4 w-4" />
@@ -628,20 +647,6 @@ export function Header() {
                     )}
                   </button>
 
-                  {/* Close account button - claim back rent */}
-                  {(balance?.sol.uiBalance || 0) > 0 && (balance?.sol.uiBalance || 0) < 0.001 && (
-                    <button
-                      onClick={() => handleWithdraw(true)}
-                      disabled={!withdrawAddress || withdrawing}
-                      className={`w-full py-2 rounded-lg font-medium text-xs transition-colors ${
-                        !withdrawAddress || withdrawing
-                          ? isDark ? "bg-white/5 text-white/30 cursor-not-allowed" : "bg-gray-50 text-gray-400 cursor-not-allowed"
-                          : isDark ? "bg-white/10 text-white/60 hover:bg-white/20" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      Claim back {(balance?.sol.uiBalance || 0).toFixed(4)} SOL (close account)
-                    </button>
-                  )}
                 </div>
               </div>
 
