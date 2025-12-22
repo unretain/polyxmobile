@@ -615,8 +615,8 @@ export function Header() {
                   )}
 
                   {withdrawCloseAccount && (
-                    <p className={`text-xs p-2 rounded ${isDark ? 'text-yellow-400 bg-yellow-500/10' : 'text-yellow-600 bg-yellow-50'}`}>
-                      Will close account and claim all SOL
+                    <p className={`text-xs p-2 rounded ${isDark ? 'text-white/60 bg-white/5' : 'text-gray-600 bg-gray-100'}`}>
+                      Sends full balance (you can deposit again anytime)
                     </p>
                   )}
 
