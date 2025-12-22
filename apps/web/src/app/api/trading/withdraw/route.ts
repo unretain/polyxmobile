@@ -102,12 +102,17 @@ export async function POST(req: NextRequest) {
       // SOL transfer
       const lamports = Math.floor(amountNum * LAMPORTS_PER_SOL);
 
-      // Check balance
+      // Check balance - need to keep rent-exempt minimum + fee
+      // Rent exempt for a basic account is ~890880 lamports (~0.00089 SOL)
+      // Transaction fee is ~5000 lamports
+      const RENT_EXEMPT_MINIMUM = 890880;
+      const TX_FEE = 5000;
       const balance = await connection.getBalance(fromPubkey);
-      if (balance < lamports + 5000) {
-        // 5000 lamports for fee
+
+      if (balance < lamports + RENT_EXEMPT_MINIMUM + TX_FEE) {
+        const maxWithdraw = Math.max(0, balance - RENT_EXEMPT_MINIMUM - TX_FEE) / LAMPORTS_PER_SOL;
         return NextResponse.json(
-          { error: "Insufficient SOL balance" },
+          { error: `Insufficient SOL. Max withdrawable: ${maxWithdraw.toFixed(6)} SOL (need to keep ~0.001 SOL for rent + fees)` },
           { status: 400 }
         );
       }
