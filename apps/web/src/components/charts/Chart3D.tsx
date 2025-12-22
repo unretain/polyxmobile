@@ -850,10 +850,10 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
 
       {/* Main content area */}
       <div className="flex-1 flex flex-col min-w-0 relative">
-        {/* Price/Market Cap display - positioned to avoid sidebar when drawing tools visible (but not when using custom toolbar) */}
+        {/* Price/Market Cap display - HIDDEN on mobile to prevent overlap with candles */}
         {/* When renderToolbar is used or showDrawingTools is false, hide the price display */}
         {!renderToolbar && showDrawingTools && (
-          <div className="absolute top-4 left-4 z-10">
+          <div className="hidden md:block absolute top-4 left-4 z-10">
             {showMarketCap && marketCap ? (
               <>
                 <div className={`text-xs mb-0.5 ${isDark ? 'text-white/50' : 'text-gray-500'}`}>Market Cap</div>
@@ -870,9 +870,9 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
           </div>
         )}
 
-      {/* Price change percentage display - positioned to left of fly mode hint */}
+      {/* Price change percentage display - HIDDEN on mobile */}
       {!renderToolbar && showDrawingTools && !isFlyMode && (
-        <div className="absolute top-4 z-10 text-right" style={{ right: "200px" }}>
+        <div className="hidden md:block absolute top-4 z-10 text-right" style={{ right: "200px" }}>
           <div className={`text-sm font-medium ${priceChange.isPositive ? "text-up" : "text-down"}`}>
             {priceChange.isPositive ? "+" : ""}${formatPrice(priceChange.value)} ({priceChange.isPositive ? "+" : ""}{priceChange.percent.toFixed(2)}%)
           </div>

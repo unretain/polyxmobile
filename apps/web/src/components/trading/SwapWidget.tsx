@@ -507,6 +507,34 @@ export function SwapWidget({
             {success}
           </div>
         )}
+
+        {/* Stats Row - Holding & PnL - always show */}
+        <div className={cn(
+          "mt-3 pt-2 border-t grid grid-cols-2 gap-2 text-center",
+          isDark ? "border-white/10" : "border-black/10"
+        )}>
+          <div>
+            <div className={cn("text-[9px] uppercase", isDark ? "text-white/30" : "text-gray-400")}>Holding</div>
+            <div className={cn("text-xs font-mono", isDark ? "text-white/60" : "text-gray-600")}>
+              {tokenStats ? (
+                tokenStats.holding >= 1000000 ? `${(tokenStats.holding / 1000000).toFixed(1)}M` :
+                tokenStats.holding >= 1000 ? `${(tokenStats.holding / 1000).toFixed(1)}K` :
+                tokenStats.holding.toFixed(tokenStats.holding < 1 ? 4 : 2)
+              ) : "0"}
+            </div>
+          </div>
+          <div>
+            <div className={cn("text-[9px] uppercase", isDark ? "text-white/30" : "text-gray-400")}>PnL</div>
+            <div className={cn(
+              "text-xs font-mono",
+              tokenStats && tokenStats.pnlPercent !== 0
+                ? tokenStats.pnlPercent > 0 ? "text-green-400" : "text-red-400"
+                : isDark ? "text-white/50" : "text-gray-500"
+            )}>
+              {tokenStats ? `${tokenStats.pnlPercent >= 0 ? "+" : ""}${tokenStats.pnlPercent.toFixed(1)}%` : "+0.0%"}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
