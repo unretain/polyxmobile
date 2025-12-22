@@ -309,27 +309,21 @@ export async function GET(req: NextRequest) {
 
     // Find tokens missing from database
     const missingMints = tokenMints.filter(mint => !tokenMap.has(mint));
-    console.log(`[pnl] Token metadata: ${tokenMints.length} total, ${tokenMetadata.length} in DB, ${missingMints.length} missing`);
 
     // Fetch missing token metadata via API service (which has Moralis key)
     if (missingMints.length > 0) {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-      console.log(`[pnl] Fetching ${missingMints.length} missing tokens from API service: ${API_URL}`);
 
-      // Fetch from API service in parallel (it uses Moralis internally)
+      // Fetch from API service in parallel
       const apiPromises = missingMints.map(async (mint) => {
         try {
-          console.log(`[pnl] Fetching token metadata for ${mint}`);
           const res = await fetch(
             `${API_URL}/api/pulse/token/${mint}`,
             { signal: AbortSignal.timeout(10000) }
           );
 
-          console.log(`[pnl] API response for ${mint}: ${res.status}`);
-
           if (res.ok) {
             const data = await res.json();
-            console.log(`[pnl] API data for ${mint}: name=${data.name}, symbol=${data.symbol}, logo=${data.logoUri ? 'yes' : 'no'}`);
 
             if (data.address) {
               tokenMap.set(mint, {
@@ -354,25 +348,15 @@ export async function GET(req: NextRequest) {
                   symbol: data.symbol,
                   logoUri: data.logoUri || null,
                 },
-              }).then(() => {
-                console.log(`[pnl] Cached token ${mint} in database`);
-              }).catch((err) => {
-                console.error(`[pnl] Failed to cache token ${mint}:`, err);
-              });
+              }).catch(() => {});
             }
-          } else {
-            console.error(`[pnl] API error for ${mint}: ${res.status}`);
           }
-        } catch (err) {
-          console.error(`[pnl] API fetch error for ${mint}:`, err);
+        } catch {
+          // Silently fail - token just won't have metadata
         }
       });
 
       await Promise.allSettled(apiPromises);
-
-      // Final count
-      const finalMissing = missingMints.filter(mint => !tokenMap.has(mint));
-      console.log(`[pnl] Final: ${finalMissing.length} tokens still have no metadata`);
     }
 
     // Enrich positions with token metadata
