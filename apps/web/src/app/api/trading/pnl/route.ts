@@ -309,91 +309,136 @@ export async function GET(req: NextRequest) {
 
     // Find tokens missing from database
     const missingMints = tokenMints.filter(mint => !tokenMap.has(mint));
+    console.log(`[pnl] Token metadata: ${tokenMints.length} total, ${tokenMetadata.length} in DB, ${missingMints.length} missing`);
 
-    // Fetch missing token metadata from Jupiter and cache it
+    // Fetch missing token metadata from Moralis (primary) and cache it
     if (missingMints.length > 0) {
-      try {
-        // Jupiter token list API
-        const jupiterRes = await fetch(
-          `https://tokens.jup.ag/tokens?tags=verified&ids=${missingMints.join(',')}`,
-          { next: { revalidate: 3600 } } // Cache for 1 hour
-        );
+      const MORALIS_API_KEY = process.env.MORALIS_API_KEY;
+      console.log(`[pnl] Fetching ${missingMints.length} missing tokens from Moralis (API key: ${MORALIS_API_KEY ? 'yes' : 'no'})`);
 
-        if (jupiterRes.ok) {
-          const jupiterTokens = await jupiterRes.json();
+      if (MORALIS_API_KEY) {
+        // Fetch from Moralis in parallel
+        const moralisPromises = missingMints.map(async (mint) => {
+          try {
+            console.log(`[pnl] Fetching Moralis metadata for ${mint}`);
+            const res = await fetch(
+              `https://solana-gateway.moralis.io/token/mainnet/${mint}/metadata`,
+              {
+                headers: {
+                  Accept: "application/json",
+                  "X-API-Key": MORALIS_API_KEY,
+                },
+                signal: AbortSignal.timeout(5000),
+              }
+            );
 
-          for (const jToken of jupiterTokens) {
-            tokenMap.set(jToken.address, {
-              address: jToken.address,
-              name: jToken.name || jToken.symbol,
-              symbol: jToken.symbol,
-              logoUri: jToken.logoURI || null,
-            });
+            console.log(`[pnl] Moralis response for ${mint}: ${res.status}`);
 
-            // Cache in database for future requests (fire and forget)
-            prisma.token.upsert({
-              where: { address: jToken.address },
-              create: {
-                address: jToken.address,
-                name: jToken.name || jToken.symbol,
-                symbol: jToken.symbol,
-                decimals: jToken.decimals || 6,
-                logoUri: jToken.logoURI || null,
-              },
-              update: {
-                name: jToken.name || jToken.symbol,
-                symbol: jToken.symbol,
-                logoUri: jToken.logoURI || null,
-              },
-            }).catch(() => {}); // Ignore cache errors
+            if (res.ok) {
+              const data = await res.json();
+              console.log(`[pnl] Moralis data for ${mint}: name=${data.name}, symbol=${data.symbol}, logo=${data.logo ? 'yes' : 'no'}`);
+
+              if (data.mint) {
+                tokenMap.set(mint, {
+                  address: mint,
+                  name: data.name || data.symbol || mint.slice(0, 8),
+                  symbol: data.symbol || mint.slice(0, 6),
+                  logoUri: data.logo || null, // Moralis CDN-hosted logo
+                });
+
+                // Cache in database (fire and forget)
+                prisma.token.upsert({
+                  where: { address: mint },
+                  create: {
+                    address: mint,
+                    name: data.name || data.symbol || mint.slice(0, 8),
+                    symbol: data.symbol || mint.slice(0, 6),
+                    decimals: parseInt(data.decimals) || 6,
+                    logoUri: data.logo || null,
+                  },
+                  update: {
+                    name: data.name || data.symbol,
+                    symbol: data.symbol,
+                    logoUri: data.logo || null,
+                  },
+                }).then(() => {
+                  console.log(`[pnl] Cached token ${mint} in database`);
+                }).catch((err) => {
+                  console.error(`[pnl] Failed to cache token ${mint}:`, err);
+                });
+              }
+            } else {
+              const errText = await res.text();
+              console.error(`[pnl] Moralis error for ${mint}: ${res.status} - ${errText}`);
+            }
+          } catch (err) {
+            console.error(`[pnl] Moralis fetch error for ${mint}:`, err);
           }
-        }
+        });
 
-        // For any still missing, try DexScreener
-        const stillMissing = missingMints.filter(mint => !tokenMap.has(mint));
-        if (stillMissing.length > 0) {
-          for (const mint of stillMissing) {
-            try {
-              const dexRes = await fetch(
-                `https://api.dexscreener.com/latest/dex/tokens/${mint}`,
-                { next: { revalidate: 3600 } }
-              );
-              if (dexRes.ok) {
-                const dexData = await dexRes.json();
-                const pair = dexData.pairs?.[0];
-                if (pair?.baseToken) {
-                  const token = pair.baseToken;
-                  tokenMap.set(mint, {
+        await Promise.allSettled(moralisPromises);
+      }
+
+      // For any still missing, try DexScreener as fallback
+      const stillMissing = missingMints.filter(mint => !tokenMap.has(mint));
+      console.log(`[pnl] After Moralis: ${stillMissing.length} still missing, trying DexScreener`);
+
+      if (stillMissing.length > 0) {
+        for (const mint of stillMissing) {
+          try {
+            console.log(`[pnl] Fetching DexScreener for ${mint}`);
+            const dexRes = await fetch(
+              `https://api.dexscreener.com/latest/dex/tokens/${mint}`,
+              { signal: AbortSignal.timeout(5000) }
+            );
+
+            console.log(`[pnl] DexScreener response for ${mint}: ${dexRes.status}`);
+
+            if (dexRes.ok) {
+              const dexData = await dexRes.json();
+              const pair = dexData.pairs?.[0];
+              console.log(`[pnl] DexScreener pairs for ${mint}: ${dexData.pairs?.length || 0}, image: ${pair?.info?.imageUrl ? 'yes' : 'no'}`);
+
+              if (pair?.baseToken) {
+                const token = pair.baseToken;
+                tokenMap.set(mint, {
+                  address: mint,
+                  name: token.name || token.symbol,
+                  symbol: token.symbol,
+                  logoUri: pair.info?.imageUrl || null,
+                });
+
+                // Cache in database
+                prisma.token.upsert({
+                  where: { address: mint },
+                  create: {
                     address: mint,
                     name: token.name || token.symbol,
                     symbol: token.symbol,
+                    decimals: 6,
                     logoUri: pair.info?.imageUrl || null,
-                  });
-
-                  // Cache in database
-                  prisma.token.upsert({
-                    where: { address: mint },
-                    create: {
-                      address: mint,
-                      name: token.name || token.symbol,
-                      symbol: token.symbol,
-                      decimals: 6,
-                      logoUri: pair.info?.imageUrl || null,
-                    },
-                    update: {
-                      name: token.name || token.symbol,
-                      symbol: token.symbol,
-                      logoUri: pair.info?.imageUrl || null,
-                    },
-                  }).catch(() => {});
-                }
+                  },
+                  update: {
+                    name: token.name || token.symbol,
+                    symbol: token.symbol,
+                    logoUri: pair.info?.imageUrl || null,
+                  },
+                }).then(() => {
+                  console.log(`[pnl] Cached token ${mint} from DexScreener`);
+                }).catch((err) => {
+                  console.error(`[pnl] Failed to cache token ${mint}:`, err);
+                });
               }
-            } catch {}
+            }
+          } catch (err) {
+            console.error(`[pnl] DexScreener error for ${mint}:`, err);
           }
         }
-      } catch (err) {
-        console.error("Failed to fetch missing token metadata:", err);
       }
+
+      // Final count
+      const finalMissing = missingMints.filter(mint => !tokenMap.has(mint));
+      console.log(`[pnl] Final: ${finalMissing.length} tokens still have no metadata`);
     }
 
     // Enrich positions with token metadata
