@@ -23,6 +23,7 @@ interface DrawingToolbarProps {
   drawingCount: number;
   compact?: boolean; // Horizontal scrollable mode for smaller containers
   minimal?: boolean; // Ultra-minimal vertical mode for landing page
+  isDark?: boolean; // Theme mode (default true for backwards compatibility)
 }
 
 const tools: { type: DrawingToolType | "select"; icon: React.ReactNode; label: string }[] = [
@@ -43,6 +44,7 @@ export function DrawingToolbar({
   drawingCount,
   compact = false,
   minimal = false,
+  isDark = true,
 }: DrawingToolbarProps) {
   const [hoveredTool, setHoveredTool] = useState<string | null>(null);
   const colorInputRef = useRef<HTMLInputElement>(null);
@@ -61,7 +63,9 @@ export function DrawingToolbar({
             className={`p-1.5 rounded transition-all ${
               (tool.type === "select" && !activeTool) || activeTool === tool.type
                 ? "bg-[#FF6B4A] text-white"
-                : "text-white/50 hover:text-white hover:bg-white/10"
+                : isDark
+                  ? "text-white/50 hover:text-white hover:bg-white/10"
+                  : "text-gray-500 hover:text-gray-900 hover:bg-gray-200"
             }`}
           >
             {tool.icon}
@@ -69,16 +73,16 @@ export function DrawingToolbar({
         ))}
 
         {/* Divider */}
-        <div className="w-5 h-px bg-white/10 my-1" />
+        <div className={`w-5 h-px my-1 ${isDark ? "bg-white/10" : "bg-gray-300"}`} />
 
         {/* Color picker */}
         <button
           onClick={() => colorInputRef.current?.click()}
           title="Color"
-          className="p-1.5 rounded hover:bg-white/10 transition-colors"
+          className={`p-1.5 rounded transition-colors ${isDark ? "hover:bg-white/10" : "hover:bg-gray-200"}`}
         >
           <div
-            className="w-4 h-4 rounded-full border border-white/20"
+            className={`w-4 h-4 rounded-full border ${isDark ? "border-white/20" : "border-gray-300"}`}
             style={{ backgroundColor: activeColor }}
           />
         </button>
@@ -93,7 +97,7 @@ export function DrawingToolbar({
         {/* Clear all */}
         {drawingCount > 0 && (
           <>
-            <div className="w-5 h-px bg-white/10 my-1" />
+            <div className={`w-5 h-px my-1 ${isDark ? "bg-white/10" : "bg-gray-300"}`} />
             <button
               onClick={onClearAll}
               title={`Clear (${drawingCount})`}
@@ -110,7 +114,11 @@ export function DrawingToolbar({
   // Compact horizontal mode
   if (compact) {
     return (
-      <div className="flex items-center gap-1 bg-white/5 backdrop-blur-md p-1 border border-white/10 shadow-xl overflow-x-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent">
+      <div className={`flex items-center gap-1 backdrop-blur-md p-1 border shadow-xl overflow-x-auto scrollbar-thin ${
+        isDark
+          ? "bg-white/5 border-white/10 scrollbar-thumb-white/20"
+          : "bg-gray-100 border-gray-300 scrollbar-thumb-gray-400"
+      } scrollbar-track-transparent`}>
         {/* Drawing tools */}
         {tools.map((tool) => (
           <button
@@ -120,7 +128,9 @@ export function DrawingToolbar({
             className={`p-1.5 rounded transition-all flex-shrink-0 ${
               (tool.type === "select" && !activeTool) || activeTool === tool.type
                 ? "bg-[#FF6B4A] text-white"
-                : "text-white/60 hover:text-white hover:bg-white/10"
+                : isDark
+                  ? "text-white/60 hover:text-white hover:bg-white/10"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-200"
             }`}
           >
             {tool.icon}
@@ -128,17 +138,17 @@ export function DrawingToolbar({
         ))}
 
         {/* Divider */}
-        <div className="w-px h-5 bg-white/10 mx-0.5 flex-shrink-0" />
+        <div className={`w-px h-5 mx-0.5 flex-shrink-0 ${isDark ? "bg-white/10" : "bg-gray-300"}`} />
 
         {/* Color picker - click opens native color wheel */}
         <div className="relative flex-shrink-0">
           <button
             onClick={() => colorInputCompactRef.current?.click()}
             title="Color"
-            className="p-1.5 rounded hover:bg-white/10 transition-colors flex items-center justify-center"
+            className={`p-1.5 rounded transition-colors flex items-center justify-center ${isDark ? "hover:bg-white/10" : "hover:bg-gray-200"}`}
           >
             <div
-              className="w-4 h-4 rounded-full border border-white/30"
+              className={`w-4 h-4 rounded-full border ${isDark ? "border-white/30" : "border-gray-400"}`}
               style={{ backgroundColor: activeColor }}
             />
           </button>
@@ -154,7 +164,7 @@ export function DrawingToolbar({
         {/* Clear all */}
         {drawingCount > 0 && (
           <>
-            <div className="w-px h-5 bg-white/10 mx-0.5 flex-shrink-0" />
+            <div className={`w-px h-5 mx-0.5 flex-shrink-0 ${isDark ? "bg-white/10" : "bg-gray-300"}`} />
             <button
               onClick={onClearAll}
               title={`Clear All (${drawingCount})`}
@@ -170,7 +180,11 @@ export function DrawingToolbar({
 
   // Default vertical mode (for full chart pages)
   return (
-    <div className="flex flex-col gap-1 bg-white/5 backdrop-blur-md p-1.5 border border-white/10 shadow-xl z-20">
+    <div className={`flex flex-col gap-1 backdrop-blur-md p-1.5 border shadow-xl z-20 ${
+      isDark
+        ? "bg-white/5 border-white/10"
+        : "bg-gray-100 border-gray-300"
+    }`}>
       {/* Drawing tools */}
       {tools.map((tool) => (
         <div key={tool.type} className="relative">
@@ -181,7 +195,9 @@ export function DrawingToolbar({
             className={`p-2 rounded transition-all ${
               (tool.type === "select" && !activeTool) || activeTool === tool.type
                 ? "bg-[#FF6B4A] text-white"
-                : "text-white/60 hover:text-white hover:bg-white/10"
+                : isDark
+                  ? "text-white/60 hover:text-white hover:bg-white/10"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-200"
             }`}
           >
             {tool.icon}
@@ -189,7 +205,9 @@ export function DrawingToolbar({
 
           {/* Tooltip */}
           {hoveredTool === tool.type && (
-            <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-black/90 rounded text-xs text-white whitespace-nowrap z-50 pointer-events-none">
+            <div className={`absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap z-50 pointer-events-none ${
+              isDark ? "bg-black/90 text-white" : "bg-gray-800 text-white"
+            }`}>
               {tool.label}
             </div>
           )}
@@ -197,7 +215,7 @@ export function DrawingToolbar({
       ))}
 
       {/* Divider */}
-      <div className="h-px bg-white/10 my-1" />
+      <div className={`h-px my-1 ${isDark ? "bg-white/10" : "bg-gray-300"}`} />
 
       {/* Color picker - click opens native color wheel */}
       <div className="relative">
@@ -205,10 +223,10 @@ export function DrawingToolbar({
           onClick={() => colorInputRef.current?.click()}
           onMouseEnter={() => setHoveredTool("color")}
           onMouseLeave={() => setHoveredTool(null)}
-          className="p-2 rounded hover:bg-white/10 transition-colors flex items-center justify-center"
+          className={`p-2 rounded transition-colors flex items-center justify-center ${isDark ? "hover:bg-white/10" : "hover:bg-gray-200"}`}
         >
           <div
-            className="w-4 h-4 rounded-full border border-white/30"
+            className={`w-4 h-4 rounded-full border ${isDark ? "border-white/30" : "border-gray-400"}`}
             style={{ backgroundColor: activeColor }}
           />
         </button>
@@ -221,14 +239,16 @@ export function DrawingToolbar({
         />
 
         {hoveredTool === "color" && (
-          <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-black/90 rounded text-xs text-white whitespace-nowrap z-50 pointer-events-none">
+          <div className={`absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap z-50 pointer-events-none ${
+            isDark ? "bg-black/90 text-white" : "bg-gray-800 text-white"
+          }`}>
             Color
           </div>
         )}
       </div>
 
       {/* Divider */}
-      {drawingCount > 0 && <div className="h-px bg-white/10 my-1" />}
+      {drawingCount > 0 && <div className={`h-px my-1 ${isDark ? "bg-white/10" : "bg-gray-300"}`} />}
 
       {/* Clear all */}
       {drawingCount > 0 && (
@@ -243,7 +263,9 @@ export function DrawingToolbar({
           </button>
 
           {hoveredTool === "clear" && (
-            <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 bg-black/90 rounded text-xs text-white whitespace-nowrap z-50 pointer-events-none">
+            <div className={`absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap z-50 pointer-events-none ${
+              isDark ? "bg-black/90 text-white" : "bg-gray-800 text-white"
+            }`}>
               Clear All ({drawingCount})
             </div>
           )}
