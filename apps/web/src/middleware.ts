@@ -44,7 +44,9 @@ export async function middleware(request: NextRequest) {
 
     // If not authenticated, redirect to landing page
     if (!token) {
-      const url = new URL("/", request.url);
+      // Use NEXTAUTH_URL for proper domain, fallback to request.url
+      const baseUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || request.url;
+      const url = new URL("/", baseUrl);
       url.searchParams.set("redirect", pathname);
       console.log(`[middleware] Redirecting to: ${url.toString()}`);
       return NextResponse.redirect(url);
