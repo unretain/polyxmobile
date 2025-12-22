@@ -230,64 +230,67 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     }
   }, [webglKey]);
 
-  // Track previous data length to adjust view when more data is prepended
-  // Initialize to 0 so first data load always triggers view setup
-  const prevDataLengthRef = useRef(0);
-  // Track if this is initial load vs subsequent data updates
-  const isInitialLoadRef = useRef(true);
+  // Track previous data to detect when data is replaced vs prepended
+  const prevDataRef = useRef<{ length: number; firstTimestamp: number | null }>({ length: 0, firstTimestamp: null });
+
+  // Fixed visible window size (200 candles)
+  const VISIBLE_CANDLES = 200;
 
   // Set view when data changes
-  // On initial load: show most recent ~200 candles (rightmost portion)
-  // On subsequent loads (more history prepended): keep current view position
+  // Uses fixed-width slider (200 candles) that can pan left/right
   useEffect(() => {
-    const prevLength = prevDataLengthRef.current;
+    const prevLength = prevDataRef.current.length;
+    const prevFirstTs = prevDataRef.current.firstTimestamp;
     const newLength = safeData.length;
+    const newFirstTs = safeData.length > 0 ? safeData[0].timestamp : null;
 
-    console.log('[Chart3D] Data length changed:', { prevLength, newLength, isInitial: isInitialLoadRef.current });
+    console.log('[Chart3D] Data changed:', { prevLength, newLength, prevFirstTs, newFirstTs });
 
     if (newLength === 0) {
-      prevDataLengthRef.current = 0;
+      prevDataRef.current = { length: 0, firstTimestamp: null };
       return;
     }
 
-    if (isInitialLoadRef.current || prevLength === 0) {
-      // Initial load: show most recent candles, not all history
-      // Calculate view range to show ~200 candles or all if less
-      const INITIAL_VISIBLE_CANDLES = 200;
+    // Detect if this is NEW data (different token/timeframe) vs prepended history
+    // If first timestamp changed significantly, it's new data - reset view to end
+    const isNewData = prevLength === 0 ||
+                      prevFirstTs === null ||
+                      newFirstTs === null ||
+                      Math.abs((newFirstTs - prevFirstTs)) > 60000; // More than 1 minute difference = new data
 
-      if (newLength <= INITIAL_VISIBLE_CANDLES) {
+    if (isNewData) {
+      // New data: show most recent candles (slider at right end)
+      if (newLength <= VISIBLE_CANDLES) {
         // Less than 200 candles - show all
-        console.log('[Chart3D] Initial load - showing all', newLength, 'candles');
+        console.log('[Chart3D] New data - showing all', newLength, 'candles');
         setViewStart(0);
         setViewEnd(1);
       } else {
-        // More than 200 candles - show only the most recent ~200
-        const visibleRatio = INITIAL_VISIBLE_CANDLES / newLength;
-        const newStart = 1 - visibleRatio;
-        console.log('[Chart3D] Initial load - showing last', INITIAL_VISIBLE_CANDLES, 'of', newLength, 'candles (viewStart:', newStart.toFixed(3), ')');
-        setViewStart(newStart);
+        // More than 200 candles - position slider at right end (most recent)
+        const visibleRatio = VISIBLE_CANDLES / newLength;
+        console.log('[Chart3D] New data - showing last', VISIBLE_CANDLES, 'of', newLength, 'candles');
+        setViewStart(1 - visibleRatio);
         setViewEnd(1);
       }
-
-      isInitialLoadRef.current = false;
-    } else if (newLength > prevLength) {
-      // More data was prepended (scrolled left to load history)
-      // Adjust view to maintain the same visible portion
+    } else if (newLength > prevLength && prevFirstTs !== null && newFirstTs !== null && newFirstTs < prevFirstTs) {
+      // History was prepended (loaded more old data on left)
+      // Keep the visible candles the same by adjusting view position
       const addedCandles = newLength - prevLength;
-      const addedRatio = addedCandles / newLength;
+      const visibleRatio = VISIBLE_CANDLES / newLength;
 
-      // Shift current view range to account for prepended data
-      const currentRange = viewEndRef.current - viewStartRef.current;
-      const newStart = Math.max(0, viewStartRef.current + addedRatio * (1 - currentRange));
-      const newEnd = Math.min(1, newStart + currentRange);
+      // Shift view right by the amount of prepended data
+      const shiftRatio = addedCandles / newLength;
+      const newStart = Math.min(1 - visibleRatio, viewStartRef.current + shiftRatio);
+      const newEnd = Math.min(1, newStart + visibleRatio);
 
-      console.log('[Chart3D] History prepended - adjusting view from', viewStartRef.current.toFixed(3), '-', viewEndRef.current.toFixed(3), 'to', newStart.toFixed(3), '-', newEnd.toFixed(3));
+      console.log('[Chart3D] History prepended - shifting view by', shiftRatio.toFixed(3));
       setViewStart(newStart);
       setViewEnd(newEnd);
     }
+    // If data length decreased or stayed same with same first timestamp, keep current view
 
-    prevDataLengthRef.current = newLength;
-  }, [safeData.length]);
+    prevDataRef.current = { length: newLength, firstTimestamp: newFirstTs };
+  }, [safeData]);
 
   // Detect when user scrolls to left edge and request more data
   useEffect(() => {
@@ -470,7 +473,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     return { value: change, percent, isPositive: change >= 0 };
   }, [visibleData]);
 
-  // Scroll wheel to zoom time axis - uses native event for preventDefault support
+  // Scroll wheel to pan time axis left/right - fixed width slider
   // This handler is for the SLIDER area (non-canvas), canvas zoom is handled by OrbitControls
   const handleWheel = useCallback((e: WheelEvent) => {
     // Shift+Scroll is handled by Y-axis scaling effect, skip here
@@ -488,32 +491,29 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     if (now - lastUpdateTimeRef.current < 50) return; // ~20fps for wheel
     lastUpdateTimeRef.current = now;
 
-    const zoomIn = e.deltaY < 0;
-    const zoomFactor = zoomIn ? 0.9 : 1.1;
+    // Fixed-width slider: scroll pans left/right
+    const dataLen = safeData.length;
+    const fixedRange = dataLen > 0 ? Math.min(1, VISIBLE_CANDLES / dataLen) : 1;
 
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const mouseX = (e.clientX - rect.left) / rect.width;
+    // Scroll amount: 5% of total range per scroll tick
+    const scrollAmount = e.deltaY > 0 ? 0.05 : -0.05;
 
-    const currentRange = viewEndRef.current - viewStartRef.current;
-    const newRange = Math.max(0.05, Math.min(1, currentRange * zoomFactor));
+    let newStart = viewStartRef.current + scrollAmount;
+    let newEnd = newStart + fixedRange;
 
-    const rangeChange = newRange - currentRange;
-    let newStart = viewStartRef.current - rangeChange * mouseX;
-    let newEnd = viewEndRef.current + rangeChange * (1 - mouseX);
-
+    // Clamp to valid range
     if (newStart < 0) {
-      newEnd -= newStart;
       newStart = 0;
+      newEnd = fixedRange;
     }
     if (newEnd > 1) {
-      newStart -= (newEnd - 1);
       newEnd = 1;
+      newStart = Math.max(0, 1 - fixedRange);
     }
 
-    setViewStart(Math.max(0, newStart));
-    setViewEnd(Math.min(1, newEnd));
-  }, []);
+    setViewStart(newStart);
+    setViewEnd(newEnd);
+  }, [safeData.length]);
 
   // Range slider handlers
   const handleSliderMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>, handle: "left" | "right" | "middle") => {
@@ -556,42 +556,26 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       const currentStart = viewStartRef.current;
       const currentEnd = viewEndRef.current;
 
-      let newStart = currentStart;
-      let newEnd = currentEnd;
+      // Fixed-width slider: always maintain VISIBLE_CANDLES ratio
+      // All drag modes just pan left/right, keeping the same range width
+      const dataLen = safeData.length;
+      const fixedRange = dataLen > 0 ? Math.min(1, VISIBLE_CANDLES / dataLen) : 1;
 
-      if (sliderDragRef.current === "left") {
-        newStart = Math.max(0, Math.min(currentEnd - 0.05, currentStart + deltaX));
-        setViewStart(newStart);
-      } else if (sliderDragRef.current === "right") {
-        newEnd = Math.max(currentStart + 0.05, Math.min(1, currentEnd + deltaX));
-        setViewEnd(newEnd);
-      } else if (sliderDragRef.current === "middle") {
-        const range = currentEnd - currentStart;
-        newStart = currentStart + deltaX;
-        newEnd = currentEnd + deltaX;
+      let newStart = currentStart + deltaX;
+      let newEnd = newStart + fixedRange;
 
-        if (newStart < 0) {
-          newStart = 0;
-          newEnd = range;
-        }
-        if (newEnd > 1) {
-          newEnd = 1;
-          newStart = 1 - range;
-        }
-
-        setViewStart(newStart);
-        setViewEnd(newEnd);
+      // Clamp to valid range [0, 1]
+      if (newStart < 0) {
+        newStart = 0;
+        newEnd = fixedRange;
+      }
+      if (newEnd > 1) {
+        newEnd = 1;
+        newStart = Math.max(0, 1 - fixedRange);
       }
 
-      // Log every 500ms during drag
-      if (now % 500 < 50) {
-        console.log('[Chart3D] Slider drag:', {
-          handle: sliderDragRef.current,
-          newStart: newStart.toFixed(4),
-          newEnd: newEnd.toFixed(4),
-          range: (newEnd - newStart).toFixed(4)
-        });
-      }
+      setViewStart(newStart);
+      setViewEnd(newEnd);
     };
 
     const handleGlobalMouseUp = () => {
@@ -605,15 +589,17 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       window.removeEventListener("mousemove", handleGlobalMouseMove);
       window.removeEventListener("mouseup", handleGlobalMouseUp);
     };
-  }, []);
+  }, [safeData.length]);
 
-  // Double-click to reset view
+  // Double-click to reset view to most recent candles
   const handleDoubleClick = useCallback(() => {
-    setViewStart(0);
+    const dataLen = safeData.length;
+    const fixedRange = dataLen > 0 ? Math.min(1, VISIBLE_CANDLES / dataLen) : 1;
+    setViewStart(1 - fixedRange);
     setViewEnd(1);
     setYScale(1.0);
     yScaleRef.current = 1.0;
-  }, []);
+  }, [safeData.length]);
 
   // Track shift key state globally for panning and disabling OrbitControls
   useEffect(() => {
