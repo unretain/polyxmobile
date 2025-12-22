@@ -42,6 +42,7 @@ interface SwapWidgetProps {
   outputSymbol?: string;
   outputDecimals?: number;
   isGraduated?: boolean;
+  compactMobile?: boolean;
 }
 
 interface TokenStats {
@@ -56,6 +57,7 @@ export function SwapWidget({
   outputSymbol = "TOKEN",
   outputDecimals = 9,
   isGraduated = true,
+  compactMobile = false,
 }: SwapWidgetProps) {
   const { isDark } = useThemeStore();
   const { data: session, status } = useSession();
@@ -319,6 +321,192 @@ export function SwapWidget({
         >
           Sign In
         </a>
+      </div>
+    );
+  }
+
+  // Compact mobile version - just quick buttons and pencil
+  if (compactMobile) {
+    return (
+      <div className={cn(
+        "border p-3",
+        isDark ? "bg-[#0d0d0d] border-white/10" : "bg-white border-gray-200"
+      )}>
+        {/* Buy/Sell toggle */}
+        <div className={cn("flex gap-1 mb-3", isDark ? "bg-black/40" : "bg-gray-100")}>
+          <button
+            onClick={() => setIsBuy(true)}
+            className={cn(
+              "flex-1 py-2 text-xs font-medium transition-colors",
+              isBuy
+                ? "bg-[#00ffa3] text-black"
+                : isDark ? "text-white/50" : "text-gray-400"
+            )}
+          >
+            Buy
+          </button>
+          <button
+            onClick={() => setIsBuy(false)}
+            className={cn(
+              "flex-1 py-2 text-xs font-medium transition-colors",
+              !isBuy
+                ? "bg-red-500 text-white"
+                : isDark ? "text-white/50" : "text-gray-400"
+            )}
+          >
+            Sell
+          </button>
+        </div>
+
+        {/* Quick amount buttons */}
+        {isBuy ? (
+          <div className="flex gap-1.5">
+            {[0.1, 0.25, 0.5, 1].map((amt) => (
+              <button
+                key={amt}
+                onClick={() => {
+                  setInputAmount(amt.toString());
+                  // Trigger swap immediately after setting amount
+                }}
+                className={cn(
+                  "flex-1 py-2.5 text-xs font-mono transition-colors border",
+                  inputAmount === amt.toString()
+                    ? "bg-[#00ffa3]/20 text-[#00ffa3] border-[#00ffa3]/50"
+                    : isDark
+                      ? "text-white/60 bg-white/5 hover:bg-white/10 border-white/10"
+                      : "text-gray-600 bg-gray-50 hover:bg-gray-100 border-gray-200"
+                )}
+              >
+                {amt} SOL
+              </button>
+            ))}
+          </div>
+        ) : (
+          /* Sell mode: percentage buttons with pencil */
+          <div className="flex gap-1.5 items-center">
+            {isEditingPercents ? (
+              /* Editing mode */
+              <div className="flex-1 flex gap-1">
+                {editingPercents.map((pct, i) => (
+                  <input
+                    key={i}
+                    type="number"
+                    value={pct}
+                    onChange={(e) => {
+                      const newVal = parseInt(e.target.value) || 0;
+                      setEditingPercents(prev => {
+                        const copy = [...prev];
+                        copy[i] = Math.min(100, Math.max(1, newVal));
+                        return copy;
+                      });
+                    }}
+                    className={cn(
+                      "w-12 py-2 px-1 text-xs font-mono text-center outline-none",
+                      isDark
+                        ? "text-white bg-white/10 border border-white/20"
+                        : "text-gray-900 bg-gray-100 border border-gray-300"
+                    )}
+                    min="1"
+                    max="100"
+                  />
+                ))}
+                <button
+                  onClick={saveCustomPercents}
+                  className="px-2 py-2 text-xs bg-[#FF6B4A] text-white"
+                >
+                  ✓
+                </button>
+                <button
+                  onClick={() => {
+                    setEditingPercents([...customPercents]);
+                    setIsEditingPercents(false);
+                  }}
+                  className={cn(
+                    "px-2 py-2 text-xs",
+                    isDark ? "text-white/50 bg-white/5" : "text-gray-500 bg-gray-50"
+                  )}
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ) : (
+              /* Normal percentage buttons */
+              <>
+                {customPercents.map((pct) => (
+                  <button
+                    key={pct}
+                    onClick={() => handleSellPercent(pct)}
+                    className={cn(
+                      "flex-1 py-2.5 text-xs font-mono transition-colors border",
+                      selectedPercent === pct
+                        ? "bg-red-500/20 text-red-400 border-red-500/50"
+                        : isDark
+                          ? "text-white/60 bg-white/5 hover:bg-white/10 border-white/10"
+                          : "text-gray-600 bg-gray-50 hover:bg-gray-100 border-gray-200"
+                    )}
+                  >
+                    {pct}%
+                  </button>
+                ))}
+                <button
+                  onClick={() => {
+                    setEditingPercents([...customPercents]);
+                    setIsEditingPercents(true);
+                  }}
+                  className={cn(
+                    "p-2 transition-colors",
+                    isDark ? "text-white/40 hover:text-white/70" : "text-gray-400 hover:text-gray-600"
+                  )}
+                  title="Edit percentages"
+                >
+                  <Pencil className="w-4 h-4" />
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Swap button - only show when amount is entered */}
+        {inputAmount && quote && (
+          <button
+            onClick={handleSwap}
+            disabled={!quote || swapping || loading}
+            className={cn(
+              "w-full mt-3 py-2.5 text-xs font-medium transition-colors",
+              swapping || loading
+                ? isDark ? "bg-white/5 text-white/30" : "bg-gray-100 text-gray-400"
+                : isBuy
+                ? "bg-[#00ffa3] text-black hover:bg-[#00dd8a]"
+                : "bg-red-500 text-white hover:bg-red-600"
+            )}
+          >
+            {swapping ? (
+              <span className="flex items-center justify-center gap-2">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Processing...
+              </span>
+            ) : loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Getting quote...
+              </span>
+            ) : (
+              `${isBuy ? "Buy" : "Sell"} → ${formatOutputAmount()} ${isBuy ? outputSymbol : "SOL"}`
+            )}
+          </button>
+        )}
+
+        {/* Error message */}
+        {error && (
+          <div className="mt-2 p-2 bg-red-500/10 border border-red-500/30 text-red-400 text-[10px]">
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="mt-2 p-2 bg-[#00ffa3]/10 border border-[#00ffa3]/30 text-[#00ffa3] text-[10px]">
+            {success}
+          </div>
+        )}
       </div>
     );
   }
