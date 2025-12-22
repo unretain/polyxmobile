@@ -629,7 +629,6 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
         const moralisOhlcv = await moralisService.getOHLCV(address, timeframe as any, {
           fromDate: effectiveFromDate,
           toDate: effectiveToDate,
-          maxCandles: 2000, // Request more historical data
         });
         const elapsed = Date.now() - startTime;
         console.log(`📊 [OHLCV] Moralis API returned ${moralisOhlcv.length} ${timeframe} candles in ${elapsed}ms`);
