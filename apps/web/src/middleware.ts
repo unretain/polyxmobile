@@ -11,8 +11,6 @@ const publicRoutes = ["/", "/solutions", "/tos", "/privacy", "/embed", "/api"];
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  console.log(`[middleware] Path: ${pathname}`);
-
   // Check if this is a protected route
   const isProtectedRoute = protectedRoutes.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`)
@@ -22,8 +20,6 @@ export async function middleware(request: NextRequest) {
   const isPublicRoute = publicRoutes.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`)
   );
-
-  console.log(`[middleware] isProtected: ${isProtectedRoute}, isPublic: ${isPublicRoute}`);
 
   // If it's a public route, allow access
   if (isPublicRoute && !isProtectedRoute) {
@@ -36,12 +32,7 @@ export async function middleware(request: NextRequest) {
     const isSecure = process.env.NODE_ENV === "production" || request.url.startsWith("https");
 
     // Auth.js v5 uses different cookie names than next-auth v4
-    // In production (HTTPS): __Secure-authjs.session-token
-    // In development (HTTP): authjs.session-token
     const cookieName = isSecure ? "__Secure-authjs.session-token" : "authjs.session-token";
-
-    console.log(`[middleware] Auth secret exists: ${!!secret}, cookieName: ${cookieName}`);
-    console.log(`[middleware] Cookie value exists: ${!!request.cookies.get(cookieName)?.value}`);
 
     const token = await getToken({
       req: request,
@@ -49,15 +40,11 @@ export async function middleware(request: NextRequest) {
       cookieName,
     });
 
-    console.log(`[middleware] Token exists: ${!!token}, userId: ${token?.id || 'none'}`);
-
     // If not authenticated, redirect to landing page
     if (!token) {
-      // Use NEXTAUTH_URL for proper domain, fallback to request.url
       const baseUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || request.url;
       const url = new URL("/", baseUrl);
       url.searchParams.set("redirect", pathname);
-      console.log(`[middleware] Redirecting to: ${url.toString()}`);
       return NextResponse.redirect(url);
     }
   }
