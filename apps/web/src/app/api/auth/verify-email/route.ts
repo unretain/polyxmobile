@@ -5,7 +5,10 @@ export async function POST(request: NextRequest) {
   try {
     const { userId, code } = await request.json();
 
+    console.log(`[verify-email] Request: userId=${userId}, code=${code}`);
+
     if (!userId || !code) {
+      console.log(`[verify-email] Missing userId or code`);
       return NextResponse.json({ error: "User ID and code are required" }, { status: 400 });
     }
 
@@ -15,21 +18,27 @@ export async function POST(request: NextRequest) {
     });
 
     if (!user) {
+      console.log(`[verify-email] User not found: ${userId}`);
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
+    console.log(`[verify-email] User found: ${user.email}, verified: ${!!user.emailVerified}, storedCode: ${user.verificationCode}`);
+
     // Check if already verified
     if (user.emailVerified) {
+      console.log(`[verify-email] Already verified`);
       return NextResponse.json({ success: true, alreadyVerified: true });
     }
 
     // Verify code
     if (user.verificationCode !== code) {
+      console.log(`[verify-email] Code mismatch: got ${code}, expected ${user.verificationCode}`);
       return NextResponse.json({ error: "Invalid verification code" }, { status: 400 });
     }
 
     // Check expiry
     if (user.verificationExpiry && new Date() > user.verificationExpiry) {
+      console.log(`[verify-email] Code expired at ${user.verificationExpiry}`);
       return NextResponse.json({ error: "Verification code has expired" }, { status: 400 });
     }
 
@@ -43,9 +52,10 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    console.log(`[verify-email] Successfully verified user: ${user.email}`);
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error verifying email:", error);
+    console.error("[verify-email] Error:", error);
     return NextResponse.json({ error: "Failed to verify email" }, { status: 500 });
   }
 }
