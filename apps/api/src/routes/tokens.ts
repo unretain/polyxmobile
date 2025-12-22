@@ -148,6 +148,25 @@ const DASHBOARD_TOKENS = [
 
 // Track if initial sync has run (to avoid running multiple times per server start)
 let initialSyncComplete = false;
+let dashboardSyncTimer: NodeJS.Timeout | null = null;
+const DASHBOARD_SYNC_INTERVAL = 30000; // 30 seconds for established tokens
+
+// Start background sync for dashboard tokens
+export function startDashboardTokenSync() {
+  if (dashboardSyncTimer) return;
+
+  console.log("[Dashboard] Starting background token sync every 30s");
+
+  // Sync immediately
+  syncDashboardTokens().then(() => {
+    initialSyncComplete = true;
+  }).catch(console.error);
+
+  // Then sync every 30 seconds
+  dashboardSyncTimer = setInterval(() => {
+    syncDashboardTokens().catch(console.error);
+  }, DASHBOARD_SYNC_INTERVAL);
+}
 
 // Sync ONLY curated dashboard tokens - deletes all others
 async function syncDashboardTokens() {
@@ -230,31 +249,13 @@ async function syncDashboardTokens() {
   }
 }
 
-// GET /api/tokens - List all tokens
+// GET /api/tokens - List all tokens from DATABASE
+// Background sync keeps DB updated every 30 seconds
+// All users read from same cached DB data = massive reduction in external API calls
 tokenRoutes.get("/", async (req, res) => {
   try {
     const query = listQuerySchema.parse(req.query);
     const { page, limit, sort, order, search } = query;
-
-    // Try cache first
-    const cacheKey = `tokens:list:${JSON.stringify(query)}`;
-    const cached = await cache.get(cacheKey);
-    if (cached) {
-      return res.json(JSON.parse(cached));
-    }
-
-    // Sync curated tokens on first request after server start
-    if (!initialSyncComplete) {
-      console.log("🔄 Initial token sync needed...");
-      try {
-        await syncDashboardTokens();
-        initialSyncComplete = true;
-        console.log("✅ Initial token sync complete");
-      } catch (syncError) {
-        console.warn("Failed to sync tokens:", syncError);
-        initialSyncComplete = true; // Don't retry on every request
-      }
-    }
 
     const where = search
       ? {
@@ -283,9 +284,6 @@ tokenRoutes.get("/", async (req, res) => {
       limit,
       hasMore: page * limit < total,
     };
-
-    // Cache for 30 seconds
-    await cache.set(cacheKey, JSON.stringify(response), 30);
 
     res.json(response);
   } catch (error) {
