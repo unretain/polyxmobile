@@ -891,7 +891,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
               <div className={`text-2xl font-bold ${isDark ? 'text-white/50' : 'text-gray-400'}`}>Loading...</div>
             )}
             <div className={`text-xs ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
-              {dateRange} • {visibleData.length} candles
+              {dateRange} • {visibleData.length}{safeData.length > visibleData.length ? ` of ${safeData.length}` : ''} candles
             </div>
           </div>
         )}
