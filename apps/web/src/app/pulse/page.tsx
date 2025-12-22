@@ -4,7 +4,7 @@ import { useEffect, useCallback, useRef, useState, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Activity, Zap, RefreshCw, Copy, ExternalLink, TrendingUp, Search, X } from "lucide-react";
+import { Activity, Zap, RefreshCw, Copy, Search } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import { formatNumber, formatPercent, shortenAddress, cn } from "@/lib/utils";
 import { usePulseStore, type PulseToken } from "@/stores/pulseStore";
@@ -371,47 +371,19 @@ export default function PulsePage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 md:gap-3">
-          {/* Search Button - icon only on mobile */}
-          <button
-            onClick={openSearch}
-            className={`flex items-center gap-2 border px-2 md:px-3 py-2 text-sm transition-all hover:border-[#FF6B4A]/30 ${
-              isDark
-                ? 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
-                : 'bg-black/5 border-black/10 text-gray-500 hover:bg-black/10'
-            }`}
-          >
-            <Search className="h-4 w-4" />
-            <span className="hidden md:inline">Search by name, ticker, or CA...</span>
-            <kbd className={`hidden md:inline ml-2 px-1.5 py-0.5 text-xs ${isDark ? 'bg-white/10 text-white/40' : 'bg-black/10 text-gray-400'}`}>Esc</kbd>
-          </button>
-
-          {/* Real-time indicator */}
-          <div className={cn(
-            "flex items-center gap-1.5 px-2 md:px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-sm",
-            isRealtime ? "bg-up/15 text-up ring-1 ring-up/40" : isDark ? "bg-white/10 text-white/50" : "bg-black/10 text-gray-500"
-          )}>
-            <span className={cn(
-              "h-2 w-2 rounded-full",
-              isRealtime ? "bg-up animate-pulse" : isDark ? "bg-white/40" : "bg-gray-400"
-            )} />
-            {isRealtime ? "Live" : "Polling"}
-          </div>
-
-          <button
-            onClick={() => fetchAllPairs()}
-            disabled={isLoading}
-            className={cn(
-              "flex items-center gap-2 border bg-[#FF6B4A]/10 border-[#FF6B4A]/30 px-3 md:px-4 py-2 text-sm font-medium transition-all",
-              "hover:bg-[#FF6B4A]/20 hover:border-[#FF6B4A]/50 active:scale-95",
-              isDark ? 'text-white' : 'text-gray-900',
-              isLoading && "opacity-50"
-            )}
-          >
-            <RefreshCw className={cn("h-4 w-4 text-[#FF6B4A]", isLoading && "animate-spin")} />
-            <span className="hidden md:inline">Refresh</span>
-          </button>
-        </div>
+        {/* Search Button - icon only on mobile */}
+        <button
+          onClick={openSearch}
+          className={`flex items-center gap-2 border px-2 md:px-3 py-2 text-sm transition-all hover:border-[#FF6B4A]/30 ${
+            isDark
+              ? 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
+              : 'bg-black/5 border-black/10 text-gray-500 hover:bg-black/10'
+          }`}
+        >
+          <Search className="h-4 w-4" />
+          <span className="hidden md:inline">Search by name, ticker, or CA...</span>
+          <kbd className={`hidden md:inline ml-2 px-1.5 py-0.5 text-xs ${isDark ? 'bg-white/10 text-white/40' : 'bg-black/10 text-gray-400'}`}>Esc</kbd>
+        </button>
       </div>
 
       {/* Error */}
@@ -450,34 +422,6 @@ export default function PulsePage() {
           emptyMessage="No migrated tokens yet..."
           isDark={isDark}
         />
-      </div>
-
-      {/* Footer Stats */}
-      <div className={`flex flex-col md:flex-row items-start md:items-center justify-between gap-2 px-4 py-3 backdrop-blur-md border text-xs flex-shrink-0 ${
-        isDark ? 'bg-white/5 border-white/10 text-white/50' : 'bg-black/5 border-black/10 text-gray-500'
-      }`}>
-        <div className="flex items-center gap-3 md:gap-4 flex-wrap">
-          <span>
-            <strong className={isDark ? 'text-white/80' : 'text-gray-700'}>{newPairs.length}</strong> new pairs
-          </span>
-          <span>
-            <strong className={isDark ? 'text-white/80' : 'text-gray-700'}>{graduatingPairs.length}</strong> graduating
-          </span>
-          <span>
-            <strong className={isDark ? 'text-white/80' : 'text-gray-700'}>{graduatedPairs.length}</strong> migrated
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="hidden md:inline">Data from Moralis + PumpPortal</span>
-          <a
-            href="https://docs.axiom.trade/axiom/finding-tokens/pulse"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-[#FF6B4A] hover:text-[#FF8F6B] transition-colors"
-          >
-            Inspired by Axiom <ExternalLink className="h-3 w-3" />
-          </a>
-        </div>
       </div>
 
       {/* Search Modal */}
