@@ -69,7 +69,49 @@ export async function POST(request: NextRequest) {
     // Generate wallet
     const { publicKey, encryptedPrivateKey } = generateWalletForUser(WALLET_SECRET);
 
-    // Create user (not verified yet)
+    // Send verification email FIRST before creating user
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      console.error("RESEND_API_KEY not configured");
+      return NextResponse.json({ error: "Email service not configured" }, { status: 500 });
+    }
+
+    try {
+      const emailRes = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: process.env.RESEND_FROM_EMAIL || "Polyx <onboarding@resend.dev>",
+          to: normalizedEmail,
+          subject: "Verify your Polyx account",
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2>Welcome to Polyx!</h2>
+              <p>Your verification code is:</p>
+              <div style="background: #f4f4f4; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 20px 0;">
+                ${verificationCode}
+              </div>
+              <p>This code expires in 10 minutes.</p>
+              <p>If you didn't create an account, you can ignore this email.</p>
+            </div>
+          `,
+        }),
+      });
+
+      if (!emailRes.ok) {
+        const errorData = await emailRes.json();
+        console.error("Resend error:", errorData);
+        return NextResponse.json({ error: "Failed to send verification email. Please try again." }, { status: 500 });
+      }
+    } catch (emailError) {
+      console.error("Email send error:", emailError);
+      return NextResponse.json({ error: "Failed to send verification email" }, { status: 500 });
+    }
+
+    // Only create user AFTER email sends successfully
     const user = await prisma.user.create({
       data: {
         email: normalizedEmail,
@@ -85,13 +127,10 @@ export async function POST(request: NextRequest) {
 
     console.log(`Created new user ${normalizedEmail} with wallet ${publicKey}`);
 
-    // TODO: Send verification email via Resend
-    // For now, return success without code (code should ONLY be sent via email)
     return NextResponse.json({
       success: true,
       userId: user.id,
       message: "Verification code sent to your email",
-      // SECURITY: Never return verification code in production API response
     });
   } catch (error) {
     console.error("Error in signup:", error);
