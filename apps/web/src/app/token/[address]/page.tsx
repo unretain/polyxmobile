@@ -675,19 +675,19 @@ export default function TokenPage() {
   return (
     <div className="flex h-full flex-col gap-4 overflow-hidden">
       {/* Header */}
-      <div className={`flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between flex-shrink-0 px-4 py-3 backdrop-blur-md border ${
+      <div className={`flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between flex-shrink-0 px-3 md:px-4 py-3 backdrop-blur-md border ${
         isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
       }`}>
-        <div className="flex items-start gap-4">
+        <div className="flex items-start gap-3 md:gap-4">
           <Link
             href={fromPulse ? "/pulse" : "/dashboard"}
-            className={`p-2 transition-colors ${isDark ? 'hover:bg-white/10 text-white' : 'hover:bg-black/10 text-black'}`}
+            className={`p-1.5 md:p-2 transition-colors ${isDark ? 'hover:bg-white/10 text-white' : 'hover:bg-black/10 text-black'}`}
           >
-            <ArrowLeft className="h-5 w-5" />
+            <ArrowLeft className="h-4 w-4 md:h-5 md:w-5" />
           </Link>
 
-          <div className="flex items-center gap-4">
-            <div className={`relative h-12 w-12 overflow-hidden rounded-full ring-2 ${
+          <div className="flex items-center gap-3 md:gap-4">
+            <div className={`relative h-10 w-10 md:h-12 md:w-12 overflow-hidden rounded-full ring-2 ${
               isDark ? 'bg-white/5 ring-white/10' : 'bg-black/5 ring-black/10'
             }`}>
               {getTokenLogoUrl(token?.logoUri, address) ? (
@@ -699,7 +699,7 @@ export default function TokenPage() {
                   unoptimized
                 />
               ) : (
-                <div className={`flex h-full w-full items-center justify-center text-xl font-bold bg-gradient-to-br from-[#FF6B4A]/20 ${
+                <div className={`flex h-full w-full items-center justify-center text-lg md:text-xl font-bold bg-gradient-to-br from-[#FF6B4A]/20 ${
                   isDark ? 'to-white/5 text-white/40' : 'to-black/5 text-black/40'
                 }`}>
                   {token?.symbol?.charAt(0) ?? "?"}
@@ -708,26 +708,26 @@ export default function TokenPage() {
             </div>
 
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className={`text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{token?.symbol ?? "Loading..."}</h1>
-                <span className={`px-2 py-0.5 text-xs ${isDark ? 'bg-white/10 text-white/60' : 'bg-black/10 text-black/60'}`}>
+              <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
+                <h1 className={`text-lg md:text-xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>{token?.symbol ?? "Loading..."}</h1>
+                <span className={`hidden md:inline px-2 py-0.5 text-xs ${isDark ? 'bg-white/10 text-white/60' : 'bg-black/10 text-black/60'}`}>
                   {token?.name}
                 </span>
                 {fromPulse && (
-                  <span className="bg-[#FF6B4A]/20 text-[#FF6B4A] px-2 py-0.5 text-xs font-medium">
+                  <span className="bg-[#FF6B4A]/20 text-[#FF6B4A] px-1.5 md:px-2 py-0.5 text-[10px] md:text-xs font-medium">
                     Pulse
                   </span>
                 )}
               </div>
 
-              <div className="mt-1 flex items-center gap-2">
+              <div className="mt-1 flex items-center gap-2 flex-wrap">
                 <button
                   onClick={handleCopyAddress}
-                  className={`flex items-center gap-1 text-xs transition-colors ${
+                  className={`flex items-center gap-1 text-[10px] md:text-xs transition-colors ${
                     copied ? 'text-[#00ffa3]' : isDark ? 'text-white/50 hover:text-white' : 'text-black/50 hover:text-black'
                   }`}
                 >
-                  {copied ? "Copied!" : shortenAddress(address, 6)}
+                  {copied ? "Copied!" : shortenAddress(address, 4)}
                   <Copy className="h-3 w-3" />
                 </button>
 
@@ -735,7 +735,7 @@ export default function TokenPage() {
                   href={`https://solscan.io/token/${address}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`flex items-center gap-1 text-xs transition-colors ${
+                  className={`hidden md:flex items-center gap-1 text-xs transition-colors ${
                     isDark ? 'text-white/50 hover:text-white' : 'text-black/50 hover:text-black'
                   }`}
                 >
@@ -746,7 +746,7 @@ export default function TokenPage() {
                   href={`https://pump.fun/${address}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`flex items-center gap-1 text-xs transition-colors ${
+                  className={`hidden md:flex items-center gap-1 text-xs transition-colors ${
                     isDark ? 'text-white/50 hover:text-white' : 'text-black/50 hover:text-black'
                   }`}
                 >
@@ -757,7 +757,7 @@ export default function TokenPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="hidden md:flex items-center gap-2">
           {token?.website && (
             <a
               href={token.website.startsWith("http") ? token.website : `https://${token.website}`}
@@ -787,11 +787,11 @@ export default function TokenPage() {
       </div>
 
       {/* Main Content: Chart + Sidebar */}
-      <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-0 overflow-y-auto md:overflow-hidden">
         {/* Left: Chart + Trades */}
-        <div className="flex-1 flex flex-col gap-4 min-w-0 overflow-hidden">
+        <div className="flex-1 flex flex-col gap-4 min-w-0 overflow-visible md:overflow-hidden">
           {/* Stats Row */}
-          <div className="grid gap-3 grid-cols-4 flex-shrink-0">
+          <div className="grid gap-2 md:gap-3 grid-cols-2 md:grid-cols-4 flex-shrink-0">
             <div className={`border backdrop-blur-md p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'}`}>
               <p className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Price</p>
               <p className={`text-lg font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>${formatPrice(token?.price ?? 0)}</p>
@@ -818,9 +818,9 @@ export default function TokenPage() {
           </div>
 
           {/* Chart Controls */}
-          <div className="flex items-center justify-between gap-4 flex-shrink-0">
+          <div className="flex items-center justify-between gap-2 md:gap-4 flex-shrink-0 overflow-x-auto">
             {/* Chart Type Toggle */}
-            <div className={`flex items-center gap-1 border p-1 ${isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}>
+            <div className={`flex items-center gap-0.5 md:gap-1 border p-0.5 md:p-1 flex-shrink-0 ${isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}>
               <button
                 onClick={() => {
                   setChartType("line");
@@ -830,14 +830,14 @@ export default function TokenPage() {
                   }
                 }}
                 className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors",
+                  "flex items-center gap-1 md:gap-1.5 px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium transition-colors",
                   chartType === "line"
                     ? "bg-[#FF6B4A] text-white"
                     : isDark ? "text-white/60 hover:text-white" : "text-black/60 hover:text-black"
                 )}
               >
-                <LineChart className="h-4 w-4" />
-                Line
+                <LineChart className="h-3 w-3 md:h-4 md:w-4" />
+                <span className="hidden md:inline">Line</span>
               </button>
               <button
                 onClick={() => {
@@ -848,14 +848,14 @@ export default function TokenPage() {
                   }
                 }}
                 className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors",
+                  "flex items-center gap-1 md:gap-1.5 px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium transition-colors",
                   chartType === "candle"
                     ? "bg-[#FF6B4A] text-white"
                     : isDark ? "text-white/60 hover:text-white" : "text-black/60 hover:text-black"
                 )}
               >
-                <BarChart3 className="h-4 w-4" />
-                Candle
+                <BarChart3 className="h-3 w-3 md:h-4 md:w-4" />
+                <span className="hidden md:inline">Candle</span>
               </button>
             </div>
 
@@ -870,7 +870,7 @@ export default function TokenPage() {
 
           {/* 3D Chart */}
           {/* Pass actual token price to ensure chart header shows correct current price */}
-          <div className={`flex-shrink-0 h-[400px] border overflow-hidden ${isDark ? 'border-white/10' : 'border-black/10'}`}>
+          <div className={`flex-shrink-0 h-[300px] md:h-[400px] border overflow-hidden ${isDark ? 'border-white/10' : 'border-black/10'}`}>
             {chartType === "line" ? (
               <Line3DChart
                 data={ohlcv}
@@ -891,8 +891,9 @@ export default function TokenPage() {
           </div>
 
           {/* Pulse tokens: Show Trades Table | Dashboard tokens: Show Market Stats */}
+          {/* Hide trades table on mobile for pulse tokens */}
           {fromPulse ? (
-            <div className={`flex-1 min-h-0 border backdrop-blur-md p-4 overflow-hidden flex flex-col ${
+            <div className={`hidden md:flex flex-1 min-h-0 border backdrop-blur-md p-4 overflow-hidden flex-col ${
               isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'
             }`}>
               <div className="flex items-center justify-between mb-3 flex-shrink-0">
@@ -904,7 +905,7 @@ export default function TokenPage() {
               </div>
             </div>
           ) : (
-            <div className={`flex-1 min-h-0 border backdrop-blur-md p-4 overflow-hidden ${
+            <div className={`hidden md:block flex-1 min-h-0 border backdrop-blur-md p-4 overflow-hidden ${
               isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'
             }`}>
               <h3 className={`font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Market Statistics</h3>
@@ -953,17 +954,29 @@ export default function TokenPage() {
 
         {/* Pulse tokens: Show Swap Widget + Holder Stats | Dashboard tokens: Show Supply Stats */}
         {fromPulse ? (
-          <div className={`w-80 flex-shrink-0 flex flex-col gap-4 overflow-auto`}>
-            {/* Swap Widget */}
-            <SwapWidget
-              defaultOutputMint={address}
-              outputSymbol={token?.symbol || "TOKEN"}
-              outputDecimals={6}
-              isGraduated={(token as PulseTokenData)?.complete !== false}
-            />
+          <div className={`w-full md:w-80 flex-shrink-0 flex flex-col gap-4 overflow-visible md:overflow-auto`}>
+            {/* Swap Widget - Compact on mobile */}
+            <div className="hidden md:block">
+              <SwapWidget
+                defaultOutputMint={address}
+                outputSymbol={token?.symbol || "TOKEN"}
+                outputDecimals={6}
+                isGraduated={(token as PulseTokenData)?.complete !== false}
+              />
+            </div>
+            {/* Mobile Swap Widget - Compact version */}
+            <div className="block md:hidden">
+              <SwapWidget
+                defaultOutputMint={address}
+                outputSymbol={token?.symbol || "TOKEN"}
+                outputDecimals={6}
+                isGraduated={(token as PulseTokenData)?.complete !== false}
+                compactMobile={true}
+              />
+            </div>
 
-            {/* Holder Stats */}
-            <div className={`border backdrop-blur-md p-4 ${
+            {/* Holder Stats - hidden on mobile */}
+            <div className={`hidden md:block border backdrop-blur-md p-4 ${
               isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'
             }`}>
               <h3 className={`font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Holder Stats</h3>
@@ -971,7 +984,7 @@ export default function TokenPage() {
             </div>
           </div>
         ) : (
-          <div className={`w-64 flex-shrink-0 border backdrop-blur-md p-4 overflow-auto ${
+          <div className={`hidden md:block w-64 flex-shrink-0 border backdrop-blur-md p-4 overflow-auto ${
             isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'
           }`}>
             <h3 className={`font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Supply Info</h3>
