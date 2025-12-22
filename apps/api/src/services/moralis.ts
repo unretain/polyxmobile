@@ -625,8 +625,11 @@ class MoralisService {
       let allSwaps: MoralisSwap[] = [];
       let cursor: string | undefined;
       // Increase max pages significantly to get full history
-      // 50 pages * 100 swaps = 5000 swaps max (should cover most tokens)
-      const maxPages = perTrade ? 50 : 10;
+      // Calculate max pages based on desired candles: maxCandles / 100 swaps per page
+      // Add buffer pages since not all swaps may have valid data
+      const maxPages = Math.min(100, Math.ceil((maxCandles * 1.5) / 100));
+
+      console.log(`📊 [getOHLCVFromSwaps] Fetching up to ${maxPages} pages for ${address} (maxCandles: ${maxCandles}, perTrade: ${perTrade})`);
 
       for (let page = 0; page < maxPages; page++) {
         const { swaps, cursor: nextCursor } = await this.getTokenSwaps(address, {
@@ -638,11 +641,14 @@ class MoralisService {
         allSwaps = allSwaps.concat(swaps);
         cursor = nextCursor;
 
-        // Stop only when no more pages available (we want ALL swaps for per-trade mode)
-        // For interval mode, stop when we have enough data
-        if (!cursor || swaps.length < 100) break;
-        if (!perTrade && allSwaps.length >= maxCandles) break;
+        // Stop only when no more pages available
+        // We want to fetch as much as possible up to maxPages
+        if (!cursor || swaps.length < 100) {
+          console.log(`📊 [getOHLCVFromSwaps] Stopping at page ${page + 1} - no more data (cursor: ${!!cursor}, swaps: ${swaps.length})`);
+          break;
+        }
       }
+      console.log(`📊 [getOHLCVFromSwaps] Fetched ${allSwaps.length} total swaps`);
 
       // Sort swaps by timestamp ASC (oldest first) for correct open/close calculation
       // API returns DESC (newest first), but we need oldest first so:
