@@ -6,11 +6,20 @@ import { useTokenStore } from "@/stores/tokenStore";
 import { Loader2 } from "lucide-react";
 
 export function TokenList() {
-  const { tokens, isLoading, error, fetchTokens, searchQuery } = useTokenStore();
+  const { tokens, isLoading, error, fetchTokens, searchQuery, connectRealtime, disconnectRealtime } = useTokenStore();
 
   useEffect(() => {
+    // Fetch initial data
     fetchTokens();
-  }, [fetchTokens]);
+
+    // Connect to WebSocket for real-time price updates
+    connectRealtime();
+
+    // Cleanup on unmount
+    return () => {
+      disconnectRealtime();
+    };
+  }, [fetchTokens, connectRealtime, disconnectRealtime]);
 
   // Filter tokens by search query
   const filteredTokens = tokens.filter((token) => {

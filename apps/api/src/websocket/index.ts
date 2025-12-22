@@ -3,16 +3,19 @@ import { pumpPortalService } from "../services/pumpportal";
 import { meteoraService } from "../services/meteora";
 import { getGrpcService } from "../grpc";
 import { Timeframe } from "../ohlcv";
+import { prisma } from "../lib/prisma";
 
 interface SubscriptionState {
   tokens: Set<string>;
   pulse: boolean;
+  dashboard: boolean; // Dashboard token price updates
   ohlcvSubscriptions: Set<string>; // Format: "baseMint:quoteMint:timeframe"
 }
 
 const subscriptions = new Map<string, SubscriptionState>();
 let pumpPortalInitialized = false;
 let meteoraPollingCleanup: (() => void) | null = null;
+let dashboardPriceInterval: NodeJS.Timeout | null = null;
 
 export function setupWebSocket(io: Server) {
   console.log("🔧 Setting up WebSocket handlers...");
@@ -21,7 +24,7 @@ export function setupWebSocket(io: Server) {
     console.log(`Client connected: ${socket.id}`);
 
     // Initialize subscription state for this client
-    subscriptions.set(socket.id, { tokens: new Set(), pulse: false, ohlcvSubscriptions: new Set() });
+    subscriptions.set(socket.id, { tokens: new Set(), pulse: false, dashboard: false, ohlcvSubscriptions: new Set() });
 
     // Handle token subscription
     socket.on("subscribe:token", (data: { address: string }) => {
@@ -60,6 +63,26 @@ export function setupWebSocket(io: Server) {
         state.pulse = false;
         socket.leave("pulse");
         console.log(`Client ${socket.id} unsubscribed from Pulse`);
+      }
+    });
+
+    // Handle Dashboard subscription (real-time price updates for established tokens)
+    socket.on("subscribe:dashboard", () => {
+      const state = subscriptions.get(socket.id);
+      if (state) {
+        state.dashboard = true;
+        socket.join("dashboard");
+        console.log(`Client ${socket.id} subscribed to Dashboard`);
+      }
+    });
+
+    // Handle Dashboard unsubscription
+    socket.on("unsubscribe:dashboard", () => {
+      const state = subscriptions.get(socket.id);
+      if (state) {
+        state.dashboard = false;
+        socket.leave("dashboard");
+        console.log(`Client ${socket.id} unsubscribed from Dashboard`);
       }
     });
 
@@ -123,6 +146,10 @@ export function setupWebSocket(io: Server) {
   // Initialize gRPC OHLCV streaming
   console.log("🔧 Initializing gRPC OHLCV streaming...");
   initializeGrpcOhlcv(io);
+
+  // Initialize Dashboard price streaming (reads from DB, broadcasts to subscribers)
+  console.log("🔧 Initializing Dashboard price streaming...");
+  initializeDashboardPriceStreaming(io);
 }
 
 // Initialize PumpPortal WebSocket for real-time pump.fun data
@@ -271,4 +298,48 @@ export function broadcastPriceUpdate(
     price,
     timestamp: Date.now(),
   });
+}
+
+// Initialize real-time dashboard price streaming
+// Broadcasts token prices from DB every 5 seconds to all dashboard subscribers
+function initializeDashboardPriceStreaming(io: Server) {
+  if (dashboardPriceInterval) return;
+
+  console.log("📊 Starting Dashboard price streaming (every 5s)");
+
+  dashboardPriceInterval = setInterval(async () => {
+    // Check if anyone is subscribed to dashboard
+    let hasDashboardSubscribers = false;
+    for (const state of subscriptions.values()) {
+      if (state.dashboard) {
+        hasDashboardSubscribers = true;
+        break;
+      }
+    }
+
+    if (!hasDashboardSubscribers) return;
+
+    try {
+      // Get all dashboard tokens from DB (already synced by background job)
+      const tokens = await prisma.token.findMany({
+        select: {
+          address: true,
+          symbol: true,
+          price: true,
+          priceChange24h: true,
+          volume24h: true,
+          marketCap: true,
+          liquidity: true,
+        },
+      });
+
+      // Broadcast to all dashboard subscribers
+      io.to("dashboard").emit("dashboard:prices", {
+        tokens,
+        timestamp: Date.now(),
+      });
+    } catch (error) {
+      console.error("Failed to broadcast dashboard prices:", error);
+    }
+  }, 5000); // Every 5 seconds
 }
