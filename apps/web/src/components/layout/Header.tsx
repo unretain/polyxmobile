@@ -571,12 +571,13 @@ export function Header() {
                       <label>Amount (SOL)</label>
                       <button
                         onClick={() => {
-                          // Leave enough for rent-exempt minimum + transaction fee
-                          // Rent exempt minimum is ~0.00089088 SOL, plus ~0.00001 for fee
-                          // Total reserve: ~0.001 SOL to be safe
-                          const reserve = 0.001;
-                          const maxAmount = Math.max(0, (balance?.sol.uiBalance || 0) - reserve);
-                          setWithdrawAmount(maxAmount > 0 ? maxAmount.toFixed(9) : "0");
+                          // Match the API's calculation exactly:
+                          // RENT_EXEMPT_MINIMUM = 890880 lamports = 0.00089088 SOL
+                          // TX_FEE = 5000 lamports = 0.000005 SOL
+                          // Total reserve: 0.000895880 SOL, round up to 0.0009 for safety
+                          const RENT_AND_FEE = 0.0009; // ~895880 lamports
+                          const maxAmount = Math.max(0, (balance?.sol.uiBalance || 0) - RENT_AND_FEE);
+                          setWithdrawAmount(maxAmount > 0 ? maxAmount.toFixed(6) : "0");
                         }}
                         className="text-[#FF6B4A] hover:underline"
                       >
