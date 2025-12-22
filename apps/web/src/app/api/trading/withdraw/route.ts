@@ -110,9 +110,8 @@ export async function POST(req: NextRequest) {
       const RENT_EXEMPT_MINIMUM = 890880;
 
       if (balance < lamports + RENT_EXEMPT_MINIMUM + TX_FEE) {
-        const maxWithdraw = Math.max(0, balance - RENT_EXEMPT_MINIMUM - TX_FEE) / LAMPORTS_PER_SOL;
         return NextResponse.json(
-          { error: `Insufficient SOL. Max withdrawable: ${maxWithdraw.toFixed(6)} SOL (need to keep ~0.001 SOL for rent + fees)` },
+          { error: "Insufficient balance for withdrawal" },
           { status: 400 }
         );
       }
