@@ -485,15 +485,17 @@ export default function PulsePage() {
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh]">
           {/* Backdrop */}
           <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            className={`absolute inset-0 backdrop-blur-sm ${isDark ? 'bg-black/60' : 'bg-black/40'}`}
             onClick={closeSearch}
           />
 
           {/* Modal */}
-          <div className="relative w-full max-w-2xl bg-[#111] border border-white/10 shadow-2xl">
+          <div className={`relative w-full max-w-2xl mx-4 border shadow-2xl ${
+            isDark ? 'bg-[#111] border-white/10' : 'bg-white border-gray-200'
+          }`}>
             {/* Search Header */}
-            <div className="flex items-center gap-3 p-4 border-b border-white/10">
-              <Search className="h-5 w-5 text-white/40" />
+            <div className={`flex items-center gap-3 p-4 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+              <Search className={`h-5 w-5 ${isDark ? 'text-white/40' : 'text-gray-400'}`} />
               <input
                 ref={searchInputRef}
                 type="text"
@@ -511,10 +513,14 @@ export default function PulsePage() {
                   }
                 }}
                 placeholder="Search by name, ticker, or CA..."
-                className="flex-1 bg-transparent text-lg text-white placeholder-white/40 outline-none"
+                className={`flex-1 bg-transparent text-lg outline-none ${
+                  isDark ? 'text-white placeholder-white/40' : 'text-gray-900 placeholder-gray-400'
+                }`}
                 autoFocus
               />
-              <kbd className="px-2 py-1 text-xs bg-white/10 text-white/50 border border-white/10">
+              <kbd className={`px-2 py-1 text-xs border ${
+                isDark ? 'bg-white/10 text-white/50 border-white/10' : 'bg-gray-100 text-gray-500 border-gray-200'
+              }`}>
                 Esc
               </kbd>
             </div>
@@ -527,10 +533,10 @@ export default function PulsePage() {
                   {searchHistory.length > 0 ? (
                     <>
                       <div className="px-4 py-2 flex items-center justify-between">
-                        <span className="text-xs text-white/40 uppercase tracking-wide">History</span>
+                        <span className={`text-xs uppercase tracking-wide ${isDark ? 'text-white/40' : 'text-gray-500'}`}>History</span>
                         <button
                           onClick={clearHistory}
-                          className="text-xs text-white/40 hover:text-white/60 transition-colors"
+                          className={`text-xs transition-colors ${isDark ? 'text-white/40 hover:text-white/60' : 'text-gray-400 hover:text-gray-600'}`}
                         >
                           Clear
                         </button>
@@ -541,25 +547,29 @@ export default function PulsePage() {
                           onClick={() => goToToken(token.address, token)}
                           className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#FF6B4A]/10 transition-colors text-left"
                         >
-                          <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full bg-white/5 ring-2 ring-white/10">
+                          <div className={`relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full ring-2 ${
+                            isDark ? 'bg-white/5 ring-white/10' : 'bg-gray-100 ring-gray-200'
+                          }`}>
                             {token.logoUri ? (
                               <Image src={token.logoUri} alt={token.symbol} fill className="object-cover" unoptimized />
                             ) : (
-                              <div className="flex h-full w-full items-center justify-center text-sm font-bold text-white/40 bg-gradient-to-br from-[#FF6B4A]/20 to-white/5">
+                              <div className={`flex h-full w-full items-center justify-center text-sm font-bold bg-gradient-to-br from-[#FF6B4A]/20 ${
+                                isDark ? 'text-white/40 to-white/5' : 'text-gray-400 to-gray-100'
+                              }`}>
                                 {token.symbol?.charAt(0) ?? "?"}
                               </div>
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="font-semibold text-white">{token.symbol}</span>
-                              <span className="text-sm text-white/40 truncate">{token.name}</span>
+                              <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>{token.symbol}</span>
+                              <span className={`text-sm truncate ${isDark ? 'text-white/40' : 'text-gray-500'}`}>{token.name}</span>
                             </div>
-                            <div className="text-xs text-white/40">{timeAgo(token.createdAt)}</div>
+                            <div className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>{timeAgo(token.createdAt)}</div>
                           </div>
                           <div className="text-right">
-                            <div className="text-white/40 text-xs">MC</div>
-                            <div className="text-white font-medium">{formatMC(token.marketCap)}</div>
+                            <div className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>MC</div>
+                            <div className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{formatMC(token.marketCap)}</div>
                           </div>
                           <div className={cn(
                             "px-2 py-1 text-xs font-semibold",
@@ -577,7 +587,7 @@ export default function PulsePage() {
                       ))}
                     </>
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-12 text-white/40">
+                    <div className={`flex flex-col items-center justify-center py-12 ${isDark ? 'text-white/40' : 'text-gray-400'}`}>
                       <Search className="h-10 w-10 mb-3 opacity-40" />
                       <span className="text-sm">Search by name, ticker, or paste a contract address</span>
                     </div>
@@ -588,7 +598,7 @@ export default function PulsePage() {
               {/* Show search results */}
               {searchValue.trim() && filteredTokens.length > 0 && (
                 <div className="py-2">
-                  <div className="px-4 py-2 text-xs text-white/40 uppercase tracking-wide">
+                  <div className={`px-4 py-2 text-xs uppercase tracking-wide ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
                     Results
                   </div>
                   {filteredTokens.map((token) => (
@@ -597,25 +607,29 @@ export default function PulsePage() {
                       onClick={() => goToToken(token.address, token)}
                       className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#FF6B4A]/10 transition-colors text-left"
                     >
-                      <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full bg-white/5 ring-2 ring-white/10">
+                      <div className={`relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full ring-2 ${
+                        isDark ? 'bg-white/5 ring-white/10' : 'bg-gray-100 ring-gray-200'
+                      }`}>
                         {token.logoUri ? (
                           <Image src={token.logoUri} alt={token.symbol} fill className="object-cover" unoptimized />
                         ) : (
-                          <div className="flex h-full w-full items-center justify-center text-sm font-bold text-white/40 bg-gradient-to-br from-[#FF6B4A]/20 to-white/5">
+                          <div className={`flex h-full w-full items-center justify-center text-sm font-bold bg-gradient-to-br from-[#FF6B4A]/20 ${
+                            isDark ? 'text-white/40 to-white/5' : 'text-gray-400 to-gray-100'
+                          }`}>
                             {token.symbol?.charAt(0) ?? "?"}
                           </div>
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="font-semibold text-white">{token.symbol}</span>
-                          <span className="text-sm text-white/40 truncate">{token.name}</span>
+                          <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>{token.symbol}</span>
+                          <span className={`text-sm truncate ${isDark ? 'text-white/40' : 'text-gray-500'}`}>{token.name}</span>
                         </div>
-                        <div className="text-xs text-white/40">{timeAgo(token.createdAt)}</div>
+                        <div className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>{timeAgo(token.createdAt)}</div>
                       </div>
                       <div className="text-right">
-                        <div className="text-white/40 text-xs">MC</div>
-                        <div className="text-white font-medium">{formatMC(token.marketCap)}</div>
+                        <div className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>MC</div>
+                        <div className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{formatMC(token.marketCap)}</div>
                       </div>
                       <div className={cn(
                         "px-2 py-1 text-xs font-semibold",
@@ -643,39 +657,43 @@ export default function PulsePage() {
                       {isSearchingCA && (
                         <div className="flex items-center justify-center py-8">
                           <RefreshCw className="h-6 w-6 animate-spin text-[#FF6B4A]" />
-                          <span className="ml-2 text-white/50">Searching for token...</span>
+                          <span className={`ml-2 ${isDark ? 'text-white/50' : 'text-gray-500'}`}>Searching for token...</span>
                         </div>
                       )}
 
                       {/* Token found from API */}
                       {!isSearchingCA && caSearchResult && (
                         <>
-                          <div className="px-4 py-2 text-xs text-white/40 uppercase tracking-wide">
+                          <div className={`px-4 py-2 text-xs uppercase tracking-wide ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
                             Found Token
                           </div>
                           <button
                             onClick={() => goToToken(caSearchResult.address, caSearchResult)}
                             className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#FF6B4A]/10 transition-colors text-left"
                           >
-                            <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full bg-white/5 ring-2 ring-white/10">
+                            <div className={`relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full ring-2 ${
+                              isDark ? 'bg-white/5 ring-white/10' : 'bg-gray-100 ring-gray-200'
+                            }`}>
                               {caSearchResult.logoUri ? (
                                 <Image src={caSearchResult.logoUri} alt={caSearchResult.symbol} fill className="object-cover" unoptimized />
                               ) : (
-                                <div className="flex h-full w-full items-center justify-center text-sm font-bold text-white/40 bg-gradient-to-br from-[#FF6B4A]/20 to-white/5">
+                                <div className={`flex h-full w-full items-center justify-center text-sm font-bold bg-gradient-to-br from-[#FF6B4A]/20 ${
+                                  isDark ? 'text-white/40 to-white/5' : 'text-gray-400 to-gray-100'
+                                }`}>
                                   {caSearchResult.symbol?.charAt(0) ?? "?"}
                                 </div>
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2">
-                                <span className="font-semibold text-white">{caSearchResult.symbol}</span>
-                                <span className="text-sm text-white/40 truncate">{caSearchResult.name}</span>
+                                <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>{caSearchResult.symbol}</span>
+                                <span className={`text-sm truncate ${isDark ? 'text-white/40' : 'text-gray-500'}`}>{caSearchResult.name}</span>
                               </div>
-                              <div className="text-xs text-white/40">{shortenAddress(caSearchResult.address)}</div>
+                              <div className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>{shortenAddress(caSearchResult.address)}</div>
                             </div>
                             <div className="text-right">
-                              <div className="text-white/40 text-xs">MC</div>
-                              <div className="text-white font-medium">{formatMC(caSearchResult.marketCap)}</div>
+                              <div className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>MC</div>
+                              <div className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{formatMC(caSearchResult.marketCap)}</div>
                             </div>
                             <div className={cn(
                               "px-2 py-1 text-xs font-semibold",
@@ -695,7 +713,7 @@ export default function PulsePage() {
 
                       {/* Token not found - show go to address button */}
                       {!isSearchingCA && !caSearchResult && (
-                        <div className="flex flex-col items-center justify-center py-12 text-white/40">
+                        <div className={`flex flex-col items-center justify-center py-12 ${isDark ? 'text-white/40' : 'text-gray-400'}`}>
                           {caSearchError ? (
                             <span className="text-sm mb-4">{caSearchError}</span>
                           ) : (
@@ -711,7 +729,7 @@ export default function PulsePage() {
                       )}
                     </>
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-12 text-white/40">
+                    <div className={`flex flex-col items-center justify-center py-12 ${isDark ? 'text-white/40' : 'text-gray-400'}`}>
                       <Search className="h-10 w-10 mb-3 opacity-40" />
                       <span className="text-sm">No tokens found for "{searchValue}"</span>
                     </div>
