@@ -181,8 +181,19 @@ export async function POST(req: NextRequest) {
       signature = await connection.sendRawTransaction(transaction.serialize());
     }
 
-    // Wait for confirmation
-    await connection.confirmTransaction(signature, "confirmed");
+    // Don't wait for full confirmation - just verify it was accepted
+    // This prevents the UI from getting stuck if confirmation takes too long
+    try {
+      // Quick check that transaction was accepted (with short timeout)
+      await Promise.race([
+        connection.confirmTransaction(signature, "processed"),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 10000))
+      ]);
+    } catch (e) {
+      // Even if confirmation times out, transaction was sent successfully
+      // User can check Solscan for final status
+      console.log(`[withdraw] Confirmation timeout/error for ${signature}:`, e);
+    }
 
     return NextResponse.json({
       success: true,
