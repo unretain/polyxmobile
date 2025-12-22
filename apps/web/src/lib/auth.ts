@@ -132,6 +132,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   events: {
     // Generate wallet after OAuth sign-in (Google, etc.)
     async signIn({ user, account }) {
+      console.log(`[auth] signIn event - user: ${user?.id}, provider: ${account?.provider}`);
       if (user.id && account?.provider !== "credentials") {
         // For OAuth providers, ensure user has a wallet
         await ensureUserHasWallet(user.id);
@@ -140,6 +141,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   callbacks: {
     async jwt({ token, user, account, trigger }) {
+      console.log(`[auth] jwt callback - trigger: ${trigger}, hasUser: ${!!user}, hasAccount: ${!!account}`);
       if (user) {
         token.id = user.id;
       }
