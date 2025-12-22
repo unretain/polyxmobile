@@ -831,6 +831,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
             onLineWidthChange={setActiveLineWidth}
             onClearAll={handleClearAllDrawings}
             drawingCount={drawings.length}
+            isDark={isDark}
           />
         </div>
       )}
@@ -1095,10 +1096,10 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
         </div>
       )}
 
-      {/* Fly mode hint - shown above chart when not in fly mode (only when drawing tools visible) */}
+      {/* Fly mode hint - shown above chart when not in fly mode (only when drawing tools visible), HIDDEN on mobile */}
       {showDrawingTools && !isFlyMode && (
-        <div className="absolute top-4 right-4 z-10">
-          <div className="bg-[#FF6B4A]/10 border border-[#FF6B4A]/30 px-3 py-1.5 text-xs">
+        <div className="hidden md:block absolute top-4 right-4 z-10">
+          <div className={`border px-3 py-1.5 text-xs ${isDark ? 'bg-[#FF6B4A]/10 border-[#FF6B4A]/30' : 'bg-[#FF6B4A]/10 border-[#FF6B4A]/40'}`}>
             <span className="text-[#FF6B4A] font-medium">Shift+Enter</span>
             <span className={isDark ? 'text-white/50' : 'text-gray-500'}> for fly mode</span>
           </div>
@@ -1131,9 +1132,9 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
         </div>
       )}
 
-      {/* Controls hint - only shown when drawing tools visible */}
+      {/* Controls hint - only shown when drawing tools visible, HIDDEN on mobile */}
       {showDrawingTools && (
-        <div className={`absolute bottom-14 left-4 backdrop-blur-md border px-3 py-1.5 text-xs ${
+        <div className={`hidden md:block absolute bottom-14 left-4 backdrop-blur-md border px-3 py-1.5 text-xs ${
           isDark ? 'bg-white/5 border-white/10 text-white/50' : 'bg-black/5 border-black/10 text-gray-500'
         }`}>
           {isFlyMode ? (
