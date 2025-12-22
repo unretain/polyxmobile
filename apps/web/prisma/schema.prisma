@@ -294,6 +294,53 @@ model PolymarketPriceHistory {
 }
 
 // ==========================================
+// Pulse Token Cache (pump.fun discovery)
+// ==========================================
+
+enum PulseCategory {
+  NEW           // Just launched on pump.fun
+  GRADUATING    // Near bonding curve completion ($15K-$69K MC)
+  GRADUATED     // Migrated to Raydium/PumpSwap
+}
+
+model PulseToken {
+  id              String        @id @default(cuid())
+  address         String        @unique
+  symbol          String
+  name            String
+  logoUri         String?
+  description     String?       @db.Text
+
+  // Market data
+  price           Float         @default(0)
+  priceChange24h  Float         @default(0)
+  volume24h       Float         @default(0)
+  marketCap       Float         @default(0)
+  liquidity       Float         @default(0)
+
+  // Pulse-specific
+  category        PulseCategory @default(NEW)
+  bondingProgress Float?        // 0-100% for graduating tokens
+  txCount         Int           @default(0)
+  replyCount      Int           @default(0)
+
+  // Socials
+  twitter         String?
+  telegram        String?
+  website         String?
+
+  // Timestamps
+  tokenCreatedAt  DateTime?     // When token was created on pump.fun
+  graduatedAt     DateTime?     // When token graduated to Raydium
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([category, marketCap])
+  @@index([category, tokenCreatedAt])
+  @@index([address])
+}
+
+// ==========================================
 // API Cache Models (to reduce external API calls)
 // ==========================================
 

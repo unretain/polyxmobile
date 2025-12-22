@@ -8,6 +8,9 @@ import { birdeyeService } from "../services/birdeye";
 import { pumpPortalService } from "../services/pumpportal";
 import { meteoraService } from "../services/meteora";
 import { moralisService } from "../services/moralis";
+import { pulseSyncService } from "../services/pulseSync";
+import { prisma } from "../lib/prisma";
+import { PulseCategory } from "@prisma/client";
 import { cache } from "../lib/cache";
 
 export const pulseRoutes = Router();
@@ -18,91 +21,97 @@ const newPairsQuerySchema = z.object({
 });
 
 // GET /api/pulse/new-pairs - Get newest token pairs
-// PRIMARY SOURCE: Moralis pump.fun/new API (has CDN logos, reliable data)
-// FALLBACK: PumpPortal real-time WebSocket for latest tokens not yet indexed
+// ARCHITECTURE:
+// - Real-time updates come via WebSocket (PumpPortal -> Socket.io -> Frontend)
+// - This endpoint serves INITIAL LOAD data from DB (enriched with Moralis logos/data)
+// - DB syncs every 5 seconds from Moralis for enriched data
+// - PumpPortal WebSocket provides instant new tokens (sub-second)
 pulseRoutes.get("/new-pairs", async (req, res) => {
   try {
     const query = newPairsQuerySchema.parse(req.query);
-    const { limit, source } = query;
+    const { limit } = query;
 
-    // Try cache first (short TTL for fresh data)
-    const cacheKey = `pulse:new-pairs:${source}:${limit}`;
-    const cached = await cache.get(cacheKey);
-    if (cached) {
-      return res.json(JSON.parse(cached));
+    // First: Get real-time tokens from PumpPortal (instant, sub-second)
+    const realtimeTokens = pumpPortalService.getRecentNewTokens() as any[];
+
+    // Second: Get enriched tokens from DB (has logos, market cap from Moralis)
+    const dbTokens = await prisma.pulseToken.findMany({
+      where: { category: PulseCategory.NEW },
+      orderBy: { tokenCreatedAt: "desc" },
+      take: limit,
+    });
+
+    // Create a map of DB tokens for quick lookup
+    const dbTokenMap = new Map(dbTokens.map((t) => [t.address, t]));
+
+    // Merge: Use realtime data but enrich with DB data if available
+    const mergedTokens: any[] = [];
+    const seenAddresses = new Set<string>();
+
+    // Add realtime tokens first (newest)
+    for (const rt of realtimeTokens) {
+      if (seenAddresses.has(rt.address)) continue;
+      seenAddresses.add(rt.address);
+
+      const dbToken = dbTokenMap.get(rt.address);
+      mergedTokens.push({
+        address: rt.address,
+        symbol: rt.symbol,
+        name: rt.name,
+        logoUri: dbToken?.logoUri || rt.logoUri || rt.image_uri,
+        description: rt.description,
+        price: rt.price || dbToken?.price || 0,
+        priceChange24h: rt.priceChange24h || dbToken?.priceChange24h || 0,
+        volume24h: rt.volume24h || dbToken?.volume24h || 0,
+        marketCap: rt.marketCap || dbToken?.marketCap || 0,
+        liquidity: rt.liquidity || dbToken?.liquidity || 0,
+        txCount: rt.txCount || rt.replyCount || 0,
+        replyCount: rt.replyCount || 0,
+        createdAt: rt.createdAt,
+        twitter: rt.twitter,
+        telegram: rt.telegram,
+        website: rt.website,
+        source: "pumpportal",
+      });
     }
 
-    let tokens: any[] = [];
+    // Add DB tokens not in realtime (older tokens with enriched data)
+    for (const dbt of dbTokens) {
+      if (seenAddresses.has(dbt.address)) continue;
+      seenAddresses.add(dbt.address);
 
-    // PRIMARY: Use Moralis pump.fun/new endpoint (most reliable, has logos)
-    if (source === "all" || source === "pumpfun" || source === "pumpportal") {
-      try {
-        const moralisTokens = await moralisService.getNewPulsePairs(limit);
-        tokens = tokens.concat(moralisTokens);
-        console.log(`📦 Got ${moralisTokens.length} new tokens from Moralis`);
-      } catch (err) {
-        console.error("Moralis new tokens error:", err);
-      }
+      mergedTokens.push({
+        address: dbt.address,
+        symbol: dbt.symbol,
+        name: dbt.name,
+        logoUri: dbt.logoUri,
+        description: dbt.description,
+        price: dbt.price,
+        priceChange24h: dbt.priceChange24h,
+        volume24h: dbt.volume24h,
+        marketCap: dbt.marketCap,
+        liquidity: dbt.liquidity,
+        txCount: dbt.txCount,
+        replyCount: dbt.replyCount,
+        createdAt: dbt.tokenCreatedAt?.getTime() || dbt.createdAt.getTime(),
+        twitter: dbt.twitter,
+        telegram: dbt.telegram,
+        website: dbt.website,
+        source: "database",
+      });
     }
 
-    // SUPPLEMENT: Add PumpPortal real-time tokens not yet in Moralis
-    // These are the very latest (last few minutes) that Moralis hasn't indexed yet
-    if (source === "all" || source === "pumpportal") {
-      try {
-        const realtimeTokens = pumpPortalService.getRecentNewTokens();
-        // Only add tokens not already in Moralis results
-        const existingAddresses = new Set(tokens.map((t: any) => t.address));
-        const newRealtimeTokens = realtimeTokens.filter(
-          (t: any) => !existingAddresses.has(t.address)
-        );
-        if (newRealtimeTokens.length > 0) {
-          tokens = [...newRealtimeTokens, ...tokens]; // Prepend newer tokens
-          console.log(`📦 Added ${newRealtimeTokens.length} real-time tokens from PumpPortal`);
-        }
-      } catch (err) {
-        console.error("PumpPortal fetch error:", err);
-      }
-    }
-
-    // Meteora DLMM pairs (only if explicitly requested)
-    if (source === "meteora") {
-      try {
-        const meteoraTokens = await meteoraService.getNewPairs(Math.min(limit, 30));
-        tokens = tokens.concat(meteoraTokens);
-        console.log(`📦 Fetched ${meteoraTokens.length} tokens from Meteora`);
-      } catch (err) {
-        console.error("Meteora fetch error:", err);
-      }
-    }
-
-    // Remove duplicates by address
-    const uniqueTokens = Array.from(
-      new Map(tokens.map((t) => [t.address, t])).values()
-    );
-
-    // Filter out invalid tokens
-    const validTokens = uniqueTokens.filter((t) =>
-      t.address &&
-      t.symbol &&
-      t.symbol !== "???"
-    );
-
-    // Sort by creation time (newest first)
-    validTokens.sort((a, b) => b.createdAt - a.createdAt);
-
-    // Limit results
-    const result = validTokens.slice(0, limit);
+    // Sort by creation time (newest first) and limit
+    mergedTokens.sort((a, b) => b.createdAt - a.createdAt);
+    const data = mergedTokens.slice(0, limit);
 
     const response = {
-      data: result,
-      total: result.length,
+      data,
+      total: data.length,
       timestamp: Date.now(),
-      sources: ["moralis", "pumpportal"],
+      sources: ["pumpportal", "database"],
       realtime: pumpPortalService.isConnected(),
     };
-
-    // Cache for 5 seconds (fresh data)
-    await cache.set(cacheKey, JSON.stringify(response), 5);
 
     res.json(response);
   } catch (error) {
@@ -112,65 +121,79 @@ pulseRoutes.get("/new-pairs", async (req, res) => {
 });
 
 // GET /api/pulse/graduating - Get coins about to graduate from pump.fun
-// PRIMARY SOURCE: Moralis pump.fun/bonding API (has bondingCurveProgress %)
 // "Final Stretch" = Market cap $15K-$69K (approaching graduation threshold)
-// Following Axiom.trade's approach: https://docs.axiom.trade/axiom/finding-tokens/pulse
-// Pump.fun graduation happens at ~$69K market cap when bonding curve is 100% filled
+// Uses DB for enriched data + PumpPortal for real-time updates
 pulseRoutes.get("/graduating", async (req, res) => {
   try {
-    let tokens: any[] = [];
-
-    // Market cap thresholds for "Final Stretch"
-    // Pump.fun tokens graduate at ~$69K market cap
-    // Final Stretch = tokens with $15K-$69K market cap actively approaching graduation
-    // We use $10K as "soft minimum" to keep tokens that dipped after hitting $15K
-    const MIN_MARKET_CAP = 15000; // $15K - minimum to enter "Final Stretch"
-    const SOFT_MIN_MARKET_CAP = 10000; // $10K - keep tokens that dipped below $15K but peaked above
-    const MAX_MARKET_CAP = 69000; // $69K - graduation threshold
-
-    // PRIMARY: Use Moralis bonding endpoint (get 100 - Moralis max limit)
-    try {
-      const moralisTokens = await moralisService.getGraduatingPulsePairs(100);
-      // Filter by market cap range: $10K-$69K (with $15K as the entry point)
-      // Tokens that hit $15K+ and dipped to $10K-$15K are kept (they "entered" Final Stretch)
-      // Tokens < $10K are removed (too far gone or never made it)
-      tokens = moralisTokens.filter((t: any) => {
-        const mc = t.marketCap || 0;
-        // Keep tokens between soft min ($10K) and max ($69K)
-        // The bonding progress % helps identify tokens that reached higher MCs
-        return mc >= SOFT_MIN_MARKET_CAP && mc < MAX_MARKET_CAP;
-      });
-      console.log(`📦 Got ${moralisTokens.length} bonding tokens, ${tokens.length} are in Final Stretch ($${SOFT_MIN_MARKET_CAP/1000}K-$${MAX_MARKET_CAP/1000}K MC)`);
-    } catch (err) {
-      console.error("Moralis bonding tokens error:", err);
-    }
-
-    // SUPPLEMENT: Add PumpPortal real-time graduating tokens
-    if (tokens.length === 0) {
-      const realtimeTokens = pumpPortalService.getGraduatingTokens();
-      if (realtimeTokens.length > 0) {
-        tokens = realtimeTokens.filter((t: any) => {
-          const mc = t.marketCap || 0;
-          return mc >= SOFT_MIN_MARKET_CAP && mc < MAX_MARKET_CAP;
-        });
-        console.log(`📦 Using ${tokens.length} graduating tokens from PumpPortal`);
-      }
-    }
-
-    // Sort by bonding curve progress ASCENDING (lowest progress = just entered Final Stretch = top)
-    // This shows tokens that JUST entered Final Stretch at the top, moving down as they approach graduation
-    // User wants: "add new ones at the top and as they go down remove them"
-    tokens.sort((a, b) => {
-      const aProgress = a.bondingProgress || 0;
-      const bProgress = b.bondingProgress || 0;
-      return aProgress - bProgress; // Ascending: lowest progress first (newest to Final Stretch)
+    // Get from DB (enriched with Moralis data)
+    const dbTokens = await prisma.pulseToken.findMany({
+      where: { category: PulseCategory.GRADUATING },
+      orderBy: { bondingProgress: "asc" }, // Lowest progress first
     });
 
+    // Get real-time from PumpPortal
+    const realtimeTokens = pumpPortalService.getGraduatingTokens() as any[];
+    const dbTokenMap = new Map(dbTokens.map((t) => [t.address, t]));
+
+    // Merge tokens
+    const mergedTokens: any[] = [];
+    const seenAddresses = new Set<string>();
+
+    // Add realtime tokens first
+    for (const rt of realtimeTokens) {
+      if (seenAddresses.has(rt.address)) continue;
+      const mc = rt.marketCap || 0;
+      if (mc < 10000 || mc >= 69000) continue; // Filter to $10K-$69K
+      seenAddresses.add(rt.address);
+
+      const dbToken = dbTokenMap.get(rt.address);
+      mergedTokens.push({
+        address: rt.address,
+        symbol: rt.symbol,
+        name: rt.name,
+        logoUri: dbToken?.logoUri || rt.logoUri || rt.image_uri,
+        price: rt.price || dbToken?.price || 0,
+        priceChange24h: rt.priceChange24h || dbToken?.priceChange24h || 0,
+        volume24h: rt.volume24h || dbToken?.volume24h || 0,
+        marketCap: rt.marketCap || dbToken?.marketCap || 0,
+        liquidity: rt.liquidity || dbToken?.liquidity || 0,
+        bondingProgress: rt.bondingProgress || dbToken?.bondingProgress || 0,
+        txCount: rt.txCount || 0,
+        createdAt: rt.createdAt,
+        source: "pumpportal",
+      });
+    }
+
+    // Add DB tokens not in realtime
+    for (const dbt of dbTokens) {
+      if (seenAddresses.has(dbt.address)) continue;
+      seenAddresses.add(dbt.address);
+
+      mergedTokens.push({
+        address: dbt.address,
+        symbol: dbt.symbol,
+        name: dbt.name,
+        logoUri: dbt.logoUri,
+        price: dbt.price,
+        priceChange24h: dbt.priceChange24h,
+        volume24h: dbt.volume24h,
+        marketCap: dbt.marketCap,
+        liquidity: dbt.liquidity,
+        bondingProgress: dbt.bondingProgress || 0,
+        txCount: dbt.txCount,
+        createdAt: dbt.tokenCreatedAt?.getTime() || dbt.createdAt.getTime(),
+        source: "database",
+      });
+    }
+
+    // Sort by bonding progress ascending
+    mergedTokens.sort((a, b) => (a.bondingProgress || 0) - (b.bondingProgress || 0));
+
     const response = {
-      data: tokens,
-      total: tokens.length,
+      data: mergedTokens,
+      total: mergedTokens.length,
       timestamp: Date.now(),
-      source: "moralis",
+      sources: ["pumpportal", "database"],
       realtime: pumpPortalService.isConnected(),
     };
 
@@ -182,38 +205,76 @@ pulseRoutes.get("/graduating", async (req, res) => {
 });
 
 // GET /api/pulse/graduated - Get coins that graduated to Raydium/PumpSwap
-// PRIMARY SOURCE: Moralis pump.fun/graduated API (has graduatedAt timestamp)
+// Uses DB for enriched data + PumpPortal for real-time migrations
 pulseRoutes.get("/graduated", async (req, res) => {
   try {
-    let tokens: any[] = [];
+    // Get from DB (enriched with Moralis data)
+    const dbTokens = await prisma.pulseToken.findMany({
+      where: { category: PulseCategory.GRADUATED },
+      orderBy: { graduatedAt: "desc" },
+      take: 50,
+    });
 
-    // PRIMARY: Use Moralis graduated endpoint
-    try {
-      const moralisTokens = await moralisService.getGraduatedPulsePairs(50);
-      tokens = moralisTokens;
-      console.log(`📦 Got ${moralisTokens.length} graduated tokens from Moralis`);
-    } catch (err) {
-      console.error("Moralis graduated tokens error:", err);
+    // Get real-time from PumpPortal
+    const realtimeTokens = pumpPortalService.getMigratedTokens() as any[];
+    const dbTokenMap = new Map(dbTokens.map((t) => [t.address, t]));
+
+    // Merge tokens
+    const mergedTokens: any[] = [];
+    const seenAddresses = new Set<string>();
+
+    // Add realtime tokens first (newest migrations)
+    for (const rt of realtimeTokens) {
+      if (seenAddresses.has(rt.address)) continue;
+      seenAddresses.add(rt.address);
+
+      const dbToken = dbTokenMap.get(rt.address);
+      mergedTokens.push({
+        address: rt.address,
+        symbol: rt.symbol,
+        name: rt.name,
+        logoUri: dbToken?.logoUri || rt.logoUri,
+        price: rt.price || dbToken?.price || 0,
+        priceChange24h: rt.priceChange24h || dbToken?.priceChange24h || 0,
+        volume24h: rt.volume24h || dbToken?.volume24h || 0,
+        marketCap: rt.marketCap || dbToken?.marketCap || 0,
+        liquidity: rt.liquidity || dbToken?.liquidity || 0,
+        txCount: rt.txCount || 0,
+        createdAt: rt.createdAt,
+        complete: true,
+        pool: rt.pool,
+        source: "pumpportal",
+      });
     }
 
-    // SUPPLEMENT: Add PumpPortal real-time migrated tokens not in Moralis yet
-    const realtimeTokens = pumpPortalService.getMigratedTokens();
-    if (realtimeTokens.length > 0) {
-      const existingAddresses = new Set(tokens.map((t: any) => t.address));
-      const newMigratedTokens = realtimeTokens.filter(
-        (t: any) => !existingAddresses.has(t.address)
-      );
-      if (newMigratedTokens.length > 0) {
-        tokens = [...newMigratedTokens, ...tokens]; // Prepend newer
-        console.log(`📦 Added ${newMigratedTokens.length} migrated tokens from PumpPortal`);
-      }
+    // Add DB tokens not in realtime
+    for (const dbt of dbTokens) {
+      if (seenAddresses.has(dbt.address)) continue;
+      seenAddresses.add(dbt.address);
+
+      mergedTokens.push({
+        address: dbt.address,
+        symbol: dbt.symbol,
+        name: dbt.name,
+        logoUri: dbt.logoUri,
+        price: dbt.price,
+        priceChange24h: dbt.priceChange24h,
+        volume24h: dbt.volume24h,
+        marketCap: dbt.marketCap,
+        liquidity: dbt.liquidity,
+        txCount: dbt.txCount,
+        createdAt: dbt.tokenCreatedAt?.getTime() || dbt.createdAt.getTime(),
+        graduatedAt: dbt.graduatedAt?.getTime(),
+        complete: true,
+        source: "database",
+      });
     }
 
     const response = {
-      data: tokens,
-      total: tokens.length,
+      data: mergedTokens,
+      total: mergedTokens.length,
       timestamp: Date.now(),
-      source: "moralis",
+      sources: ["pumpportal", "database"],
       realtime: pumpPortalService.isConnected(),
     };
 
@@ -222,6 +283,26 @@ pulseRoutes.get("/graduated", async (req, res) => {
     console.error("Error fetching graduated coins:", error);
     res.status(500).json({ error: "Failed to fetch graduated coins" });
   }
+});
+
+// POST /api/pulse/sync - Manually trigger sync (for testing/admin)
+pulseRoutes.post("/sync", async (req, res) => {
+  try {
+    const result = await pulseSyncService.sync();
+    res.json({
+      success: true,
+      ...result,
+      status: pulseSyncService.getStatus(),
+    });
+  } catch (error) {
+    console.error("Error syncing pulse tokens:", error);
+    res.status(500).json({ error: "Failed to sync pulse tokens" });
+  }
+});
+
+// GET /api/pulse/sync/status - Get sync status
+pulseRoutes.get("/sync/status", async (req, res) => {
+  res.json(pulseSyncService.getStatus());
 });
 
 // GET /api/pulse/king - Get king of the hill coins
