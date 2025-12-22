@@ -570,7 +570,11 @@ export function Header() {
                     <div className={`flex justify-between text-xs mb-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
                       <label>Amount (SOL)</label>
                       <button
-                        onClick={() => setWithdrawAmount(balance?.sol.uiBalance.toString() || "0")}
+                        onClick={() => {
+                          // Leave 0.00001 SOL (10000 lamports) for transaction fee
+                          const maxAmount = Math.max(0, (balance?.sol.uiBalance || 0) - 0.00001);
+                          setWithdrawAmount(maxAmount > 0 ? maxAmount.toFixed(9) : "0");
+                        }}
                         className="text-[#FF6B4A] hover:underline"
                       >
                         MAX
