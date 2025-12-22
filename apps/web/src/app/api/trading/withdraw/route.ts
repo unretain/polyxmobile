@@ -34,9 +34,9 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { destinationAddress, amount, tokenMint, closeAccount } = body;
+    const { destinationAddress, amount, tokenMint } = body;
 
-    if (!destinationAddress || (!amount && !closeAccount)) {
+    if (!destinationAddress || !amount) {
       return NextResponse.json(
         { error: "destinationAddress and amount are required" },
         { status: 400 }
@@ -51,9 +51,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validate amount (unless closing account)
-    const amountNum = closeAccount ? 0 : parseFloat(amount);
-    if (!closeAccount && (isNaN(amountNum) || amountNum <= 0)) {
+    // Validate amount
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum) || amountNum <= 0) {
       return NextResponse.json(
         { error: "Amount must be a positive number" },
         { status: 400 }
@@ -105,27 +105,16 @@ export async function POST(req: NextRequest) {
 
       let lamports: number;
 
-      if (closeAccount) {
-        // Close account - send everything minus tx fee
-        lamports = balance - TX_FEE;
-        if (lamports <= 0) {
-          return NextResponse.json(
-            { error: "Not enough SOL to cover transaction fee" },
-            { status: 400 }
-          );
-        }
-      } else {
-        // Normal withdraw - need to keep rent-exempt minimum
-        lamports = Math.floor(amountNum * LAMPORTS_PER_SOL);
-        const RENT_EXEMPT_MINIMUM = 890880;
+      // Check balance - need to keep rent-exempt minimum + fee
+      lamports = Math.floor(amountNum * LAMPORTS_PER_SOL);
+      const RENT_EXEMPT_MINIMUM = 890880;
 
-        if (balance < lamports + RENT_EXEMPT_MINIMUM + TX_FEE) {
-          const maxWithdraw = Math.max(0, balance - RENT_EXEMPT_MINIMUM - TX_FEE) / LAMPORTS_PER_SOL;
-          return NextResponse.json(
-            { error: `Insufficient SOL. Max withdrawable: ${maxWithdraw.toFixed(6)} SOL (need to keep ~0.001 SOL for rent + fees)` },
-            { status: 400 }
-          );
-        }
+      if (balance < lamports + RENT_EXEMPT_MINIMUM + TX_FEE) {
+        const maxWithdraw = Math.max(0, balance - RENT_EXEMPT_MINIMUM - TX_FEE) / LAMPORTS_PER_SOL;
+        return NextResponse.json(
+          { error: `Insufficient SOL. Max withdrawable: ${maxWithdraw.toFixed(6)} SOL (need to keep ~0.001 SOL for rent + fees)` },
+          { status: 400 }
+        );
       }
 
       const transaction = new Transaction().add(
