@@ -365,7 +365,7 @@ export function Header() {
                       className="rounded-full"
                     />
                     <span className={`font-medium ${isDark ? 'text-white' : 'text-black'}`}>
-                      {balance ? balance.sol.uiBalance.toFixed(4) : "0.00"}
+                      {balance ? (balance.sol.uiBalance < 0.001 ? "0.00" : balance.sol.uiBalance.toFixed(4)) : "0.00"}
                     </span>
                     <span className={isDark ? 'text-white/40' : 'text-black/40'}>SOL</span>
                     <div className={`w-px h-4 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
@@ -518,7 +518,10 @@ export function Header() {
                   />
                   <div>
                     <p className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {balance ? balance.sol.uiBalance.toFixed(4) : "0.0000"} SOL
+                      {balance ? (
+                        // Show 0 if balance is just rent (< 0.001 SOL), otherwise show actual
+                        balance.sol.uiBalance < 0.001 ? "0.0000" : balance.sol.uiBalance.toFixed(4)
+                      ) : "0.0000"} SOL
                     </p>
                   </div>
                 </div>
