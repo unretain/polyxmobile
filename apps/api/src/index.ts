@@ -3,11 +3,12 @@ import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import dotenv from "dotenv";
-import { tokenRoutes } from "./routes/tokens";
+import { tokenRoutes, startDashboardTokenSync } from "./routes/tokens";
 import { trendingRoutes } from "./routes/trending";
 import { pulseRoutes } from "./routes/pulse";
 import { ohlcvRoutes } from "./routes/ohlcv";
 import { setupWebSocket } from "./websocket";
+import { pulseSyncService } from "./services/pulseSync";
 
 dotenv.config();
 
@@ -56,4 +57,15 @@ const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {
   console.log(`🚀 API server running on http://localhost:${PORT}`);
   console.log(`📡 WebSocket server ready on port ${PORT}`);
+
+  // Start background Pulse sync (every 5 seconds)
+  // Syncs token data from Moralis to DB for enriched metadata (logos, market cap)
+  // Real-time updates still come via PumpPortal WebSocket
+  pulseSyncService.start();
+  console.log(`📊 Pulse background sync started`);
+
+  // Start background Dashboard token sync (every 30 seconds)
+  // Established tokens don't need as frequent updates as Pulse tokens
+  startDashboardTokenSync();
+  console.log(`📊 Dashboard token sync started`);
 });
