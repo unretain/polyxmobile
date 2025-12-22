@@ -231,20 +231,60 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   }, [webglKey]);
 
   // Track previous data length to adjust view when more data is prepended
-  // Initialize to 0 so first data load always triggers full zoom out
+  // Initialize to 0 so first data load always triggers view setup
   const prevDataLengthRef = useRef(0);
+  // Track if this is initial load vs subsequent data updates
+  const isInitialLoadRef = useRef(true);
 
-  // Reset view when data changes - ALWAYS show all data (fully zoomed out)
+  // Set view when data changes
+  // On initial load: show most recent ~200 candles (rightmost portion)
+  // On subsequent loads (more history prepended): keep current view position
   useEffect(() => {
     const prevLength = prevDataLengthRef.current;
     const newLength = safeData.length;
 
-    console.log('[Chart3D] Data length changed:', { prevLength, newLength });
+    console.log('[Chart3D] Data length changed:', { prevLength, newLength, isInitial: isInitialLoadRef.current });
 
-    // Always reset to fully zoomed out - show ALL data
-    console.log('[Chart3D] Setting view to fully zoomed out: 0 to 1');
-    setViewStart(0);
-    setViewEnd(1);
+    if (newLength === 0) {
+      prevDataLengthRef.current = 0;
+      return;
+    }
+
+    if (isInitialLoadRef.current || prevLength === 0) {
+      // Initial load: show most recent candles, not all history
+      // Calculate view range to show ~200 candles or all if less
+      const INITIAL_VISIBLE_CANDLES = 200;
+
+      if (newLength <= INITIAL_VISIBLE_CANDLES) {
+        // Less than 200 candles - show all
+        console.log('[Chart3D] Initial load - showing all', newLength, 'candles');
+        setViewStart(0);
+        setViewEnd(1);
+      } else {
+        // More than 200 candles - show only the most recent ~200
+        const visibleRatio = INITIAL_VISIBLE_CANDLES / newLength;
+        const newStart = 1 - visibleRatio;
+        console.log('[Chart3D] Initial load - showing last', INITIAL_VISIBLE_CANDLES, 'of', newLength, 'candles (viewStart:', newStart.toFixed(3), ')');
+        setViewStart(newStart);
+        setViewEnd(1);
+      }
+
+      isInitialLoadRef.current = false;
+    } else if (newLength > prevLength) {
+      // More data was prepended (scrolled left to load history)
+      // Adjust view to maintain the same visible portion
+      const addedCandles = newLength - prevLength;
+      const addedRatio = addedCandles / newLength;
+
+      // Shift current view range to account for prepended data
+      const currentRange = viewEndRef.current - viewStartRef.current;
+      const newStart = Math.max(0, viewStartRef.current + addedRatio * (1 - currentRange));
+      const newEnd = Math.min(1, newStart + currentRange);
+
+      console.log('[Chart3D] History prepended - adjusting view from', viewStartRef.current.toFixed(3), '-', viewEndRef.current.toFixed(3), 'to', newStart.toFixed(3), '-', newEnd.toFixed(3));
+      setViewStart(newStart);
+      setViewEnd(newEnd);
+    }
 
     prevDataLengthRef.current = newLength;
   }, [safeData.length]);
