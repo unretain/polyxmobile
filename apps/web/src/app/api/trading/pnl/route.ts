@@ -307,6 +307,95 @@ export async function GET(req: NextRequest) {
     });
     const tokenMap = new Map(tokenMetadata.map(t => [t.address, t]));
 
+    // Find tokens missing from database
+    const missingMints = tokenMints.filter(mint => !tokenMap.has(mint));
+
+    // Fetch missing token metadata from Jupiter and cache it
+    if (missingMints.length > 0) {
+      try {
+        // Jupiter token list API
+        const jupiterRes = await fetch(
+          `https://tokens.jup.ag/tokens?tags=verified&ids=${missingMints.join(',')}`,
+          { next: { revalidate: 3600 } } // Cache for 1 hour
+        );
+
+        if (jupiterRes.ok) {
+          const jupiterTokens = await jupiterRes.json();
+
+          for (const jToken of jupiterTokens) {
+            tokenMap.set(jToken.address, {
+              address: jToken.address,
+              name: jToken.name || jToken.symbol,
+              symbol: jToken.symbol,
+              logoUri: jToken.logoURI || null,
+            });
+
+            // Cache in database for future requests (fire and forget)
+            prisma.token.upsert({
+              where: { address: jToken.address },
+              create: {
+                address: jToken.address,
+                name: jToken.name || jToken.symbol,
+                symbol: jToken.symbol,
+                decimals: jToken.decimals || 6,
+                logoUri: jToken.logoURI || null,
+              },
+              update: {
+                name: jToken.name || jToken.symbol,
+                symbol: jToken.symbol,
+                logoUri: jToken.logoURI || null,
+              },
+            }).catch(() => {}); // Ignore cache errors
+          }
+        }
+
+        // For any still missing, try DexScreener
+        const stillMissing = missingMints.filter(mint => !tokenMap.has(mint));
+        if (stillMissing.length > 0) {
+          for (const mint of stillMissing) {
+            try {
+              const dexRes = await fetch(
+                `https://api.dexscreener.com/latest/dex/tokens/${mint}`,
+                { next: { revalidate: 3600 } }
+              );
+              if (dexRes.ok) {
+                const dexData = await dexRes.json();
+                const pair = dexData.pairs?.[0];
+                if (pair?.baseToken) {
+                  const token = pair.baseToken;
+                  tokenMap.set(mint, {
+                    address: mint,
+                    name: token.name || token.symbol,
+                    symbol: token.symbol,
+                    logoUri: pair.info?.imageUrl || null,
+                  });
+
+                  // Cache in database
+                  prisma.token.upsert({
+                    where: { address: mint },
+                    create: {
+                      address: mint,
+                      name: token.name || token.symbol,
+                      symbol: token.symbol,
+                      decimals: 6,
+                      logoUri: pair.info?.imageUrl || null,
+                    },
+                    update: {
+                      name: token.name || token.symbol,
+                      symbol: token.symbol,
+                      logoUri: pair.info?.imageUrl || null,
+                    },
+                  }).catch(() => {});
+                }
+              }
+            } catch {}
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch missing token metadata:", err);
+      }
+    }
+
     // Enrich positions with token metadata
     for (const pos of positionsArray) {
       const token = tokenMap.get(pos.mint);
