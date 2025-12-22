@@ -571,8 +571,11 @@ export function Header() {
                       <label>Amount (SOL)</label>
                       <button
                         onClick={() => {
-                          // Leave 0.00001 SOL (10000 lamports) for transaction fee
-                          const maxAmount = Math.max(0, (balance?.sol.uiBalance || 0) - 0.00001);
+                          // Leave enough for rent-exempt minimum + transaction fee
+                          // Rent exempt minimum is ~0.00089088 SOL, plus ~0.00001 for fee
+                          // Total reserve: ~0.001 SOL to be safe
+                          const reserve = 0.001;
+                          const maxAmount = Math.max(0, (balance?.sol.uiBalance || 0) - reserve);
                           setWithdrawAmount(maxAmount > 0 ? maxAmount.toFixed(9) : "0");
                         }}
                         className="text-[#FF6B4A] hover:underline"
