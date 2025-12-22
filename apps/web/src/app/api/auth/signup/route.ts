@@ -71,43 +71,58 @@ export async function POST(request: NextRequest) {
 
     // Send verification email FIRST before creating user
     const apiKey = process.env.RESEND_API_KEY;
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "Polyx <onboarding@resend.dev>";
+
+    console.log(`[signup] Sending verification email to: ${normalizedEmail}`);
+    console.log(`[signup] RESEND_API_KEY exists: ${!!apiKey}`);
+    console.log(`[signup] From email: ${fromEmail}`);
+
     if (!apiKey) {
-      console.error("RESEND_API_KEY not configured");
+      console.error("[signup] RESEND_API_KEY not configured");
       return NextResponse.json({ error: "Email service not configured" }, { status: 500 });
     }
 
     try {
+      const emailPayload = {
+        from: fromEmail,
+        to: normalizedEmail,
+        subject: "Verify your Polyx account",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2>Welcome to Polyx!</h2>
+            <p>Your verification code is:</p>
+            <div style="background: #f4f4f4; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 20px 0;">
+              ${verificationCode}
+            </div>
+            <p>This code expires in 10 minutes.</p>
+            <p>If you didn't create an account, you can ignore this email.</p>
+          </div>
+        `,
+      };
+
+      console.log(`[signup] Calling Resend API...`);
+
       const emailRes = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          from: process.env.RESEND_FROM_EMAIL || "Polyx <onboarding@resend.dev>",
-          to: normalizedEmail,
-          subject: "Verify your Polyx account",
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2>Welcome to Polyx!</h2>
-              <p>Your verification code is:</p>
-              <div style="background: #f4f4f4; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 20px 0;">
-                ${verificationCode}
-              </div>
-              <p>This code expires in 10 minutes.</p>
-              <p>If you didn't create an account, you can ignore this email.</p>
-            </div>
-          `,
-        }),
+        body: JSON.stringify(emailPayload),
       });
 
+      const responseData = await emailRes.json();
+      console.log(`[signup] Resend response status: ${emailRes.status}`);
+      console.log(`[signup] Resend response:`, responseData);
+
       if (!emailRes.ok) {
-        const errorData = await emailRes.json();
-        console.error("Resend error:", errorData);
+        console.error("[signup] Resend error:", responseData);
         return NextResponse.json({ error: "Failed to send verification email. Please try again." }, { status: 500 });
       }
+
+      console.log(`[signup] Email sent successfully to ${normalizedEmail}`);
     } catch (emailError) {
-      console.error("Email send error:", emailError);
+      console.error("[signup] Email send error:", emailError);
       return NextResponse.json({ error: "Failed to send verification email" }, { status: 500 });
     }
 
