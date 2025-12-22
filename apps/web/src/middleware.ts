@@ -33,11 +33,20 @@ export async function middleware(request: NextRequest) {
   // If it's a protected route, check for authentication
   if (isProtectedRoute) {
     const secret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET;
-    console.log(`[middleware] Auth secret exists: ${!!secret}`);
+    const isSecure = process.env.NODE_ENV === "production" || request.url.startsWith("https");
+
+    // Auth.js v5 uses different cookie names than next-auth v4
+    // In production (HTTPS): __Secure-authjs.session-token
+    // In development (HTTP): authjs.session-token
+    const cookieName = isSecure ? "__Secure-authjs.session-token" : "authjs.session-token";
+
+    console.log(`[middleware] Auth secret exists: ${!!secret}, cookieName: ${cookieName}`);
+    console.log(`[middleware] Cookie value exists: ${!!request.cookies.get(cookieName)?.value}`);
 
     const token = await getToken({
       req: request,
       secret,
+      cookieName,
     });
 
     console.log(`[middleware] Token exists: ${!!token}, userId: ${token?.id || 'none'}`);
