@@ -394,7 +394,7 @@ export default function PulsePage() {
       )}
 
       {/* Three Column Layout - stacks on mobile */}
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 min-h-0 overflow-y-auto md:overflow-visible">
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 min-h-0 md:overflow-visible">
         {/* Column 1: New Pairs */}
         <TokenColumn
           title="New Pairs"

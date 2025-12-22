@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 @layer base {
+  /* Dark mode (default) */
   :root {
     --background: 0 0% 3.9%;
     --foreground: 0 0% 98%;
@@ -24,6 +25,33 @@
     --input: 0 0% 14.9%;
     --ring: 142 76% 36%;
     --radius: 0.5rem;
+    --scrollbar-track: 0 0% 14.9%;
+    --scrollbar-thumb: 0 0% 40%;
+  }
+
+  /* Light mode */
+  .light {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 142 76% 36%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 142 76% 36%;
+    --scrollbar-track: 0 0% 95%;
+    --scrollbar-thumb: 0 0% 70%;
   }
 }
 
@@ -36,24 +64,32 @@
   }
 }
 
-/* Scrollbar styling */
+/* Scrollbar styling - theme aware */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: hsl(var(--muted));
-  border-radius: 4px;
+  background: hsl(var(--scrollbar-track));
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.3);
-  border-radius: 4px;
+  background: hsl(var(--scrollbar-thumb) / 0.5);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.5);
+  background: hsl(var(--scrollbar-thumb) / 0.7);
+}
+
+/* Hide scrollbar on mobile but keep scroll functionality */
+@media (max-width: 768px) {
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
 }
 
 /* Custom utilities */
