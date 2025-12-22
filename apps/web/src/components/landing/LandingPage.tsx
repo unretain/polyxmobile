@@ -109,25 +109,48 @@ function TimeframeSelector({
   onTimeframeChange: (tf: Timeframe) => void;
   isDark: boolean;
 }) {
-  const timeframes: Timeframe[] = ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"];
+  // Show fewer timeframes on mobile
+  const allTimeframes: Timeframe[] = ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"];
+  const mobileTimeframes: Timeframe[] = ["5m", "1h", "4h", "1d"];
 
   return (
-    <div className={`flex items-center gap-1 p-1 rounded-lg ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
-      {timeframes.map((tf) => (
-        <button
-          key={tf}
-          onClick={() => onTimeframeChange(tf)}
-          className={`px-3 py-1.5 rounded-md text-xs font-mono transition-colors ${
-            timeframe === tf
-              ? 'bg-[#FF6B4A] text-white'
-              : isDark
-                ? 'text-white/60 hover:text-white hover:bg-white/5'
-                : 'text-black/60 hover:text-black hover:bg-black/5'
-          }`}
-        >
-          {tf}
-        </button>
-      ))}
+    <div className={`flex items-center gap-0.5 md:gap-1 p-1 rounded-lg ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
+      {/* Mobile: show limited timeframes */}
+      <div className="flex md:hidden">
+        {mobileTimeframes.map((tf) => (
+          <button
+            key={tf}
+            onClick={() => onTimeframeChange(tf)}
+            className={`px-2 py-1 rounded-md text-xs font-mono transition-colors ${
+              timeframe === tf
+                ? 'bg-[#FF6B4A] text-white'
+                : isDark
+                  ? 'text-white/60 hover:text-white hover:bg-white/5'
+                  : 'text-black/60 hover:text-black hover:bg-black/5'
+            }`}
+          >
+            {tf}
+          </button>
+        ))}
+      </div>
+      {/* Desktop: show all timeframes */}
+      <div className="hidden md:flex gap-1">
+        {allTimeframes.map((tf) => (
+          <button
+            key={tf}
+            onClick={() => onTimeframeChange(tf)}
+            className={`px-3 py-1.5 rounded-md text-xs font-mono transition-colors ${
+              timeframe === tf
+                ? 'bg-[#FF6B4A] text-white'
+                : isDark
+                  ? 'text-white/60 hover:text-white hover:bg-white/5'
+                  : 'text-black/60 hover:text-black hover:bg-black/5'
+            }`}
+          >
+            {tf}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -336,16 +359,16 @@ export function LandingPage() {
       <Header />
 
       {/* Main Content */}
-      <main className="relative z-10 pt-28 pb-20 px-6 md:px-10 lg:px-16">
+      <main className="relative z-10 pt-20 md:pt-28 pb-12 md:pb-20 px-4 md:px-10 lg:px-16">
         <div className="max-w-[1600px] mx-auto">
           {/* Large Title */}
-          <div className="text-center mb-16">
-            <h1 className="text-6xl md:text-8xl lg:text-9xl font-bold font-inter tracking-normal">
+          <div className="text-center mb-8 md:mb-16">
+            <h1 className="text-4xl sm:text-6xl md:text-8xl lg:text-9xl font-bold font-inter tracking-normal">
               <span className={isDark ? 'text-white' : 'text-black'}>[poly</span>
               <span className="text-[#FF6B4A]">x</span>
               <span className={isDark ? 'text-white' : 'text-black'}>]</span>
             </h1>
-            <p className={`mt-6 text-lg ${isDark ? 'text-white/50' : 'text-black/50'}`}>
+            <p className={`mt-4 md:mt-6 text-sm md:text-lg ${isDark ? 'text-white/50' : 'text-black/50'}`}>
               3D Trading Charts for Solana
             </p>
           </div>
@@ -454,15 +477,14 @@ export function LandingPage() {
               className="relative rounded-2xl overflow-hidden group"
             >
               {/* Chart container - base layer */}
-              <div className="relative flex flex-col h-[640px]">
+              <div className="relative flex flex-col h-[400px] md:h-[640px]">
                 {/* Top bar with token info and timeframe */}
-                <div className="relative z-20 flex items-center justify-between p-5">
-                  <div className="flex items-center gap-4">
-                    <TokenLogo token={currentToken} size={48} />
-                    <div className="flex items-center gap-3">
-                      <Sparkline data={priceHistory.slice(-20)} positive={isPositive} width={80} height={30} />
-                      <div className={`text-sm ${isDark ? 'text-white/40' : 'text-black/40'}`}>———</div>
-                      <span className={`font-mono text-sm ${isDark ? 'text-white/60' : 'text-black/60'}`}>${currentToken.symbol}</span>
+                <div className="relative z-20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 md:p-5">
+                  <div className="flex items-center gap-3 md:gap-4">
+                    <TokenLogo token={currentToken} size={36} />
+                    <div className="flex items-center gap-2 md:gap-3">
+                      <Sparkline data={priceHistory.slice(-20)} positive={isPositive} width={60} height={24} />
+                      <span className={`font-mono text-xs md:text-sm ${isDark ? 'text-white/60' : 'text-black/60'}`}>${currentToken.symbol}</span>
                     </div>
                   </div>
                   <TimeframeSelector
@@ -494,22 +516,22 @@ export function LandingPage() {
                 </div>
 
                 {/* Token info bar at bottom - outside chart area */}
-                <div className="relative z-20 flex items-center justify-between p-5 border-t border-white/5">
-                  <div className="flex items-center gap-6">
-                    <div className="text-3xl font-bold lowercase">{currentToken.symbol}</div>
-                    <div className="flex items-center gap-6 text-sm">
+                <div className="relative z-20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3 md:p-5 border-t border-white/5">
+                  <div className="flex items-center gap-3 md:gap-6 flex-wrap">
+                    <div className="text-xl md:text-3xl font-bold lowercase">{currentToken.symbol}</div>
+                    <div className="flex items-center gap-3 md:gap-6 text-xs md:text-sm">
                       <div>
-                        <div className={`text-xs uppercase ${isDark ? 'text-white/40' : 'text-black/40'}`}>Price</div>
-                        <div className="font-mono">${tokenPrice?.toFixed(4) || "..."}</div>
+                        <div className={`text-[10px] md:text-xs uppercase ${isDark ? 'text-white/40' : 'text-black/40'}`}>Price</div>
+                        <div className="font-mono">${tokenPrice?.toFixed(2) || "..."}</div>
                       </div>
                       <div>
-                        <div className={`text-xs uppercase ${isDark ? 'text-white/40' : 'text-black/40'}`}>24h Change</div>
+                        <div className={`text-[10px] md:text-xs uppercase ${isDark ? 'text-white/40' : 'text-black/40'}`}>24h</div>
                         <div className={`font-mono ${isPositive ? "text-green-500" : "text-red-500"}`}>
                           {isPositive ? "+" : ""}{priceHistory.length > 1 ? ((priceHistory[priceHistory.length - 1] - priceHistory[0]) / priceHistory[0] * 100).toFixed(2) : 0}%
                         </div>
                       </div>
-                      <div>
-                        <div className={`text-xs uppercase ${isDark ? 'text-white/40' : 'text-black/40'}`}>Token</div>
+                      <div className="hidden sm:block">
+                        <div className={`text-[10px] md:text-xs uppercase ${isDark ? 'text-white/40' : 'text-black/40'}`}>Token</div>
                         <div className="font-mono">{currentToken.name}</div>
                       </div>
                     </div>
@@ -519,19 +541,19 @@ export function LandingPage() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={goToPrevToken}
-                      className={`w-10 h-10 rounded-full border flex items-center justify-center transition-colors ${
+                      className={`w-8 h-8 md:w-10 md:h-10 rounded-full border flex items-center justify-center transition-colors ${
                         isDark ? 'border-white/10 hover:bg-white/5 hover:border-[#FF6B4A]/30' : 'border-black/10 hover:bg-black/5'
                       }`}
                     >
-                      <ChevronRight className="w-5 h-5 rotate-180" />
+                      <ChevronRight className="w-4 h-4 md:w-5 md:h-5 rotate-180" />
                     </button>
                     <button
                       onClick={goToNextToken}
-                      className={`w-10 h-10 rounded-full border flex items-center justify-center transition-colors ${
+                      className={`w-8 h-8 md:w-10 md:h-10 rounded-full border flex items-center justify-center transition-colors ${
                         isDark ? 'border-white/10 hover:bg-white/5 hover:border-[#FF6B4A]/30' : 'border-black/10 hover:bg-black/5'
                       }`}
                     >
-                      <ChevronRight className="w-5 h-5" />
+                      <ChevronRight className="w-4 h-4 md:w-5 md:h-5" />
                     </button>
                   </div>
                 </div>
@@ -562,16 +584,16 @@ export function LandingPage() {
 
           {/* Bottom Row - CTA Cards - matching reference layout */}
           {/* Grid matches the two-column layout above: left card under left panel, 3 cards under chart */}
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,3fr)] gap-6 mt-6">
+          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,3fr)] gap-4 md:gap-6 mt-4 md:mt-6">
             {/* Left: View Pulse Card - aligned under left panel */}
             <Link
               href="/pulse"
-              className={`group rounded-2xl border py-6 px-5 card-shine hover:scale-[1.02] transition-all flex items-center gap-4 ${
+              className={`group rounded-2xl border py-4 md:py-6 px-4 md:px-5 card-shine hover:scale-[1.02] transition-all flex items-center gap-3 md:gap-4 ${
                 isDark ? 'bg-[#1a1a1a] hover:bg-[#252525] border-transparent' : 'bg-white hover:bg-gray-100 border-transparent'
               }`}
             >
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <div className={`w-8 h-8 md:w-10 md:h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
+                <svg className="w-4 h-4 md:w-5 md:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
                   <line x1="16" y1="2" x2="16" y2="6" />
                   <line x1="8" y1="2" x2="8" y2="6" />
@@ -579,35 +601,35 @@ export function LandingPage() {
                 </svg>
               </div>
               {/* iOS Cylinder rotation text */}
-              <div className="ios-cylinder" style={{ width: "140px" }}>
+              <div className="ios-cylinder" style={{ width: "120px" }}>
                 <div className="ios-cylinder-inner">
                   <div className="ios-cylinder-face ios-cylinder-front">
-                    <span className="text-lg font-bold whitespace-nowrap">View Pulse Feed</span>
+                    <span className="text-base md:text-lg font-bold whitespace-nowrap">View Pulse</span>
                   </div>
                   <div className="ios-cylinder-face ios-cylinder-bottom">
-                    <span className="text-lg font-bold text-[#FF6B4A] whitespace-nowrap">Trade now</span>
+                    <span className="text-base md:text-lg font-bold text-[#FF6B4A] whitespace-nowrap">Trade now</span>
                   </div>
                 </div>
               </div>
             </Link>
 
-            {/* Right: 3 cards under chart - Ready to trade spans 2 cols, docs and trade markets each 1 col */}
-            <div className="grid grid-cols-4 gap-4">
+            {/* Right: cards under chart - stacks on mobile */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
               {/* Ready to trade Card - Coral accent with line draw animation - spans 2 columns */}
               <button
                 onClick={handleLaunchApp}
-                className="group col-span-2 rounded-2xl bg-[#FF6B4A] py-6 px-5 hover:scale-[1.02] transition-all relative overflow-hidden text-left"
+                className="group col-span-2 rounded-2xl bg-[#FF6B4A] py-4 md:py-6 px-4 md:px-5 hover:scale-[1.02] transition-all relative overflow-hidden text-left"
               >
                 <div className="relative flex flex-col justify-between h-full">
-                  <div className="text-lg font-bold text-white">Ready to trade?</div>
+                  <div className="text-base md:text-lg font-bold text-white">Ready to trade?</div>
                   {/* Text with line to the RIGHT that draws leftward, pushing text left */}
-                  <div className="flex items-center justify-end mt-3">
+                  <div className="flex items-center justify-end mt-2 md:mt-3">
                     {/* "Launch the app" text - same style as Ready to trade but black */}
-                    <span className="text-lg font-bold text-black whitespace-nowrap transition-transform duration-500 ease-out group-hover:-translate-x-6">
+                    <span className="text-base md:text-lg font-bold text-black whitespace-nowrap transition-transform duration-500 ease-out group-hover:-translate-x-4 md:group-hover:-translate-x-6">
                       Launch the app
                     </span>
                     {/* Line appears to the RIGHT of text, grows leftward */}
-                    <div className="h-[2px] w-0 group-hover:w-20 bg-black transition-all duration-500 ease-out ml-2" />
+                    <div className="h-[2px] w-0 group-hover:w-12 md:group-hover:w-20 bg-black transition-all duration-500 ease-out ml-2" />
                   </div>
                 </div>
               </button>
@@ -615,21 +637,22 @@ export function LandingPage() {
               {/* Docs Card with iOS cylinder rotation */}
               <Link
                 href="/docs"
-                className={`group rounded-2xl border py-6 px-5 card-shine hover:scale-[1.02] transition-all flex items-center justify-between relative overflow-hidden ${
+                className={`group rounded-2xl border py-4 md:py-6 px-3 md:px-5 card-shine hover:scale-[1.02] transition-all flex items-center justify-between relative overflow-hidden ${
                   isDark ? 'bg-[#1a1a1a] hover:bg-[#252525] border-transparent' : 'bg-white hover:bg-gray-100 border-transparent'
                 }`}
               >
                 <div className="absolute top-0 left-0 right-0 h-px animated-line" />
-                <div className="flex items-center gap-3">
-                  <svg className={`w-5 h-5 ${isDark ? 'text-white/60' : 'text-black/60'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <div className="flex items-center gap-2 md:gap-3">
+                  <svg className={`w-4 h-4 md:w-5 md:h-5 flex-shrink-0 ${isDark ? 'text-white/60' : 'text-black/60'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                     <polyline points="14 2 14 8 20 8" />
                     <line x1="16" y1="13" x2="8" y2="13" />
                     <line x1="16" y1="17" x2="8" y2="17" />
                     <polyline points="10 9 9 9 8 9" />
                   </svg>
-                  {/* iOS Cylinder rotation text */}
-                  <div className="ios-cylinder" style={{ width: "90px" }}>
+                  {/* Simple text on mobile, iOS Cylinder on desktop */}
+                  <span className={`text-base md:text-lg font-bold md:hidden ${isDark ? 'text-white' : 'text-black'}`}>Docs</span>
+                  <div className="ios-cylinder hidden md:block" style={{ width: "90px" }}>
                     <div className="ios-cylinder-inner">
                       <div className="ios-cylinder-face ios-cylinder-front">
                         <span className={`text-lg font-bold whitespace-nowrap ${isDark ? 'text-white' : 'text-black'}`}>The docs</span>
@@ -640,38 +663,22 @@ export function LandingPage() {
                     </div>
                   </div>
                 </div>
-                {/* Diagonal arrow that animates with iOS cylinder */}
-                <div className="ios-cylinder" style={{ width: "24px" }}>
-                  <div className="ios-cylinder-inner">
-                    <div className="ios-cylinder-face ios-cylinder-front flex justify-end">
-                      <svg className={`w-5 h-5 ${isDark ? 'text-white/40' : 'text-black/40'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <line x1="7" y1="17" x2="17" y2="7" />
-                        <polyline points="7 7 17 7 17 17" />
-                      </svg>
-                    </div>
-                    <div className="ios-cylinder-face ios-cylinder-bottom flex justify-end">
-                      <svg className="w-5 h-5 text-[#FF6B4A]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <line x1="7" y1="17" x2="17" y2="7" />
-                        <polyline points="7 7 17 7 17 17" />
-                      </svg>
-                    </div>
-                  </div>
-                </div>
               </Link>
 
               {/* Trade Markets Card with iOS cylinder rotation - no arrow */}
               <Link
                 href="/markets"
-                className={`group rounded-2xl border py-6 px-5 card-shine hover:scale-[1.02] transition-all flex items-center relative overflow-hidden ${
+                className={`group rounded-2xl border py-4 md:py-6 px-3 md:px-5 card-shine hover:scale-[1.02] transition-all flex items-center relative overflow-hidden ${
                   isDark ? 'bg-[#1a1a1a] hover:bg-[#252525] border-transparent' : 'bg-white hover:bg-gray-100 border-transparent'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <svg className={`w-5 h-5 ${isDark ? 'text-white/60' : 'text-black/60'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <div className="flex items-center gap-2 md:gap-3">
+                  <svg className={`w-4 h-4 md:w-5 md:h-5 flex-shrink-0 ${isDark ? 'text-white/60' : 'text-black/60'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                   </svg>
-                  {/* iOS Cylinder rotation text */}
-                  <div className="ios-cylinder" style={{ width: "130px" }}>
+                  {/* Simple text on mobile, iOS Cylinder on desktop */}
+                  <span className={`text-base md:text-lg font-bold md:hidden ${isDark ? 'text-white' : 'text-black'}`}>Markets</span>
+                  <div className="ios-cylinder hidden md:block" style={{ width: "130px" }}>
                     <div className="ios-cylinder-inner">
                       <div className="ios-cylinder-face ios-cylinder-front">
                         <span className="text-lg font-bold whitespace-nowrap">Trade markets</span>
@@ -689,20 +696,20 @@ export function LandingPage() {
       </main>
 
       {/* Footer */}
-      <footer className={`relative z-10 border-t py-5 px-6 md:px-10 lg:px-16 ${isDark ? 'border-white/5' : 'border-black/10'}`}>
-        <div className="max-w-[1600px] mx-auto flex items-center justify-between">
-          <div className={`flex items-center gap-4 text-sm ${isDark ? 'text-white/40' : 'text-black/40'}`}>
+      <footer className={`relative z-10 border-t py-4 md:py-5 px-4 md:px-10 lg:px-16 ${isDark ? 'border-white/5' : 'border-black/10'}`}>
+        <div className="max-w-[1600px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className={`flex items-center gap-3 md:gap-4 text-xs md:text-sm ${isDark ? 'text-white/40' : 'text-black/40'}`}>
             <span className="flex items-center gap-1">
               <span>{currentToken.symbol}:</span>
               <span className={isDark ? 'text-white/60' : 'text-black/60'}>${tokenPrice?.toFixed(2) || "..."}</span>
             </span>
             <a href="mailto:omniscient@extraficial.dev" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Support</a>
-            <a href="https://x.com/unretains" target="_blank" rel="noopener noreferrer" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Founders</a>
+            <a href="https://x.com/unretains" target="_blank" rel="noopener noreferrer" className={`hidden sm:inline transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Founders</a>
           </div>
 
-          <div className={`flex items-center gap-4 text-sm ${isDark ? 'text-white/40' : 'text-black/40'}`}>
-            <Link href="/privacy" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Privacy Policy</Link>
-            <Link href="/tos" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Terms of Service</Link>
+          <div className={`flex items-center gap-3 md:gap-4 text-xs md:text-sm ${isDark ? 'text-white/40' : 'text-black/40'}`}>
+            <Link href="/privacy" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Privacy</Link>
+            <Link href="/tos" className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}>Terms</Link>
           </div>
         </div>
       </footer>
