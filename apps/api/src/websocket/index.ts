@@ -301,11 +301,11 @@ export function broadcastPriceUpdate(
 }
 
 // Initialize real-time dashboard price streaming
-// Broadcasts token prices from DB every 5 seconds to all dashboard subscribers
+// Broadcasts token prices from DB every 1 second for live trading
 function initializeDashboardPriceStreaming(io: Server) {
   if (dashboardPriceInterval) return;
 
-  console.log("📊 Starting Dashboard price streaming (every 5s)");
+  console.log("📊 Starting Dashboard price streaming (every 1s)");
 
   dashboardPriceInterval = setInterval(async () => {
     // Check if anyone is subscribed to dashboard
@@ -341,5 +341,5 @@ function initializeDashboardPriceStreaming(io: Server) {
     } catch (error) {
       console.error("Failed to broadcast dashboard prices:", error);
     }
-  }, 5000); // Every 5 seconds
+  }, 1000); // Every 1 second for live trading
 }
