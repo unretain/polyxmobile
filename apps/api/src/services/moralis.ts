@@ -538,7 +538,15 @@ class MoralisService {
       }
 
       const data = await response.json();
-      return data.result || [];
+      const tokens = data.result || [];
+
+      // Log first few tokens to debug
+      console.log(`[Moralis] getGraduatedTokens: Got ${tokens.length} tokens`);
+      if (tokens.length > 0) {
+        console.log(`[Moralis] Sample graduated token:`, JSON.stringify(tokens[0], null, 2));
+      }
+
+      return tokens;
     } catch (error) {
       console.error("Error fetching Moralis graduated tokens:", error);
       return [];
@@ -586,18 +594,25 @@ class MoralisService {
         ...(options?.cursor && { cursor: options.cursor }),
       });
 
-      const response = await fetch(
-        `${MORALIS_API_URL}/token/mainnet/${address}/swaps?${params}`,
-        { headers: this.getHeaders() }
-      );
+      const url = `${MORALIS_API_URL}/token/mainnet/${address}/swaps?${params}`;
+      const response = await fetch(url, { headers: this.getHeaders() });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[Moralis] Swaps API error ${response.status}: ${errorText}`);
         throw new Error(`Moralis swaps API error: ${response.status}`);
       }
 
       const data = await response.json();
+      const swaps = data.result || [];
+
+      // Log when fetching first page
+      if (!options?.cursor) {
+        console.log(`[Moralis] getTokenSwaps: First page got ${swaps.length} swaps, cursor: ${data.cursor ? 'yes' : 'no'}`);
+      }
+
       return {
-        swaps: data.result || [],
+        swaps,
         cursor: data.cursor,
       };
     } catch (error) {
@@ -949,12 +964,53 @@ class MoralisService {
   }
 
   // Get graduated tokens in Pulse format
+  // Fetches individual token data for each to get accurate MC/volume
   async getGraduatedPulsePairs(limit: number = 50): Promise<ReturnType<typeof this.mapPumpFunTokenToPulse>[]> {
     const tokens = await this.getGraduatedTokens(limit);
-    return tokens.map((t) => ({
-      ...this.mapPumpFunTokenToPulse(t),
-      complete: true,
-    }));
+
+    // The graduated endpoint only returns basic info without MC/volume
+    // We need to fetch individual token data for accurate stats
+    console.log(`[Moralis] getGraduatedPulsePairs: Enriching ${tokens.length} graduated tokens with individual data...`);
+
+    const enrichedTokens = await Promise.all(
+      tokens.map(async (t, index) => {
+        const baseData = {
+          ...this.mapPumpFunTokenToPulse(t),
+          complete: true,
+        };
+
+        // Fetch individual token data for accurate MC/volume
+        try {
+          const tokenData = await this.getTokenData(t.tokenAddress);
+          if (tokenData && (tokenData.marketCap > 0 || tokenData.volume24h > 0)) {
+            console.log(`[Moralis] Enriched ${t.symbol}: MC=$${tokenData.marketCap?.toLocaleString() || 0}, Vol=$${tokenData.volume24h?.toLocaleString() || 0}`);
+            return {
+              ...baseData,
+              price: tokenData.price || baseData.price,
+              marketCap: tokenData.marketCap || baseData.marketCap,
+              volume24h: tokenData.volume24h || baseData.volume24h,
+              liquidity: tokenData.liquidity || baseData.liquidity,
+              priceChange24h: tokenData.priceChange24h || baseData.priceChange24h,
+              logoUri: tokenData.logoURI || baseData.logoUri,
+            };
+          }
+        } catch (err) {
+          // Log but continue with base data
+          if (index < 3) {
+            console.warn(`[Moralis] Failed to enrich ${t.symbol}:`, err);
+          }
+        }
+
+        return baseData;
+      })
+    );
+
+    // Log summary
+    const withMC = enrichedTokens.filter(t => t.marketCap > 0).length;
+    const withVol = enrichedTokens.filter(t => t.volume24h > 0).length;
+    console.log(`[Moralis] getGraduatedPulsePairs: ${withMC}/${enrichedTokens.length} have MC, ${withVol}/${enrichedTokens.length} have volume`);
+
+    return enrichedTokens;
   }
 }
 
