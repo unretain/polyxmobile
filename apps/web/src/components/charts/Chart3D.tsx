@@ -447,7 +447,6 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   }, [webglKey]);
 
   // Track previous data to detect when data is replaced vs prepended
-  // Store lastTimestamp too to detect if we're looking at same token
   const prevDataRef = useRef<{ length: number; firstTimestamp: number | null; lastTimestamp: number | null }>({
     length: 0,
     firstTimestamp: null,
@@ -457,61 +456,72 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   // Fixed visible window size (200 candles)
   const VISIBLE_CANDLES = 200;
 
-  // Track if we've initialized the view for this dataset
-  const initializedForDataRef = useRef<string | null>(null);
+  // Track if user has manually navigated (panned) - if so, don't auto-reset view
+  const userHasNavigatedRef = useRef(false);
+
+  // Track the "identity" of the current dataset to detect token/timeframe switches
+  // We use the MIDDLE candle's timestamp as a stable identifier
+  // This is more stable than first/last which change with prepending/appending
+  const currentDataIdentityRef = useRef<number | null>(null);
 
   // Set view when data changes
   // Uses fixed-width slider (200 candles) that can pan left/right
   useEffect(() => {
     const prevLength = prevDataRef.current.length;
     const prevFirstTs = prevDataRef.current.firstTimestamp;
-    const prevLastTs = prevDataRef.current.lastTimestamp;
     const newLength = safeData.length;
     const newFirstTs = safeData.length > 0 ? safeData[0].timestamp : null;
     const newLastTs = safeData.length > 0 ? safeData[safeData.length - 1].timestamp : null;
 
     if (newLength === 0) {
       prevDataRef.current = { length: 0, firstTimestamp: null, lastTimestamp: null };
-      initializedForDataRef.current = null;
+      currentDataIdentityRef.current = null;
+      userHasNavigatedRef.current = false;
       return;
     }
 
-    // Create a unique identifier for this dataset based on first and last timestamp
-    // This helps us detect when we're looking at the SAME token data vs completely different data
-    const dataId = `${newFirstTs}-${newLastTs}`;
+    // Get middle candle timestamp as stable identity marker
+    const midIdx = Math.floor(newLength / 2);
+    const midTs = safeData[midIdx]?.timestamp || null;
 
-    // Detect if this is TRULY NEW data (different token/timeframe)
-    // It's new data if:
-    // 1. We had no previous data
-    // 2. The LAST timestamp changed significantly (means different token or timeframe switch)
-    // 3. Both first AND last timestamps changed dramatically (not just prepending history)
-    const lastTsDiff = prevLastTs && newLastTs ? Math.abs(newLastTs - prevLastTs) : Infinity;
-    const firstTsDiff = prevFirstTs && newFirstTs ? Math.abs(newFirstTs - prevFirstTs) : Infinity;
+    // Check if this is a COMPLETELY DIFFERENT dataset (different token or major timeframe change)
+    // We detect this by checking if the middle timestamp is wildly different
+    const prevIdentity = currentDataIdentityRef.current;
+    const identityChanged = prevIdentity === null || midTs === null ||
+                           Math.abs(midTs - prevIdentity) > 3600000; // >1 hour difference = different data
 
-    // New data = last timestamp changed significantly (more than 10 minutes)
-    // This catches timeframe changes and token switches
-    // Prepended history would keep the same last timestamp
-    const isNewData = prevLength === 0 ||
-                      prevLastTs === null ||
-                      newLastTs === null ||
-                      lastTsDiff > 600000; // Last timestamp changed by >10 minutes = different data
-
-    // Check if we already initialized for this exact dataset
-    const alreadyInitialized = initializedForDataRef.current === dataId;
-
-    if (isNewData && !alreadyInitialized) {
-      // New data: show most recent candles (slider at right end)
-      console.log('[Chart3D] New data detected - resetting view to end');
-      initializedForDataRef.current = dataId;
+    // Only reset view if:
+    // 1. Identity changed (different token/timeframe) AND
+    // 2. User hasn't manually navigated yet
+    if (identityChanged && !userHasNavigatedRef.current) {
+      console.log('[Chart3D] New dataset detected - initializing view');
+      currentDataIdentityRef.current = midTs;
 
       if (newLength <= VISIBLE_CANDLES) {
-        // Less than 200 candles - show all
         viewStartRef.current = 0;
         viewEndRef.current = 1;
         setViewStart(0);
         setViewEnd(1);
       } else {
-        // More than 200 candles - position slider at right end (most recent)
+        const visibleRatio = VISIBLE_CANDLES / newLength;
+        const newStart = 1 - visibleRatio;
+        viewStartRef.current = newStart;
+        viewEndRef.current = 1;
+        setViewStart(newStart);
+        setViewEnd(1);
+      }
+    } else if (identityChanged && userHasNavigatedRef.current) {
+      // New token but user was navigating - reset the navigation flag and initialize
+      console.log('[Chart3D] New dataset + user navigated - resetting to new data');
+      currentDataIdentityRef.current = midTs;
+      userHasNavigatedRef.current = false;
+
+      if (newLength <= VISIBLE_CANDLES) {
+        viewStartRef.current = 0;
+        viewEndRef.current = 1;
+        setViewStart(0);
+        setViewEnd(1);
+      } else {
         const visibleRatio = VISIBLE_CANDLES / newLength;
         const newStart = 1 - visibleRatio;
         viewStartRef.current = newStart;
@@ -535,11 +545,8 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       viewEndRef.current = newEnd;
       setViewStart(newStart);
       setViewEnd(newEnd);
-
-      // Update the dataId since we have more data now
-      initializedForDataRef.current = `${newFirstTs}-${newLastTs}`;
     }
-    // Otherwise keep current view - user is navigating
+    // Otherwise: same dataset, user is navigating or data just updated - keep view
 
     prevDataRef.current = { length: newLength, firstTimestamp: newFirstTs, lastTimestamp: newLastTs };
   }, [safeData]);
@@ -758,6 +765,9 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       return false; // No change
     }
 
+    // Mark that user has manually navigated - prevents auto-reset on data updates
+    userHasNavigatedRef.current = true;
+
     // Update refs immediately so next pan call has correct values
     // (Don't wait for the useEffect to sync them after re-render)
     viewStartRef.current = newStart;
@@ -835,6 +845,8 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     setViewEnd(1);
     setYScale(1.0);
     yScaleRef.current = 1.0;
+    // Reset navigation flag so new data will show at end
+    userHasNavigatedRef.current = false;
   }, [safeData.length]);
 
   // Track shift key state globally for panning and disabling OrbitControls
@@ -939,6 +951,8 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       const clampedEnd = Math.min(1, newEnd);
       viewStartRef.current = clampedStart;
       viewEndRef.current = clampedEnd;
+      // Mark that user has manually navigated
+      userHasNavigatedRef.current = true;
       setViewStart(clampedStart);
       setViewEnd(clampedEnd);
     };
