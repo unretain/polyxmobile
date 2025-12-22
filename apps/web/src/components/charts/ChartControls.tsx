@@ -24,18 +24,18 @@ export function ChartControls({ period, chartType, onPeriodChange, showPulseOpti
     : basePeriods;
 
   return (
-    <div className="flex items-center gap-1">
+    <div className={`flex items-center gap-0.5 md:gap-1 p-0.5 md:p-1 ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
       {periods.map((p) => (
         <button
           key={p.value}
           onClick={() => onPeriodChange(p.value)}
           className={cn(
-            "px-3 py-1.5 text-sm font-medium transition-colors",
+            "px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium transition-colors",
             period === p.value
               ? "bg-[#FF6B4A] text-white"
               : isDark
-                ? "text-white/50 hover:bg-white/10 hover:text-white"
-                : "text-gray-500 hover:bg-gray-100 hover:text-gray-900",
+                ? "text-white/60 hover:bg-white/10 hover:text-white"
+                : "text-gray-600 hover:bg-gray-200 hover:text-gray-900",
             // Highlight 1s option with a different color when available
             p.value === "1s" && period !== "1s" && "text-[#FF6B4A]/70 hover:text-[#FF6B4A]"
           )}
