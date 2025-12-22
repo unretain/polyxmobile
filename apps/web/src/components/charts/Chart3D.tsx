@@ -39,20 +39,27 @@ export interface DrawingToolbarRenderProps {
 
 // Speed ball control component - drag left/right with exponential speed increase
 interface SpeedBallControlProps {
-  onPan: (candles: number) => void;
+  onPan: (candles: number) => boolean; // Returns false if hit boundary
   isDark: boolean;
   dataLength: number;
+  viewStart: number; // 0-1 position
+  viewEnd: number;   // 0-1 position
 }
 
-function SpeedBallControl({ onPan, isDark, dataLength }: SpeedBallControlProps) {
+function SpeedBallControl({ onPan, isDark, dataLength, viewStart, viewEnd }: SpeedBallControlProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const ballRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState(0); // -1 to 1, 0 is center
+  const [hitBoundary, setHitBoundary] = useState<'left' | 'right' | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const startXRef = useRef(0);
   const containerWidthRef = useRef(0);
   const dragOffsetRef = useRef(0); // Ref to avoid stale closure in interval
+
+  // Check if at boundaries
+  const atLeftBoundary = viewStart <= 0.001;
+  const atRightBoundary = viewEnd >= 0.999;
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -85,7 +92,13 @@ function SpeedBallControl({ onPan, isDark, dataLength }: SpeedBallControlProps) 
       intervalRef.current = setInterval(() => {
         const candles = calculatePanSpeed(dragOffsetRef.current);
         if (candles !== 0) {
-          onPan(candles);
+          const success = onPan(candles);
+          if (!success) {
+            // Hit a boundary
+            setHitBoundary(candles < 0 ? 'left' : 'right');
+          } else {
+            setHitBoundary(null);
+          }
         }
       }, 100);
 
@@ -102,6 +115,7 @@ function SpeedBallControl({ onPan, isDark, dataLength }: SpeedBallControlProps) 
     if (!containerRef.current) return;
     e.preventDefault();
     setIsDragging(true);
+    setHitBoundary(null);
     startXRef.current = e.clientX;
     containerWidthRef.current = containerRef.current.offsetWidth;
   }, []);
@@ -121,6 +135,7 @@ function SpeedBallControl({ onPan, isDark, dataLength }: SpeedBallControlProps) 
     const handleMouseUp = () => {
       setIsDragging(false);
       setDragOffset(0);
+      setHitBoundary(null);
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
@@ -142,7 +157,12 @@ function SpeedBallControl({ onPan, isDark, dataLength }: SpeedBallControlProps) 
   const ballStyle = useMemo(() => {
     const translateX = dragOffset * 30; // Max 30px offset visual
     const glowIntensity = Math.abs(dragOffset);
-    const glowColor = dragOffset > 0 ? '#10b981' : '#ef4444'; // Green right, red left
+    let glowColor = dragOffset > 0 ? '#10b981' : '#ef4444'; // Green right, red left
+
+    // If hit boundary, use orange/warning color
+    if (hitBoundary) {
+      glowColor = '#f59e0b'; // Amber for boundary
+    }
 
     return {
       transform: `translateX(${translateX}px)`,
@@ -151,50 +171,87 @@ function SpeedBallControl({ onPan, isDark, dataLength }: SpeedBallControlProps) 
         : 'none',
       transition: isDragging ? 'none' : 'all 0.2s ease-out',
     };
-  }, [dragOffset, isDragging]);
+  }, [dragOffset, isDragging, hitBoundary]);
 
   // Speed indicator text
   const speedText = useMemo(() => {
+    if (hitBoundary) {
+      return hitBoundary === 'left' ? '◀ START' : 'END ▶';
+    }
     const speed = Math.abs(calculatePanSpeed(dragOffset));
     if (speed === 0) return null;
-    return `${speed} candles/tick`;
-  }, [dragOffset, calculatePanSpeed]);
+    return `${speed}/tick`;
+  }, [dragOffset, calculatePanSpeed, hitBoundary]);
+
+  // Position indicator (show current position in data)
+  const positionText = useMemo(() => {
+    if (dataLength === 0) return '';
+    const startIdx = Math.floor(viewStart * dataLength);
+    const endIdx = Math.floor(viewEnd * dataLength);
+    return `${startIdx + 1}-${endIdx}`;
+  }, [viewStart, viewEnd, dataLength]);
 
   return (
-    <div
-      ref={containerRef}
-      className={`relative w-20 h-10 flex items-center justify-center select-none ${
-        isDark ? 'bg-white/5' : 'bg-black/5'
-      } border ${isDark ? 'border-white/10' : 'border-black/10'} cursor-ew-resize`}
-      title="Drag ball left/right to pan - further = faster"
-    >
-      {/* Direction indicators */}
-      <div className={`absolute left-1 text-xs ${isDark ? 'text-white/20' : 'text-gray-300'}`}>◀</div>
-      <div className={`absolute right-1 text-xs ${isDark ? 'text-white/20' : 'text-gray-300'}`}>▶</div>
+    <div className="flex items-center gap-2">
+      {/* Position indicator */}
+      <div className={`text-xs font-mono ${isDark ? 'text-white/30' : 'text-gray-400'}`}>
+        {positionText}
+      </div>
 
-      {/* Center track line */}
-      <div className={`absolute w-12 h-0.5 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
-
-      {/* Draggable ball */}
       <div
-        ref={ballRef}
-        onMouseDown={handleMouseDown}
-        className={`w-5 h-5 rounded-full cursor-grab active:cursor-grabbing z-10 ${
-          isDragging
-            ? 'bg-[#FF6B4A]'
-            : isDark ? 'bg-white/40 hover:bg-white/60' : 'bg-gray-400 hover:bg-gray-500'
+        ref={containerRef}
+        className={`relative w-20 h-10 flex items-center justify-center select-none ${
+          isDark ? 'bg-white/5' : 'bg-black/5'
+        } border ${isDark ? 'border-white/10' : 'border-black/10'} cursor-ew-resize ${
+          hitBoundary ? 'animate-pulse' : ''
         }`}
-        style={ballStyle}
-      />
+        title="Drag ball left/right to pan - further = faster"
+      >
+        {/* Direction indicators - highlight if at boundary */}
+        <div className={`absolute left-1 text-xs ${
+          atLeftBoundary
+            ? 'text-amber-500'
+            : isDark ? 'text-white/20' : 'text-gray-300'
+        }`}>◀</div>
+        <div className={`absolute right-1 text-xs ${
+          atRightBoundary
+            ? 'text-amber-500'
+            : isDark ? 'text-white/20' : 'text-gray-300'
+        }`}>▶</div>
 
-      {/* Speed indicator tooltip */}
-      {isDragging && speedText && (
-        <div className={`absolute -top-7 left-1/2 -translate-x-1/2 px-2 py-0.5 text-xs whitespace-nowrap ${
-          isDark ? 'bg-white/10 text-white/70' : 'bg-black/10 text-gray-600'
-        }`}>
-          {speedText}
-        </div>
-      )}
+        {/* Center track line */}
+        <div className={`absolute w-12 h-0.5 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+
+        {/* Draggable ball */}
+        <div
+          ref={ballRef}
+          onMouseDown={handleMouseDown}
+          className={`w-5 h-5 rounded-full cursor-grab active:cursor-grabbing z-10 ${
+            hitBoundary
+              ? 'bg-amber-500'
+              : isDragging
+                ? 'bg-[#FF6B4A]'
+                : isDark ? 'bg-white/40 hover:bg-white/60' : 'bg-gray-400 hover:bg-gray-500'
+          }`}
+          style={ballStyle}
+        />
+
+        {/* Speed indicator tooltip */}
+        {isDragging && speedText && (
+          <div className={`absolute -top-7 left-1/2 -translate-x-1/2 px-2 py-0.5 text-xs whitespace-nowrap ${
+            hitBoundary
+              ? 'bg-amber-500/20 text-amber-500 font-bold'
+              : isDark ? 'bg-white/10 text-white/70' : 'bg-black/10 text-gray-600'
+          }`}>
+            {speedText}
+          </div>
+        )}
+      </div>
+
+      {/* Total candles */}
+      <div className={`text-xs font-mono ${isDark ? 'text-white/30' : 'text-gray-400'}`}>
+        /{dataLength}
+      </div>
     </div>
   );
 }
@@ -390,38 +447,65 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   }, [webglKey]);
 
   // Track previous data to detect when data is replaced vs prepended
-  const prevDataRef = useRef<{ length: number; firstTimestamp: number | null }>({ length: 0, firstTimestamp: null });
+  // Store lastTimestamp too to detect if we're looking at same token
+  const prevDataRef = useRef<{ length: number; firstTimestamp: number | null; lastTimestamp: number | null }>({
+    length: 0,
+    firstTimestamp: null,
+    lastTimestamp: null
+  });
 
   // Fixed visible window size (200 candles)
   const VISIBLE_CANDLES = 200;
+
+  // Track if we've initialized the view for this dataset
+  const initializedForDataRef = useRef<string | null>(null);
 
   // Set view when data changes
   // Uses fixed-width slider (200 candles) that can pan left/right
   useEffect(() => {
     const prevLength = prevDataRef.current.length;
     const prevFirstTs = prevDataRef.current.firstTimestamp;
+    const prevLastTs = prevDataRef.current.lastTimestamp;
     const newLength = safeData.length;
     const newFirstTs = safeData.length > 0 ? safeData[0].timestamp : null;
-
-    console.log('[Chart3D] Data changed:', { prevLength, newLength, prevFirstTs, newFirstTs });
+    const newLastTs = safeData.length > 0 ? safeData[safeData.length - 1].timestamp : null;
 
     if (newLength === 0) {
-      prevDataRef.current = { length: 0, firstTimestamp: null };
+      prevDataRef.current = { length: 0, firstTimestamp: null, lastTimestamp: null };
+      initializedForDataRef.current = null;
       return;
     }
 
-    // Detect if this is NEW data (different token/timeframe) vs prepended history
-    // If first timestamp changed significantly, it's new data - reset view to end
-    const isNewData = prevLength === 0 ||
-                      prevFirstTs === null ||
-                      newFirstTs === null ||
-                      Math.abs((newFirstTs - prevFirstTs)) > 60000; // More than 1 minute difference = new data
+    // Create a unique identifier for this dataset based on first and last timestamp
+    // This helps us detect when we're looking at the SAME token data vs completely different data
+    const dataId = `${newFirstTs}-${newLastTs}`;
 
-    if (isNewData) {
+    // Detect if this is TRULY NEW data (different token/timeframe)
+    // It's new data if:
+    // 1. We had no previous data
+    // 2. The LAST timestamp changed significantly (means different token or timeframe switch)
+    // 3. Both first AND last timestamps changed dramatically (not just prepending history)
+    const lastTsDiff = prevLastTs && newLastTs ? Math.abs(newLastTs - prevLastTs) : Infinity;
+    const firstTsDiff = prevFirstTs && newFirstTs ? Math.abs(newFirstTs - prevFirstTs) : Infinity;
+
+    // New data = last timestamp changed significantly (more than 10 minutes)
+    // This catches timeframe changes and token switches
+    // Prepended history would keep the same last timestamp
+    const isNewData = prevLength === 0 ||
+                      prevLastTs === null ||
+                      newLastTs === null ||
+                      lastTsDiff > 600000; // Last timestamp changed by >10 minutes = different data
+
+    // Check if we already initialized for this exact dataset
+    const alreadyInitialized = initializedForDataRef.current === dataId;
+
+    if (isNewData && !alreadyInitialized) {
       // New data: show most recent candles (slider at right end)
+      console.log('[Chart3D] New data detected - resetting view to end');
+      initializedForDataRef.current = dataId;
+
       if (newLength <= VISIBLE_CANDLES) {
         // Less than 200 candles - show all
-        console.log('[Chart3D] New data - showing all', newLength, 'candles');
         viewStartRef.current = 0;
         viewEndRef.current = 1;
         setViewStart(0);
@@ -430,7 +514,6 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
         // More than 200 candles - position slider at right end (most recent)
         const visibleRatio = VISIBLE_CANDLES / newLength;
         const newStart = 1 - visibleRatio;
-        console.log('[Chart3D] New data - showing last', VISIBLE_CANDLES, 'of', newLength, 'candles');
         viewStartRef.current = newStart;
         viewEndRef.current = 1;
         setViewStart(newStart);
@@ -452,10 +535,13 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       viewEndRef.current = newEnd;
       setViewStart(newStart);
       setViewEnd(newEnd);
-    }
-    // If data length decreased or stayed same with same first timestamp, keep current view
 
-    prevDataRef.current = { length: newLength, firstTimestamp: newFirstTs };
+      // Update the dataId since we have more data now
+      initializedForDataRef.current = `${newFirstTs}-${newLastTs}`;
+    }
+    // Otherwise keep current view - user is navigating
+
+    prevDataRef.current = { length: newLength, firstTimestamp: newFirstTs, lastTimestamp: newLastTs };
   }, [safeData]);
 
   // Detect when user scrolls to left edge and request more data
@@ -640,24 +726,36 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   }, [visibleData]);
 
   // Pan by a number of candles (positive = right/newer, negative = left/older)
-  const panByCandles = useCallback((candleCount: number) => {
+  // Returns true if pan was successful, false if hit boundary
+  const panByCandles = useCallback((candleCount: number): boolean => {
     const dataLen = safeData.length;
-    if (dataLen === 0) return;
+    if (dataLen === 0) return false;
 
     const candleRatio = candleCount / dataLen;
     const fixedRange = Math.min(1, VISIBLE_CANDLES / dataLen);
 
-    let newStart = viewStartRef.current + candleRatio;
+    const currentStart = viewStartRef.current;
+    const currentEnd = viewEndRef.current;
+
+    let newStart = currentStart + candleRatio;
     let newEnd = newStart + fixedRange;
 
     // Clamp to valid range
+    let hitBoundary = false;
     if (newStart < 0) {
       newStart = 0;
       newEnd = fixedRange;
+      hitBoundary = candleCount < 0; // Hit left boundary while going left
     }
     if (newEnd > 1) {
       newEnd = 1;
       newStart = Math.max(0, 1 - fixedRange);
+      hitBoundary = candleCount > 0; // Hit right boundary while going right
+    }
+
+    // Only update if position actually changed
+    if (Math.abs(newStart - currentStart) < 0.0001 && Math.abs(newEnd - currentEnd) < 0.0001) {
+      return false; // No change
     }
 
     // Update refs immediately so next pan call has correct values
@@ -667,6 +765,8 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
 
     setViewStart(newStart);
     setViewEnd(newEnd);
+
+    return !hitBoundary;
   }, [safeData.length]);
 
   // Scroll wheel to pan time axis left/right - dynamic sensitivity
@@ -1195,6 +1295,8 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
               onPan={panByCandles}
               isDark={isDark}
               dataLength={safeData.length}
+              viewStart={viewStart}
+              viewEnd={viewEnd}
             />
           </div>
         )}
