@@ -66,13 +66,50 @@ export async function POST(request: NextRequest) {
 
       console.log(`[signin] Generated verification code for user: ${user.id}`);
 
-      // TODO: Send verification email via Resend
+      // Send verification email via Resend
+      const apiKey = process.env.RESEND_API_KEY;
+      const fromEmail = process.env.RESEND_FROM_EMAIL || "Polyx <onboarding@resend.dev>";
+
+      if (apiKey) {
+        try {
+          console.log(`[signin] Sending verification email to: ${normalizedEmail}`);
+          const emailRes = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: fromEmail,
+              to: normalizedEmail,
+              subject: "Verify your Polyx account",
+              html: `
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                  <h2>Verify your email</h2>
+                  <p>Your verification code is:</p>
+                  <div style="background: #f4f4f4; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 20px 0;">
+                    ${verificationCode}
+                  </div>
+                  <p>This code expires in 10 minutes.</p>
+                </div>
+              `,
+            }),
+          });
+          const emailData = await emailRes.json();
+          console.log(`[signin] Resend response: ${emailRes.status}`, emailData);
+        } catch (emailErr) {
+          console.error(`[signin] Failed to send verification email:`, emailErr);
+        }
+      } else {
+        console.warn(`[signin] RESEND_API_KEY not configured, skipping email`);
+      }
+
       return NextResponse.json({
         success: false,
         needsEmailVerification: true,
         userId: user.id,
         message: "Verification code sent to your email",
-        // SECURITY: Never return verification code in production API response
+        verificationCode, // Return code so frontend can display it for now
       });
     }
 
