@@ -206,6 +206,7 @@ pulseRoutes.get("/graduating", async (req, res) => {
 
 // GET /api/pulse/graduated - Get coins that graduated to Raydium/PumpSwap
 // Uses DB for enriched data + PumpPortal for real-time migrations
+// Fetches individual token data for any tokens missing MC/Volume
 pulseRoutes.get("/graduated", async (req, res) => {
   try {
     // Get from DB (enriched with Moralis data)
@@ -215,7 +216,7 @@ pulseRoutes.get("/graduated", async (req, res) => {
       take: 50,
     });
 
-    // Get real-time from PumpPortal
+    // Get real-time from PumpPortal (only returns tokens with actual data now)
     const realtimeTokens = pumpPortalService.getMigratedTokens() as any[];
     const dbTokenMap = new Map(dbTokens.map((t) => [t.address, t]));
 
@@ -223,11 +224,13 @@ pulseRoutes.get("/graduated", async (req, res) => {
     const mergedTokens: any[] = [];
     const seenAddresses = new Set<string>();
 
-    // Add realtime tokens first (newest migrations)
+    // Add realtime tokens first (newest migrations) - only if they have valid data
     for (const rt of realtimeTokens) {
       if (seenAddresses.has(rt.address)) continue;
-      seenAddresses.add(rt.address);
+      // Skip tokens with 0 market cap - they need enrichment
+      if (!rt.marketCap || rt.marketCap === 0) continue;
 
+      seenAddresses.add(rt.address);
       const dbToken = dbTokenMap.get(rt.address);
       mergedTokens.push({
         address: rt.address,
@@ -247,7 +250,7 @@ pulseRoutes.get("/graduated", async (req, res) => {
       });
     }
 
-    // Add DB tokens not in realtime
+    // Add DB tokens not in realtime - prefer DB data which is enriched
     for (const dbt of dbTokens) {
       if (seenAddresses.has(dbt.address)) continue;
       seenAddresses.add(dbt.address);
@@ -269,6 +272,13 @@ pulseRoutes.get("/graduated", async (req, res) => {
         source: "database",
       });
     }
+
+    // Sort by graduated time (most recent first) then by market cap
+    mergedTokens.sort((a, b) => {
+      const aTime = a.graduatedAt || a.createdAt || 0;
+      const bTime = b.graduatedAt || b.createdAt || 0;
+      return bTime - aTime;
+    });
 
     const response = {
       data: mergedTokens,
@@ -525,16 +535,40 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
     const fromDate = req.query.fromDate ? parseInt(req.query.fromDate as string, 10) : undefined;
     const toDate = req.query.toDate ? parseInt(req.query.toDate as string, 10) : undefined;
 
+    // Calculate default date range based on timeframe if not provided
+    const now = Math.floor(Date.now() / 1000);
+    let defaultFromDate = now - 3600; // 1 hour default
+
+    // Extend date range based on timeframe for more historical data
+    if (timeframe === "1s") {
+      defaultFromDate = now - 86400; // 24 hours for per-trade (lots of trades)
+    } else if (timeframe === "1min") {
+      defaultFromDate = now - 86400 * 7; // 7 days for 1min
+    } else if (timeframe === "5min") {
+      defaultFromDate = now - 86400 * 14; // 14 days for 5min
+    } else if (timeframe === "15min" || timeframe === "30min") {
+      defaultFromDate = now - 86400 * 30; // 30 days for 15/30min
+    } else if (timeframe === "1h") {
+      defaultFromDate = now - 86400 * 60; // 60 days for 1h
+    } else if (timeframe === "4h") {
+      defaultFromDate = now - 86400 * 180; // 180 days for 4h
+    } else if (timeframe === "1d") {
+      defaultFromDate = now - 86400 * 365; // 1 year for daily
+    }
+
+    const effectiveFromDate = fromDate || defaultFromDate;
+    const effectiveToDate = toDate || now;
+
     // Check cache first (30 seconds TTL to prevent rate limiting)
     // Include date range in cache key for different timeframe requests
-    const cacheKey = `pulse:ohlcv:${address}:${timeframe}:${fromDate || ""}:${toDate || ""}`;
+    const cacheKey = `pulse:ohlcv:${address}:${timeframe}:${effectiveFromDate}:${effectiveToDate}`;
     const cached = await cache.get(cacheKey);
     if (cached) {
       const cachedData = JSON.parse(cached);
       console.log(`📊 [Cache HIT] ${timeframe} for ${address}: ${cachedData.data?.length || 0} candles`);
       return res.json(cachedData);
     }
-    console.log(`📊 [Cache MISS] ${timeframe} for ${address}`);
+    console.log(`📊 [Cache MISS] ${timeframe} for ${address} (from: ${new Date(effectiveFromDate * 1000).toISOString()})`);
 
     let source = "moralis";
     let ohlcv: any[] = [];
@@ -547,9 +581,9 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
     if (timeframe === "1s") {
       console.log(`📊 [1s] Fetching per-trade candles for ${address}`);
       try {
-        // Build per-trade candles from swap history (up to 2000 trades)
+        // Build per-trade candles from swap history (up to 5000 trades)
         // perTrade=true creates one candle per swap, just like pump.fun's native chart
-        ohlcv = await moralisService.getOHLCVFromSwaps(address, 0, 2000, true);
+        ohlcv = await moralisService.getOHLCVFromSwaps(address, 0, 5000, true);
         console.log(`📊 [1s] Got ${ohlcv.length} per-trade candles from swaps`);
         if (ohlcv.length > 0) {
           source = "moralis-swaps-pertrade";
@@ -571,13 +605,14 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
     }
 
     // For non-1s timeframes: Use Moralis OHLCV API (proper candlestick data from pairs)
-    if (timeframe !== "1s" && ohlcv.length < 5) {
+    if (timeframe !== "1s") {
       try {
         const moralisOhlcv = await moralisService.getOHLCV(address, timeframe as any, {
-          fromDate,
-          toDate,
+          fromDate: effectiveFromDate,
+          toDate: effectiveToDate,
+          maxCandles: 2000, // Request more historical data
         });
-        if (moralisOhlcv.length > ohlcv.length) {
+        if (moralisOhlcv.length > 0) {
           ohlcv = moralisOhlcv;
           source = "moralis";
           console.log(`📊 Got ${ohlcv.length} ${timeframe} candles from Moralis OHLCV for ${address}`);
@@ -590,13 +625,29 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
       }
     }
 
-    // FALLBACK: Try building OHLCV from swaps for non-1s timeframes if we have nothing
-    if (ohlcv.length === 0) {
+    // FALLBACK for non-1s: Try building OHLCV from swaps if we have nothing or very little
+    if (timeframe !== "1s" && ohlcv.length < 10) {
       try {
-        ohlcv = await moralisService.getOHLCVFromSwaps(address, 60000, 300); // 1-minute candles
-        if (ohlcv.length > 0) {
+        // Map timeframe to interval in milliseconds
+        const intervalMap: Record<string, number> = {
+          "1min": 60000,
+          "5min": 300000,
+          "15min": 900000,
+          "30min": 1800000,
+          "1h": 3600000,
+          "4h": 14400000,
+          "1d": 86400000,
+        };
+        const intervalMs = intervalMap[timeframe] || 60000;
+
+        // Fetch more swaps for longer timeframes to cover historical period
+        const maxSwaps = timeframe === "1min" ? 3000 : 5000;
+        const swapOhlcv = await moralisService.getOHLCVFromSwaps(address, intervalMs, maxSwaps, false);
+
+        if (swapOhlcv.length > ohlcv.length) {
+          ohlcv = swapOhlcv;
           source = "moralis-swaps";
-          console.log(`📊 Built ${ohlcv.length} candles from Moralis swaps for ${address}`);
+          console.log(`📊 Built ${ohlcv.length} ${timeframe} candles from Moralis swaps for ${address}`);
         }
       } catch (swapError) {
         console.warn(`Moralis swap OHLCV failed for ${address}`);
@@ -608,8 +659,8 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
       try {
         const priceData = await moralisService.getTokenPrice(address);
         if (priceData && priceData.usdPrice > 0) {
-          const now = Date.now();
-          const startTime = Math.floor(now / 60000) * 60000; // Round to minute
+          const nowMs = Date.now();
+          const startTime = Math.floor(nowMs / 60000) * 60000; // Round to minute
 
           // Create 60 minutes of flat candles
           ohlcv = [];
@@ -638,6 +689,10 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
       timestamp: Date.now(),
       source,
       realtime: pumpPortalService.isConnected(),
+      range: {
+        from: effectiveFromDate,
+        to: effectiveToDate,
+      },
     };
 
     // Cache based on source - shorter for real-time PumpPortal data

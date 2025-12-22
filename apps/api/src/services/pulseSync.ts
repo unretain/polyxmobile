@@ -205,6 +205,7 @@ async function syncGraduatingPairs(): Promise<number> {
 }
 
 // Sync graduated pairs (migrated to Raydium)
+// Fetches fresh data from Moralis for each token to get accurate MC/Volume
 async function syncGraduatedPairs(): Promise<number> {
   let tokens: PulseTokenData[] = [];
 
@@ -216,12 +217,12 @@ async function syncGraduatedPairs(): Promise<number> {
     console.error("[PulseSync] Moralis graduated error:", err);
   }
 
-  // Supplement with PumpPortal real-time migrated tokens
+  // Supplement with PumpPortal real-time migrated tokens (only those with data)
   try {
     const realtimeTokens = pumpPortalService.getMigratedTokens();
     const existingAddresses = new Set(tokens.map(t => t.address));
     const newMigratedTokens = realtimeTokens
-      .filter((t: any) => !existingAddresses.has(t.address))
+      .filter((t: any) => !existingAddresses.has(t.address) && t.marketCap > 0)
       .map(mapTokenData);
 
     if (newMigratedTokens.length > 0) {
@@ -230,6 +231,41 @@ async function syncGraduatedPairs(): Promise<number> {
     }
   } catch (err) {
     console.error("[PulseSync] PumpPortal migrated error:", err);
+  }
+
+  // For tokens with 0 market cap or volume, fetch fresh data from Moralis
+  const tokensNeedingEnrichment = tokens.filter(t => t.marketCap === 0 || t.volume24h === 0);
+  if (tokensNeedingEnrichment.length > 0) {
+    console.log(`[PulseSync] Enriching ${tokensNeedingEnrichment.length} graduated tokens with missing data...`);
+
+    // Fetch in batches to avoid rate limiting
+    const batchSize = 5;
+    for (let i = 0; i < tokensNeedingEnrichment.length; i += batchSize) {
+      const batch = tokensNeedingEnrichment.slice(i, i + batchSize);
+      await Promise.all(batch.map(async (token) => {
+        try {
+          const freshData = await moralisService.getTokenData(token.address);
+          if (freshData) {
+            // Find and update the token in our array
+            const idx = tokens.findIndex(t => t.address === token.address);
+            if (idx !== -1) {
+              tokens[idx] = {
+                ...tokens[idx],
+                price: freshData.price || tokens[idx].price,
+                marketCap: freshData.marketCap || tokens[idx].marketCap,
+                volume24h: freshData.volume24h || tokens[idx].volume24h,
+                liquidity: freshData.liquidity || tokens[idx].liquidity,
+                priceChange24h: freshData.priceChange24h || tokens[idx].priceChange24h,
+                logoUri: freshData.logoURI || tokens[idx].logoUri,
+              };
+              console.log(`[PulseSync] Enriched ${token.symbol}: MC=$${freshData.marketCap?.toLocaleString() || 0}, Vol=$${freshData.volume24h?.toLocaleString() || 0}`);
+            }
+          }
+        } catch (err) {
+          // Ignore individual fetch errors
+        }
+      }));
+    }
   }
 
   // Upsert to database

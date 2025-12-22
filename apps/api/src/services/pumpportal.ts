@@ -560,34 +560,32 @@ class PumpPortalService extends EventEmitter {
   }
 
   // Get migrated tokens with full token data
+  // Returns only tokens that have actual data (from cache or graduating tokens)
+  // Tokens without data should be fetched from Moralis by the caller
   getMigratedTokens() {
-    return this.recentMigrations.map((m) => {
-      const tokenData = this.recentNewTokens.find(t => t.mint === m.mint);
-      if (tokenData) {
-        return {
-          ...this.mapToNewPairToken(tokenData),
-          complete: true,
-          pool: m.pool,
-        };
-      }
-      // Return minimal data if token not in cache
-      return {
-        address: m.mint,
-        symbol: "???",
-        name: "Migrated Token",
-        logoUri: this.getCachedImageUrl(m.mint), // Use cached image or undefined
-        price: 0,
-        priceChange24h: 0,
-        volume24h: 0,
-        liquidity: 0,
-        marketCap: 0,
-        txCount: 0,
-        createdAt: m.timestamp || Date.now(),
-        source: "pump.fun (migrated)",
-        complete: true,
-        pool: m.pool,
-      };
-    });
+    return this.recentMigrations
+      .map((m) => {
+        // First check recent new tokens
+        let tokenData = this.recentNewTokens.find(t => t.mint === m.mint);
+
+        // Also check graduating tokens (more likely to have up-to-date data)
+        if (!tokenData) {
+          tokenData = this.graduatingTokens.get(m.mint);
+        }
+
+        if (tokenData) {
+          return {
+            ...this.mapToNewPairToken(tokenData),
+            complete: true,
+            pool: m.pool,
+            migratedAt: m.timestamp || Date.now(),
+          };
+        }
+
+        // Return null for tokens without data - caller should fetch from Moralis
+        return null;
+      })
+      .filter((t): t is NonNullable<typeof t> => t !== null);
   }
 
   // Update 1-second OHLCV from trade event
