@@ -603,6 +603,7 @@ export function Line3DChart({
             onLineWidthChange={setActiveLineWidth}
             onClearAll={handleClearAllDrawings}
             drawingCount={drawings.length}
+            isDark={isDark}
           />
         </div>
       )}
