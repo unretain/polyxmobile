@@ -49,9 +49,15 @@ function SpeedBallControl({ onPan, isDark, dataLength }: SpeedBallControlProps) 
   const ballRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState(0); // -1 to 1, 0 is center
-  const animationRef = useRef<number | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const startXRef = useRef(0);
   const containerWidthRef = useRef(0);
+  const dragOffsetRef = useRef(0); // Ref to avoid stale closure in interval
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    dragOffsetRef.current = dragOffset;
+  }, [dragOffset]);
 
   // Calculate candles to pan based on drag offset (exponential)
   const calculatePanSpeed = useCallback((offset: number): number => {
@@ -66,36 +72,31 @@ function SpeedBallControl({ onPan, isDark, dataLength }: SpeedBallControlProps) 
     const baseSpeed = Math.max(1, Math.floor(dataLength / 500));
 
     // Exponential: at offset 0.1 = slow, at offset 1.0 = very fast
-    // Using power of 3 for smooth exponential feel
+    // Using power of 2.5 for smooth exponential feel
     const speedMultiplier = Math.pow(absOffset, 2.5) * 50;
 
     return Math.round(direction * baseSpeed * speedMultiplier);
   }, [dataLength]);
 
-  // Animation loop while dragging
+  // Interval-based panning (throttled to ~10fps instead of 60fps)
   useEffect(() => {
-    if (isDragging && dragOffset !== 0) {
-      const animate = () => {
-        const candles = calculatePanSpeed(dragOffset);
+    if (isDragging) {
+      // Pan every 100ms for smoother, less spammy updates
+      intervalRef.current = setInterval(() => {
+        const candles = calculatePanSpeed(dragOffsetRef.current);
         if (candles !== 0) {
           onPan(candles);
         }
-        animationRef.current = requestAnimationFrame(animate);
-      };
-
-      // Start with a small delay for the first pan
-      const timeoutId = setTimeout(() => {
-        animationRef.current = requestAnimationFrame(animate);
-      }, 50);
+      }, 100);
 
       return () => {
-        clearTimeout(timeoutId);
-        if (animationRef.current) {
-          cancelAnimationFrame(animationRef.current);
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
         }
       };
     }
-  }, [isDragging, dragOffset, calculatePanSpeed, onPan]);
+  }, [isDragging, calculatePanSpeed, onPan]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (!containerRef.current) return;
@@ -120,9 +121,9 @@ function SpeedBallControl({ onPan, isDark, dataLength }: SpeedBallControlProps) 
     const handleMouseUp = () => {
       setIsDragging(false);
       setDragOffset(0);
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     };
 
@@ -421,13 +422,18 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       if (newLength <= VISIBLE_CANDLES) {
         // Less than 200 candles - show all
         console.log('[Chart3D] New data - showing all', newLength, 'candles');
+        viewStartRef.current = 0;
+        viewEndRef.current = 1;
         setViewStart(0);
         setViewEnd(1);
       } else {
         // More than 200 candles - position slider at right end (most recent)
         const visibleRatio = VISIBLE_CANDLES / newLength;
+        const newStart = 1 - visibleRatio;
         console.log('[Chart3D] New data - showing last', VISIBLE_CANDLES, 'of', newLength, 'candles');
-        setViewStart(1 - visibleRatio);
+        viewStartRef.current = newStart;
+        viewEndRef.current = 1;
+        setViewStart(newStart);
         setViewEnd(1);
       }
     } else if (newLength > prevLength && prevFirstTs !== null && newFirstTs !== null && newFirstTs < prevFirstTs) {
@@ -442,6 +448,8 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       const newEnd = Math.min(1, newStart + visibleRatio);
 
       console.log('[Chart3D] History prepended - shifting view by', shiftRatio.toFixed(3));
+      viewStartRef.current = newStart;
+      viewEndRef.current = newEnd;
       setViewStart(newStart);
       setViewEnd(newEnd);
     }
@@ -652,6 +660,11 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       newStart = Math.max(0, 1 - fixedRange);
     }
 
+    // Update refs immediately so next pan call has correct values
+    // (Don't wait for the useEffect to sync them after re-render)
+    viewStartRef.current = newStart;
+    viewEndRef.current = newEnd;
+
     setViewStart(newStart);
     setViewEnd(newEnd);
   }, [safeData.length]);
@@ -715,7 +728,10 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   const handleDoubleClick = useCallback(() => {
     const dataLen = safeData.length;
     const fixedRange = dataLen > 0 ? Math.min(1, VISIBLE_CANDLES / dataLen) : 1;
-    setViewStart(1 - fixedRange);
+    const newStart = 1 - fixedRange;
+    viewStartRef.current = newStart;
+    viewEndRef.current = 1;
+    setViewStart(newStart);
     setViewEnd(1);
     setYScale(1.0);
     yScaleRef.current = 1.0;
@@ -819,8 +835,12 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
         newEnd = 1;
       }
 
-      setViewStart(Math.max(0, newStart));
-      setViewEnd(Math.min(1, newEnd));
+      const clampedStart = Math.max(0, newStart);
+      const clampedEnd = Math.min(1, newEnd);
+      viewStartRef.current = clampedStart;
+      viewEndRef.current = clampedEnd;
+      setViewStart(clampedStart);
+      setViewEnd(clampedEnd);
     };
 
     const handleMouseUp = (e: MouseEvent) => {
