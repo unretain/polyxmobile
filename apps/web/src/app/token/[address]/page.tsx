@@ -787,9 +787,9 @@ export default function TokenPage() {
       </div>
 
       {/* Main Content: Chart + Sidebar */}
-      <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-0 overflow-y-auto md:overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row gap-3 md:gap-4 min-h-0 overflow-y-auto md:overflow-hidden px-3 md:px-0">
         {/* Left: Chart + Trades */}
-        <div className="flex-1 flex flex-col gap-4 min-w-0 overflow-visible md:overflow-hidden">
+        <div className="flex-1 flex flex-col gap-3 md:gap-4 min-w-0 overflow-visible md:overflow-hidden">
           {/* Stats Row */}
           <div className="grid gap-2 md:gap-3 grid-cols-2 md:grid-cols-4 flex-shrink-0">
             <div className={`border backdrop-blur-md p-3 ${isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'}`}>
