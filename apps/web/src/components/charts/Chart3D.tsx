@@ -37,6 +37,167 @@ export interface DrawingToolbarRenderProps {
   drawingCount: number;
 }
 
+// Speed ball control component - drag left/right with exponential speed increase
+interface SpeedBallControlProps {
+  onPan: (candles: number) => void;
+  isDark: boolean;
+  dataLength: number;
+}
+
+function SpeedBallControl({ onPan, isDark, dataLength }: SpeedBallControlProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const ballRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState(0); // -1 to 1, 0 is center
+  const animationRef = useRef<number | null>(null);
+  const startXRef = useRef(0);
+  const containerWidthRef = useRef(0);
+
+  // Calculate candles to pan based on drag offset (exponential)
+  const calculatePanSpeed = useCallback((offset: number): number => {
+    if (Math.abs(offset) < 0.1) return 0; // Dead zone in center
+
+    // Exponential scaling: further from center = exponentially faster
+    // offset is -1 to 1, we want speed to be 1-500+ candles per tick
+    const absOffset = Math.abs(offset);
+    const direction = offset > 0 ? 1 : -1;
+
+    // Base speed scales with data size
+    const baseSpeed = Math.max(1, Math.floor(dataLength / 500));
+
+    // Exponential: at offset 0.1 = slow, at offset 1.0 = very fast
+    // Using power of 3 for smooth exponential feel
+    const speedMultiplier = Math.pow(absOffset, 2.5) * 50;
+
+    return Math.round(direction * baseSpeed * speedMultiplier);
+  }, [dataLength]);
+
+  // Animation loop while dragging
+  useEffect(() => {
+    if (isDragging && dragOffset !== 0) {
+      const animate = () => {
+        const candles = calculatePanSpeed(dragOffset);
+        if (candles !== 0) {
+          onPan(candles);
+        }
+        animationRef.current = requestAnimationFrame(animate);
+      };
+
+      // Start with a small delay for the first pan
+      const timeoutId = setTimeout(() => {
+        animationRef.current = requestAnimationFrame(animate);
+      }, 50);
+
+      return () => {
+        clearTimeout(timeoutId);
+        if (animationRef.current) {
+          cancelAnimationFrame(animationRef.current);
+        }
+      };
+    }
+  }, [isDragging, dragOffset, calculatePanSpeed, onPan]);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!containerRef.current) return;
+    e.preventDefault();
+    setIsDragging(true);
+    startXRef.current = e.clientX;
+    containerWidthRef.current = containerRef.current.offsetWidth;
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging) return;
+
+      const deltaX = e.clientX - startXRef.current;
+      const maxDrag = containerWidthRef.current / 2;
+
+      // Clamp offset to -1 to 1
+      const newOffset = Math.max(-1, Math.min(1, deltaX / maxDrag));
+      setDragOffset(newOffset);
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      setDragOffset(0);
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+    };
+
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
+
+  // Visual feedback: ball position and glow intensity
+  const ballStyle = useMemo(() => {
+    const translateX = dragOffset * 30; // Max 30px offset visual
+    const glowIntensity = Math.abs(dragOffset);
+    const glowColor = dragOffset > 0 ? '#10b981' : '#ef4444'; // Green right, red left
+
+    return {
+      transform: `translateX(${translateX}px)`,
+      boxShadow: glowIntensity > 0.1
+        ? `0 0 ${10 + glowIntensity * 20}px ${glowColor}`
+        : 'none',
+      transition: isDragging ? 'none' : 'all 0.2s ease-out',
+    };
+  }, [dragOffset, isDragging]);
+
+  // Speed indicator text
+  const speedText = useMemo(() => {
+    const speed = Math.abs(calculatePanSpeed(dragOffset));
+    if (speed === 0) return null;
+    return `${speed} candles/tick`;
+  }, [dragOffset, calculatePanSpeed]);
+
+  return (
+    <div
+      ref={containerRef}
+      className={`relative w-20 h-10 flex items-center justify-center select-none ${
+        isDark ? 'bg-white/5' : 'bg-black/5'
+      } border ${isDark ? 'border-white/10' : 'border-black/10'} cursor-ew-resize`}
+      title="Drag ball left/right to pan - further = faster"
+    >
+      {/* Direction indicators */}
+      <div className={`absolute left-1 text-xs ${isDark ? 'text-white/20' : 'text-gray-300'}`}>◀</div>
+      <div className={`absolute right-1 text-xs ${isDark ? 'text-white/20' : 'text-gray-300'}`}>▶</div>
+
+      {/* Center track line */}
+      <div className={`absolute w-12 h-0.5 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+
+      {/* Draggable ball */}
+      <div
+        ref={ballRef}
+        onMouseDown={handleMouseDown}
+        className={`w-5 h-5 rounded-full cursor-grab active:cursor-grabbing z-10 ${
+          isDragging
+            ? 'bg-[#FF6B4A]'
+            : isDark ? 'bg-white/40 hover:bg-white/60' : 'bg-gray-400 hover:bg-gray-500'
+        }`}
+        style={ballStyle}
+      />
+
+      {/* Speed indicator tooltip */}
+      {isDragging && speedText && (
+        <div className={`absolute -top-7 left-1/2 -translate-x-1/2 px-2 py-0.5 text-xs whitespace-nowrap ${
+          isDark ? 'bg-white/10 text-white/70' : 'bg-black/10 text-gray-600'
+        }`}>
+          {speedText}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface Chart3DProps {
   data: OHLCV[];
   isLoading?: boolean;
@@ -135,7 +296,6 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   console.log('[Chart3D] Render - data.length:', data.length, 'isLoading:', isLoading);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const sliderRef = useRef<HTMLDivElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   // CRITICAL: Cache last valid data to prevent crashes when parent sends empty array
@@ -164,9 +324,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   const viewStartRef = useRef(viewStart);
   const viewEndRef = useRef(viewEnd);
 
-  // Dragging state
-  const sliderDragRef = useRef<"left" | "right" | "middle" | null>(null);
-  const lastMouseXRef = useRef(0);
+  // Throttle updates
   const lastUpdateTimeRef = useRef(0);
 
   // Shift+Left-click pan state (use ref for event handler to avoid stale closure)
@@ -473,12 +631,6 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     return { value: change, percent, isPositive: change >= 0 };
   }, [visibleData]);
 
-  // Calculate the visible range ratio (what portion of data is visible)
-  const visibleRangeRatio = useMemo(() => {
-    const dataLen = safeData.length;
-    return dataLen > 0 ? Math.min(1, VISIBLE_CANDLES / dataLen) : 1;
-  }, [safeData.length]);
-
   // Pan by a number of candles (positive = right/newer, negative = left/older)
   const panByCandles = useCallback((candleCount: number) => {
     const dataLen = safeData.length;
@@ -502,21 +654,6 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
 
     setViewStart(newStart);
     setViewEnd(newEnd);
-  }, [safeData.length]);
-
-  // Jump to start (oldest) or end (newest)
-  const jumpToStart = useCallback(() => {
-    const dataLen = safeData.length;
-    const fixedRange = dataLen > 0 ? Math.min(1, VISIBLE_CANDLES / dataLen) : 1;
-    setViewStart(0);
-    setViewEnd(fixedRange);
-  }, [safeData.length]);
-
-  const jumpToEnd = useCallback(() => {
-    const dataLen = safeData.length;
-    const fixedRange = dataLen > 0 ? Math.min(1, VISIBLE_CANDLES / dataLen) : 1;
-    setViewStart(1 - fixedRange);
-    setViewEnd(1);
   }, [safeData.length]);
 
   // Scroll wheel to pan time axis left/right - dynamic sensitivity
@@ -557,14 +694,6 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     panByCandles(direction * candlesPerScroll);
   }, [safeData.length, panByCandles]);
 
-  // Range slider handlers
-  const handleSliderMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>, handle: "left" | "right" | "middle") => {
-    e.preventDefault();
-    e.stopPropagation();
-    sliderDragRef.current = handle;
-    lastMouseXRef.current = e.clientX;
-  }, []);
-
   // Keep refs in sync with state
   useEffect(() => {
     viewStartRef.current = viewStart;
@@ -581,89 +710,6 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       container.removeEventListener('wheel', handleWheel);
     };
   }, [handleWheel]);
-
-  // Handle click on slider track (outside the selection) to jump to that position
-  const handleSliderTrackClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!sliderRef.current) return;
-
-    const rect = sliderRef.current.getBoundingClientRect();
-    const clickRatio = (e.clientX - rect.left) / rect.width;
-
-    const dataLen = safeData.length;
-    const fixedRange = dataLen > 0 ? Math.min(1, VISIBLE_CANDLES / dataLen) : 1;
-
-    // Center the view on the clicked position
-    let newStart = clickRatio - fixedRange / 2;
-    let newEnd = clickRatio + fixedRange / 2;
-
-    // Clamp to valid range
-    if (newStart < 0) {
-      newStart = 0;
-      newEnd = fixedRange;
-    }
-    if (newEnd > 1) {
-      newEnd = 1;
-      newStart = Math.max(0, 1 - fixedRange);
-    }
-
-    setViewStart(newStart);
-    setViewEnd(newEnd);
-  }, [safeData.length]);
-
-  useEffect(() => {
-    const handleGlobalMouseMove = (e: MouseEvent) => {
-      if (!sliderDragRef.current || !sliderRef.current) return;
-
-      // Throttle updates to 30fps to prevent overwhelming the 3D renderer
-      const now = Date.now();
-      if (now - lastUpdateTimeRef.current < 33) return; // ~30fps
-      lastUpdateTimeRef.current = now;
-
-      const rect = sliderRef.current.getBoundingClientRect();
-      const deltaX = (e.clientX - lastMouseXRef.current) / rect.width;
-      lastMouseXRef.current = e.clientX;
-
-      const dataLen = safeData.length;
-      const fixedRange = dataLen > 0 ? Math.min(1, VISIBLE_CANDLES / dataLen) : 1;
-
-      // For very large datasets, amplify the drag sensitivity
-      // so small mouse movements cover more data
-      let amplifiedDelta = deltaX;
-      if (dataLen > 2000) {
-        // Amplify by up to 3x for very large datasets
-        const amplification = Math.min(3, dataLen / 1000);
-        amplifiedDelta = deltaX * amplification;
-      }
-
-      let newStart = viewStartRef.current + amplifiedDelta;
-      let newEnd = newStart + fixedRange;
-
-      // Clamp to valid range [0, 1]
-      if (newStart < 0) {
-        newStart = 0;
-        newEnd = fixedRange;
-      }
-      if (newEnd > 1) {
-        newEnd = 1;
-        newStart = Math.max(0, 1 - fixedRange);
-      }
-
-      setViewStart(newStart);
-      setViewEnd(newEnd);
-    };
-
-    const handleGlobalMouseUp = () => {
-      sliderDragRef.current = null;
-    };
-
-    window.addEventListener("mousemove", handleGlobalMouseMove);
-    window.addEventListener("mouseup", handleGlobalMouseUp);
-
-    return () => {
-      window.removeEventListener("mousemove", handleGlobalMouseMove);
-      window.removeEventListener("mouseup", handleGlobalMouseUp);
-    };
-  }, [safeData.length]);
 
   // Double-click to reset view to most recent candles
   const handleDoubleClick = useCallback(() => {
@@ -970,20 +1016,20 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
           </div>
         )}
 
-      {/* Price change percentage display - HIDDEN on mobile */}
-      {!renderToolbar && showDrawingTools && !isFlyMode && (
-        <div className="hidden md:block absolute top-4 z-10 text-right" style={{ right: "200px" }}>
-          <div className={`text-sm font-medium ${priceChange.isPositive ? "text-up" : "text-down"}`}>
-            {priceChange.isPositive ? "+" : ""}${formatPrice(priceChange.value)} ({priceChange.isPositive ? "+" : ""}{priceChange.percent.toFixed(2)}%)
+        {/* Price change percentage display - HIDDEN on mobile */}
+        {!renderToolbar && showDrawingTools && !isFlyMode && (
+          <div className="hidden md:block absolute top-4 z-10 text-right" style={{ right: "200px" }}>
+            <div className={`text-sm font-medium ${priceChange.isPositive ? "text-up" : "text-down"}`}>
+              {priceChange.isPositive ? "+" : ""}${formatPrice(priceChange.value)} ({priceChange.isPositive ? "+" : ""}{priceChange.percent.toFixed(2)}%)
+            </div>
+            <div className={`text-xs ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
+              visible range
+            </div>
           </div>
-          <div className={`text-xs ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
-            visible range
-          </div>
-        </div>
-      )}
+        )}
 
-      {/* 3D Canvas - keep mounted to prevent WebGL context recreation */}
-      <div ref={canvasContainerRef} className="flex-1 relative">
+        {/* 3D Canvas - keep mounted to prevent WebGL context recreation */}
+        <div ref={canvasContainerRef} className="flex-1 relative">
         {isMounted && (
           <Canvas
             key={webglKey}
@@ -1120,138 +1166,18 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
             No chart data available
           </div>
         )}
-      </div>
+        </div>
 
-      {/* Range slider with navigation arrows - hide when using custom toolbar (compact mode) or when showDrawingTools is false */}
-      {!renderToolbar && showDrawingTools && (
-        <div className="mx-4 mb-2 flex items-center gap-2">
-          {/* Jump to start button */}
-          <button
-            onClick={jumpToStart}
-            disabled={viewStart <= 0.001}
-            className={`p-1.5 transition-colors ${
-              viewStart <= 0.001
-                ? isDark ? 'text-white/20' : 'text-gray-300'
-                : isDark ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-            }`}
-            title="Jump to oldest"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7M18 19l-7-7 7-7" />
-            </svg>
-          </button>
-
-          {/* Pan left button */}
-          <button
-            onClick={() => panByCandles(-50)}
-            disabled={viewStart <= 0.001}
-            className={`p-1.5 transition-colors ${
-              viewStart <= 0.001
-                ? isDark ? 'text-white/20' : 'text-gray-300'
-                : isDark ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-            }`}
-            title="Pan left (older)"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-
-          {/* Slider track */}
-          <div
-            ref={sliderRef}
-            onClick={handleSliderTrackClick}
-            className={`flex-1 h-10 relative border cursor-pointer ${isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}
-          >
-            {/* Mini chart preview */}
-            <div className="absolute inset-0 opacity-30 pointer-events-none">
-              {safeData.length > 1 && bounds.priceRange > 0 && (
-                <svg viewBox={`0 0 ${safeData.length} 100`} preserveAspectRatio="none" className="w-full h-full">
-                  <path
-                    d={safeData.map((d, i) => {
-                      const y = Math.max(0, Math.min(100, 100 - ((d.close - bounds.minPrice) / bounds.priceRange) * 100));
-                      return `${i === 0 ? 'M' : 'L'} ${i} ${isFinite(y) ? y : 50}`;
-                    }).join(" ")}
-                    fill="none"
-                    stroke={priceChange.isPositive ? "#10b981" : "#ef4444"}
-                    strokeWidth="2"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                </svg>
-              )}
-            </div>
-
-            {/* Dimmed areas outside selection - clickable to jump */}
-            <div
-              className={`absolute top-0 bottom-0 left-0 ${isDark ? 'bg-[#0a0a0a]/70' : 'bg-white/70'}`}
-              style={{ width: `${viewStart * 100}%` }}
-            />
-            <div
-              className={`absolute top-0 bottom-0 right-0 ${isDark ? 'bg-[#0a0a0a]/70' : 'bg-white/70'}`}
-              style={{ width: `${(1 - viewEnd) * 100}%` }}
-            />
-
-            {/* Selection handles */}
-            <div
-              className="absolute top-0 bottom-0 cursor-ew-resize flex items-center z-10"
-              style={{ left: `${viewStart * 100}%` }}
-              onMouseDown={(e) => { e.stopPropagation(); handleSliderMouseDown(e, "left"); }}
-            >
-              <div className="w-2 h-6 bg-[#FF6B4A] -ml-1" />
-            </div>
-
-            <div
-              className="absolute top-0 bottom-0 cursor-ew-resize flex items-center z-10"
-              style={{ left: `${viewEnd * 100}%` }}
-              onMouseDown={(e) => { e.stopPropagation(); handleSliderMouseDown(e, "right"); }}
-            >
-              <div className="w-2 h-6 bg-[#FF6B4A] -ml-1" />
-            </div>
-
-            {/* Draggable selection area */}
-            <div
-              className="absolute top-0 bottom-0 cursor-grab active:cursor-grabbing border-t-2 border-b-2 border-[#FF6B4A]/50"
-              style={{
-                left: `${viewStart * 100}%`,
-                width: `${(viewEnd - viewStart) * 100}%`
-              }}
-              onMouseDown={(e) => { e.stopPropagation(); handleSliderMouseDown(e, "middle"); }}
+        {/* Speed ball control - hide when using custom toolbar (compact mode) or when showDrawingTools is false */}
+        {!renderToolbar && showDrawingTools && (
+          <div className="mx-4 mb-2 flex items-center justify-center">
+            <SpeedBallControl
+              onPan={panByCandles}
+              isDark={isDark}
+              dataLength={safeData.length}
             />
           </div>
-
-          {/* Pan right button */}
-          <button
-            onClick={() => panByCandles(50)}
-            disabled={viewEnd >= 0.999}
-            className={`p-1.5 transition-colors ${
-              viewEnd >= 0.999
-                ? isDark ? 'text-white/20' : 'text-gray-300'
-                : isDark ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-            }`}
-            title="Pan right (newer)"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-
-          {/* Jump to end button */}
-          <button
-            onClick={jumpToEnd}
-            disabled={viewEnd >= 0.999}
-            className={`p-1.5 transition-colors ${
-              viewEnd >= 0.999
-                ? isDark ? 'text-white/20' : 'text-gray-300'
-                : isDark ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-            }`}
-            title="Jump to newest"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M6 5l7 7-7 7" />
-            </svg>
-          </button>
-        </div>
-      )}
+        )}
       </div>
 
       {/* Loading more indicator */}
