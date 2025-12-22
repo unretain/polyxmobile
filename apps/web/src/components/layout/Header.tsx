@@ -56,7 +56,6 @@ export function Header() {
   const [balanceLoading, setBalanceLoading] = useState(false);
   const [withdrawAddress, setWithdrawAddress] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
-  const [withdrawCloseAccount, setWithdrawCloseAccount] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
   const [withdrawSuccess, setWithdrawSuccess] = useState<string | null>(null);
@@ -217,7 +216,7 @@ export function Header() {
   };
 
   const handleWithdraw = async () => {
-    if (!withdrawAddress || (!withdrawAmount && !withdrawCloseAccount)) return;
+    if (!withdrawAddress || !withdrawAmount) return;
 
     setWithdrawing(true);
     setWithdrawError(null);
@@ -229,9 +228,8 @@ export function Header() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           destinationAddress: withdrawAddress,
-          amount: withdrawCloseAccount ? undefined : withdrawAmount,
+          amount: withdrawAmount,
           tokenMint: null, // SOL
-          closeAccount: withdrawCloseAccount,
         }),
       });
 
@@ -241,14 +239,9 @@ export function Header() {
         throw new Error(data.error || "Withdrawal failed");
       }
 
-      if (withdrawCloseAccount) {
-        setWithdrawSuccess(`✓ Claimed all SOL (account closed)`);
-      } else {
-        setWithdrawSuccess(`✓ Sent ${withdrawAmount} SOL`);
-      }
+      setWithdrawSuccess(`✓ Sent ${withdrawAmount} SOL`);
       setWithdrawAddress("");
       setWithdrawAmount("");
-      setWithdrawCloseAccount(false);
       fetchBalance();
 
       // Open Solscan in new tab
@@ -580,18 +573,10 @@ export function Header() {
                       <button
                         onClick={() => {
                           const bal = balance?.sol.uiBalance || 0;
+                          // Need to keep ~0.0009 SOL for rent + tx fee
                           const RENT_AND_FEE = 0.0009;
-
-                          if (bal < 0.001) {
-                            // Balance too small for normal withdraw - use close account mode
-                            setWithdrawAmount(bal.toFixed(6));
-                            setWithdrawCloseAccount(true);
-                          } else {
-                            // Normal max - leave rent behind
-                            const maxAmount = Math.max(0, bal - RENT_AND_FEE);
-                            setWithdrawAmount(maxAmount > 0 ? maxAmount.toFixed(6) : "0");
-                            setWithdrawCloseAccount(false);
-                          }
+                          const maxAmount = Math.max(0, bal - RENT_AND_FEE);
+                          setWithdrawAmount(maxAmount > 0 ? maxAmount.toFixed(6) : "0");
                         }}
                         className="text-[#FF6B4A] hover:underline"
                       >
@@ -616,9 +601,9 @@ export function Header() {
 
                   <button
                     onClick={handleWithdraw}
-                    disabled={!withdrawAddress || (!withdrawAmount && !withdrawCloseAccount) || withdrawing}
+                    disabled={!withdrawAddress || !withdrawAmount || withdrawing}
                     className={`w-full py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${
-                      !withdrawAddress || (!withdrawAmount && !withdrawCloseAccount) || withdrawing
+                      !withdrawAddress || !withdrawAmount || withdrawing
                         ? isDark ? "bg-white/10 text-white/40 cursor-not-allowed" : "bg-gray-100 text-gray-400 cursor-not-allowed"
                         : "bg-[#FF6B4A] text-white hover:bg-[#FF8F6B]"
                     }`}
@@ -627,11 +612,6 @@ export function Header() {
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Sending...
-                      </>
-                    ) : withdrawCloseAccount ? (
-                      <>
-                        <ArrowUpRight className="h-4 w-4" />
-                        Claim All SOL
                       </>
                     ) : (
                       <>
