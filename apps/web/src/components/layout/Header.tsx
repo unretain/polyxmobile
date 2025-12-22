@@ -239,11 +239,12 @@ export function Header() {
         throw new Error(data.error || "Withdrawal failed");
       }
 
-      setWithdrawSuccess(`Sent ${withdrawAmount} SOL successfully!`);
+      setWithdrawSuccess(`✓ Sent ${withdrawAmount} SOL`);
       setWithdrawAddress("");
       setWithdrawAmount("");
       fetchBalance();
 
+      // Open Solscan in new tab
       if (data.explorerUrl) {
         window.open(data.explorerUrl, "_blank");
       }
