@@ -215,8 +215,8 @@ export function Header() {
     }
   };
 
-  const handleWithdraw = async () => {
-    if (!withdrawAddress || !withdrawAmount) return;
+  const handleWithdraw = async (closeAccount = false) => {
+    if (!withdrawAddress || (!withdrawAmount && !closeAccount)) return;
 
     setWithdrawing(true);
     setWithdrawError(null);
@@ -228,8 +228,9 @@ export function Header() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           destinationAddress: withdrawAddress,
-          amount: withdrawAmount,
+          amount: closeAccount ? undefined : withdrawAmount,
           tokenMint: null, // SOL
+          closeAccount,
         }),
       });
 
@@ -239,7 +240,11 @@ export function Header() {
         throw new Error(data.error || "Withdrawal failed");
       }
 
-      setWithdrawSuccess(`✓ Sent ${withdrawAmount} SOL`);
+      if (closeAccount) {
+        setWithdrawSuccess(`✓ Claimed all SOL (account closed)`);
+      } else {
+        setWithdrawSuccess(`✓ Sent ${withdrawAmount} SOL`);
+      }
       setWithdrawAddress("");
       setWithdrawAmount("");
       fetchBalance();
@@ -602,7 +607,7 @@ export function Header() {
                   )}
 
                   <button
-                    onClick={handleWithdraw}
+                    onClick={() => handleWithdraw(false)}
                     disabled={!withdrawAddress || !withdrawAmount || withdrawing}
                     className={`w-full py-2.5 rounded-lg font-medium text-sm transition-colors flex items-center justify-center gap-2 ${
                       !withdrawAddress || !withdrawAmount || withdrawing
@@ -622,6 +627,21 @@ export function Header() {
                       </>
                     )}
                   </button>
+
+                  {/* Close account button - claim back rent */}
+                  {(balance?.sol.uiBalance || 0) > 0 && (balance?.sol.uiBalance || 0) < 0.001 && (
+                    <button
+                      onClick={() => handleWithdraw(true)}
+                      disabled={!withdrawAddress || withdrawing}
+                      className={`w-full py-2 rounded-lg font-medium text-xs transition-colors ${
+                        !withdrawAddress || withdrawing
+                          ? isDark ? "bg-white/5 text-white/30 cursor-not-allowed" : "bg-gray-50 text-gray-400 cursor-not-allowed"
+                          : isDark ? "bg-white/10 text-white/60 hover:bg-white/20" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      Claim back {(balance?.sol.uiBalance || 0).toFixed(4)} SOL (close account)
+                    </button>
+                  )}
                 </div>
               </div>
 
