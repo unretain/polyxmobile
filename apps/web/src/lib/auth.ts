@@ -172,16 +172,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     strategy: "jwt",
   },
   trustHost: true,
-  cookies: {
-    sessionToken: {
-      name: process.env.NODE_ENV === "production" ? "__Secure-authjs.session-token" : "authjs.session-token",
-      options: {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-        secure: process.env.NODE_ENV === "production",
-        domain: process.env.NODE_ENV === "production" ? ".polyx.trade" : undefined,
-      },
-    },
-  },
+  // Let NextAuth handle cookies automatically - explicit config was causing signout issues
+  // The old cookies without domain attribute conflicted with new domain-scoped cookies
 });
