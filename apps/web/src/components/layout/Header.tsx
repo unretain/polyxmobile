@@ -614,12 +614,6 @@ export function Header() {
                     <p className="text-xs text-green-400 bg-green-500/10 p-2 rounded">{withdrawSuccess}</p>
                   )}
 
-                  {withdrawCloseAccount && (
-                    <p className={`text-xs p-2 rounded ${isDark ? 'text-white/60 bg-white/5' : 'text-gray-600 bg-gray-100'}`}>
-                      Sends full balance (you can deposit again anytime)
-                    </p>
-                  )}
-
                   <button
                     onClick={handleWithdraw}
                     disabled={!withdrawAddress || (!withdrawAmount && !withdrawCloseAccount) || withdrawing}
