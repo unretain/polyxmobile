@@ -473,7 +473,53 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     return { value: change, percent, isPositive: change >= 0 };
   }, [visibleData]);
 
-  // Scroll wheel to pan time axis left/right - fixed width slider
+  // Calculate the visible range ratio (what portion of data is visible)
+  const visibleRangeRatio = useMemo(() => {
+    const dataLen = safeData.length;
+    return dataLen > 0 ? Math.min(1, VISIBLE_CANDLES / dataLen) : 1;
+  }, [safeData.length]);
+
+  // Pan by a number of candles (positive = right/newer, negative = left/older)
+  const panByCandles = useCallback((candleCount: number) => {
+    const dataLen = safeData.length;
+    if (dataLen === 0) return;
+
+    const candleRatio = candleCount / dataLen;
+    const fixedRange = Math.min(1, VISIBLE_CANDLES / dataLen);
+
+    let newStart = viewStartRef.current + candleRatio;
+    let newEnd = newStart + fixedRange;
+
+    // Clamp to valid range
+    if (newStart < 0) {
+      newStart = 0;
+      newEnd = fixedRange;
+    }
+    if (newEnd > 1) {
+      newEnd = 1;
+      newStart = Math.max(0, 1 - fixedRange);
+    }
+
+    setViewStart(newStart);
+    setViewEnd(newEnd);
+  }, [safeData.length]);
+
+  // Jump to start (oldest) or end (newest)
+  const jumpToStart = useCallback(() => {
+    const dataLen = safeData.length;
+    const fixedRange = dataLen > 0 ? Math.min(1, VISIBLE_CANDLES / dataLen) : 1;
+    setViewStart(0);
+    setViewEnd(fixedRange);
+  }, [safeData.length]);
+
+  const jumpToEnd = useCallback(() => {
+    const dataLen = safeData.length;
+    const fixedRange = dataLen > 0 ? Math.min(1, VISIBLE_CANDLES / dataLen) : 1;
+    setViewStart(1 - fixedRange);
+    setViewEnd(1);
+  }, [safeData.length]);
+
+  // Scroll wheel to pan time axis left/right - dynamic sensitivity
   // This handler is for the SLIDER area (non-canvas), canvas zoom is handled by OrbitControls
   const handleWheel = useCallback((e: WheelEvent) => {
     // Shift+Scroll is handled by Y-axis scaling effect, skip here
@@ -491,29 +537,25 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     if (now - lastUpdateTimeRef.current < 50) return; // ~20fps for wheel
     lastUpdateTimeRef.current = now;
 
-    // Fixed-width slider: scroll pans left/right
     const dataLen = safeData.length;
-    const fixedRange = dataLen > 0 ? Math.min(1, VISIBLE_CANDLES / dataLen) : 1;
+    if (dataLen === 0) return;
 
-    // Scroll amount: 5% of total range per scroll tick
-    const scrollAmount = e.deltaY > 0 ? 0.05 : -0.05;
-
-    let newStart = viewStartRef.current + scrollAmount;
-    let newEnd = newStart + fixedRange;
-
-    // Clamp to valid range
-    if (newStart < 0) {
-      newStart = 0;
-      newEnd = fixedRange;
-    }
-    if (newEnd > 1) {
-      newEnd = 1;
-      newStart = Math.max(0, 1 - fixedRange);
+    // Dynamic scroll sensitivity based on data size
+    // For small datasets (<500): move ~20 candles per scroll
+    // For medium datasets (500-2000): move ~50 candles per scroll
+    // For large datasets (>2000): move ~100 candles per scroll
+    let candlesPerScroll: number;
+    if (dataLen < 500) {
+      candlesPerScroll = Math.max(10, Math.floor(dataLen * 0.1)); // 10% of data, min 10
+    } else if (dataLen < 2000) {
+      candlesPerScroll = 50;
+    } else {
+      candlesPerScroll = 100;
     }
 
-    setViewStart(newStart);
-    setViewEnd(newEnd);
-  }, [safeData.length]);
+    const direction = e.deltaY > 0 ? 1 : -1; // Positive = scroll right (newer)
+    panByCandles(direction * candlesPerScroll);
+  }, [safeData.length, panByCandles]);
 
   // Range slider handlers
   const handleSliderMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>, handle: "left" | "right" | "middle") => {
@@ -540,6 +582,34 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     };
   }, [handleWheel]);
 
+  // Handle click on slider track (outside the selection) to jump to that position
+  const handleSliderTrackClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!sliderRef.current) return;
+
+    const rect = sliderRef.current.getBoundingClientRect();
+    const clickRatio = (e.clientX - rect.left) / rect.width;
+
+    const dataLen = safeData.length;
+    const fixedRange = dataLen > 0 ? Math.min(1, VISIBLE_CANDLES / dataLen) : 1;
+
+    // Center the view on the clicked position
+    let newStart = clickRatio - fixedRange / 2;
+    let newEnd = clickRatio + fixedRange / 2;
+
+    // Clamp to valid range
+    if (newStart < 0) {
+      newStart = 0;
+      newEnd = fixedRange;
+    }
+    if (newEnd > 1) {
+      newEnd = 1;
+      newStart = Math.max(0, 1 - fixedRange);
+    }
+
+    setViewStart(newStart);
+    setViewEnd(newEnd);
+  }, [safeData.length]);
+
   useEffect(() => {
     const handleGlobalMouseMove = (e: MouseEvent) => {
       if (!sliderDragRef.current || !sliderRef.current) return;
@@ -553,15 +623,19 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       const deltaX = (e.clientX - lastMouseXRef.current) / rect.width;
       lastMouseXRef.current = e.clientX;
 
-      const currentStart = viewStartRef.current;
-      const currentEnd = viewEndRef.current;
-
-      // Fixed-width slider: always maintain VISIBLE_CANDLES ratio
-      // All drag modes just pan left/right, keeping the same range width
       const dataLen = safeData.length;
       const fixedRange = dataLen > 0 ? Math.min(1, VISIBLE_CANDLES / dataLen) : 1;
 
-      let newStart = currentStart + deltaX;
+      // For very large datasets, amplify the drag sensitivity
+      // so small mouse movements cover more data
+      let amplifiedDelta = deltaX;
+      if (dataLen > 2000) {
+        // Amplify by up to 3x for very large datasets
+        const amplification = Math.min(3, dataLen / 1000);
+        amplifiedDelta = deltaX * amplification;
+      }
+
+      let newStart = viewStartRef.current + amplifiedDelta;
       let newEnd = newStart + fixedRange;
 
       // Clamp to valid range [0, 1]
@@ -1048,66 +1122,134 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
         )}
       </div>
 
-      {/* Range slider (CMC style) - hide when using custom toolbar (compact mode) or when showDrawingTools is false */}
+      {/* Range slider with navigation arrows - hide when using custom toolbar (compact mode) or when showDrawingTools is false */}
       {!renderToolbar && showDrawingTools && (
-        <div
-          ref={sliderRef}
-          className={`h-10 mx-4 mb-2 relative border ${isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}
-        >
-          {/* Mini chart preview */}
-          <div className="absolute inset-0 opacity-30">
-            {safeData.length > 1 && bounds.priceRange > 0 && (
-              <svg viewBox={`0 0 ${safeData.length} 100`} preserveAspectRatio="none" className="w-full h-full">
-                <path
-                  d={safeData.map((d, i) => {
-                    const y = Math.max(0, Math.min(100, 100 - ((d.close - bounds.minPrice) / bounds.priceRange) * 100));
-                    return `${i === 0 ? 'M' : 'L'} ${i} ${isFinite(y) ? y : 50}`;
-                  }).join(" ")}
-                  fill="none"
-                  stroke={priceChange.isPositive ? "#10b981" : "#ef4444"}
-                  strokeWidth="2"
-                  vectorEffect="non-scaling-stroke"
-                />
-              </svg>
-            )}
-          </div>
-
-          {/* Dimmed areas outside selection */}
-          <div
-            className={`absolute top-0 bottom-0 left-0 ${isDark ? 'bg-[#0a0a0a]/70' : 'bg-white/70'}`}
-            style={{ width: `${viewStart * 100}%` }}
-          />
-          <div
-            className={`absolute top-0 bottom-0 right-0 ${isDark ? 'bg-[#0a0a0a]/70' : 'bg-white/70'}`}
-            style={{ width: `${(1 - viewEnd) * 100}%` }}
-          />
-
-          {/* Selection handles */}
-          <div
-            className="absolute top-0 bottom-0 cursor-ew-resize flex items-center z-10"
-            style={{ left: `${viewStart * 100}%` }}
-            onMouseDown={(e) => handleSliderMouseDown(e, "left")}
+        <div className="mx-4 mb-2 flex items-center gap-2">
+          {/* Jump to start button */}
+          <button
+            onClick={jumpToStart}
+            disabled={viewStart <= 0.001}
+            className={`p-1.5 transition-colors ${
+              viewStart <= 0.001
+                ? isDark ? 'text-white/20' : 'text-gray-300'
+                : isDark ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+            }`}
+            title="Jump to oldest"
           >
-            <div className="w-2 h-6 bg-[#FF6B4A] -ml-1" />
-          </div>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7M18 19l-7-7 7-7" />
+            </svg>
+          </button>
 
-          <div
-            className="absolute top-0 bottom-0 cursor-ew-resize flex items-center z-10"
-            style={{ left: `${viewEnd * 100}%` }}
-            onMouseDown={(e) => handleSliderMouseDown(e, "right")}
+          {/* Pan left button */}
+          <button
+            onClick={() => panByCandles(-50)}
+            disabled={viewStart <= 0.001}
+            className={`p-1.5 transition-colors ${
+              viewStart <= 0.001
+                ? isDark ? 'text-white/20' : 'text-gray-300'
+                : isDark ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+            }`}
+            title="Pan left (older)"
           >
-            <div className="w-2 h-6 bg-[#FF6B4A] -ml-1" />
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+
+          {/* Slider track */}
+          <div
+            ref={sliderRef}
+            onClick={handleSliderTrackClick}
+            className={`flex-1 h-10 relative border cursor-pointer ${isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}
+          >
+            {/* Mini chart preview */}
+            <div className="absolute inset-0 opacity-30 pointer-events-none">
+              {safeData.length > 1 && bounds.priceRange > 0 && (
+                <svg viewBox={`0 0 ${safeData.length} 100`} preserveAspectRatio="none" className="w-full h-full">
+                  <path
+                    d={safeData.map((d, i) => {
+                      const y = Math.max(0, Math.min(100, 100 - ((d.close - bounds.minPrice) / bounds.priceRange) * 100));
+                      return `${i === 0 ? 'M' : 'L'} ${i} ${isFinite(y) ? y : 50}`;
+                    }).join(" ")}
+                    fill="none"
+                    stroke={priceChange.isPositive ? "#10b981" : "#ef4444"}
+                    strokeWidth="2"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </svg>
+              )}
+            </div>
+
+            {/* Dimmed areas outside selection - clickable to jump */}
+            <div
+              className={`absolute top-0 bottom-0 left-0 ${isDark ? 'bg-[#0a0a0a]/70' : 'bg-white/70'}`}
+              style={{ width: `${viewStart * 100}%` }}
+            />
+            <div
+              className={`absolute top-0 bottom-0 right-0 ${isDark ? 'bg-[#0a0a0a]/70' : 'bg-white/70'}`}
+              style={{ width: `${(1 - viewEnd) * 100}%` }}
+            />
+
+            {/* Selection handles */}
+            <div
+              className="absolute top-0 bottom-0 cursor-ew-resize flex items-center z-10"
+              style={{ left: `${viewStart * 100}%` }}
+              onMouseDown={(e) => { e.stopPropagation(); handleSliderMouseDown(e, "left"); }}
+            >
+              <div className="w-2 h-6 bg-[#FF6B4A] -ml-1" />
+            </div>
+
+            <div
+              className="absolute top-0 bottom-0 cursor-ew-resize flex items-center z-10"
+              style={{ left: `${viewEnd * 100}%` }}
+              onMouseDown={(e) => { e.stopPropagation(); handleSliderMouseDown(e, "right"); }}
+            >
+              <div className="w-2 h-6 bg-[#FF6B4A] -ml-1" />
+            </div>
+
+            {/* Draggable selection area */}
+            <div
+              className="absolute top-0 bottom-0 cursor-grab active:cursor-grabbing border-t-2 border-b-2 border-[#FF6B4A]/50"
+              style={{
+                left: `${viewStart * 100}%`,
+                width: `${(viewEnd - viewStart) * 100}%`
+              }}
+              onMouseDown={(e) => { e.stopPropagation(); handleSliderMouseDown(e, "middle"); }}
+            />
           </div>
 
-          {/* Draggable selection area */}
-          <div
-            className="absolute top-0 bottom-0 cursor-grab active:cursor-grabbing border-t-2 border-b-2 border-[#FF6B4A]/50"
-            style={{
-              left: `${viewStart * 100}%`,
-              width: `${(viewEnd - viewStart) * 100}%`
-            }}
-            onMouseDown={(e) => handleSliderMouseDown(e, "middle")}
-          />
+          {/* Pan right button */}
+          <button
+            onClick={() => panByCandles(50)}
+            disabled={viewEnd >= 0.999}
+            className={`p-1.5 transition-colors ${
+              viewEnd >= 0.999
+                ? isDark ? 'text-white/20' : 'text-gray-300'
+                : isDark ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+            }`}
+            title="Pan right (newer)"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+
+          {/* Jump to end button */}
+          <button
+            onClick={jumpToEnd}
+            disabled={viewEnd >= 0.999}
+            className={`p-1.5 transition-colors ${
+              viewEnd >= 0.999
+                ? isDark ? 'text-white/20' : 'text-gray-300'
+                : isDark ? 'text-white/60 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+            }`}
+            title="Jump to newest"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M6 5l7 7-7 7" />
+            </svg>
+          </button>
         </div>
       )}
       </div>
