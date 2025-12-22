@@ -138,7 +138,7 @@ interface TokenColumnProps {
 
 function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDark }: TokenColumnProps) {
   return (
-    <div className={`flex flex-col h-full border backdrop-blur-md overflow-hidden ${
+    <div className={`flex flex-col h-[300px] md:h-full border backdrop-blur-md overflow-hidden ${
       isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-white'
     }`}>
       {/* Column Header */}
@@ -356,39 +356,39 @@ export default function PulsePage() {
   return (
     <div className="h-full flex flex-col gap-4">
       {/* Header */}
-      <div className={`flex items-center justify-between flex-shrink-0 px-4 py-3 backdrop-blur-md border ${
+      <div className={`flex flex-col md:flex-row md:items-center justify-between gap-3 flex-shrink-0 px-4 py-3 backdrop-blur-md border ${
         isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
       }`}>
         <div className="flex items-center gap-3">
-          <div className="bg-[#FF6B4A]/20 p-2.5 ring-1 ring-[#FF6B4A]/40">
-            <Activity className="h-5 w-5 text-[#FF6B4A]" />
+          <div className="bg-[#FF6B4A]/20 p-2 md:p-2.5 ring-1 ring-[#FF6B4A]/40">
+            <Activity className="h-4 w-4 md:h-5 md:w-5 text-[#FF6B4A]" />
           </div>
           <div>
-            <h1 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Pulse</h1>
-            <p className={`text-sm ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
+            <h1 className={`text-lg md:text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Pulse</h1>
+            <p className={`text-xs md:text-sm ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
               Real-time pump.fun token discovery • <span className={isDark ? 'text-white/80' : 'text-gray-700'}>{totalTokens}</span> tokens
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Search Button */}
+        <div className="flex items-center gap-2 md:gap-3">
+          {/* Search Button - icon only on mobile */}
           <button
             onClick={openSearch}
-            className={`flex items-center gap-2 border px-3 py-2 text-sm transition-all hover:border-[#FF6B4A]/30 ${
+            className={`flex items-center gap-2 border px-2 md:px-3 py-2 text-sm transition-all hover:border-[#FF6B4A]/30 ${
               isDark
                 ? 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
                 : 'bg-black/5 border-black/10 text-gray-500 hover:bg-black/10'
             }`}
           >
             <Search className="h-4 w-4" />
-            <span>Search by name, ticker, or CA...</span>
-            <kbd className={`ml-2 px-1.5 py-0.5 text-xs ${isDark ? 'bg-white/10 text-white/40' : 'bg-black/10 text-gray-400'}`}>Esc</kbd>
+            <span className="hidden md:inline">Search by name, ticker, or CA...</span>
+            <kbd className={`hidden md:inline ml-2 px-1.5 py-0.5 text-xs ${isDark ? 'bg-white/10 text-white/40' : 'bg-black/10 text-gray-400'}`}>Esc</kbd>
           </button>
 
           {/* Real-time indicator */}
           <div className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-sm",
+            "flex items-center gap-1.5 px-2 md:px-3 py-1.5 rounded-full text-xs font-medium backdrop-blur-sm",
             isRealtime ? "bg-up/15 text-up ring-1 ring-up/40" : isDark ? "bg-white/10 text-white/50" : "bg-black/10 text-gray-500"
           )}>
             <span className={cn(
@@ -402,14 +402,14 @@ export default function PulsePage() {
             onClick={() => fetchAllPairs()}
             disabled={isLoading}
             className={cn(
-              "flex items-center gap-2 border bg-[#FF6B4A]/10 border-[#FF6B4A]/30 px-4 py-2 text-sm font-medium transition-all",
+              "flex items-center gap-2 border bg-[#FF6B4A]/10 border-[#FF6B4A]/30 px-3 md:px-4 py-2 text-sm font-medium transition-all",
               "hover:bg-[#FF6B4A]/20 hover:border-[#FF6B4A]/50 active:scale-95",
               isDark ? 'text-white' : 'text-gray-900',
               isLoading && "opacity-50"
             )}
           >
             <RefreshCw className={cn("h-4 w-4 text-[#FF6B4A]", isLoading && "animate-spin")} />
-            Refresh
+            <span className="hidden md:inline">Refresh</span>
           </button>
         </div>
       </div>
@@ -421,8 +421,8 @@ export default function PulsePage() {
         </div>
       )}
 
-      {/* Three Column Layout */}
-      <div className="flex-1 grid grid-cols-3 gap-4 min-h-0">
+      {/* Three Column Layout - stacks on mobile */}
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4 min-h-0 overflow-y-auto md:overflow-visible">
         {/* Column 1: New Pairs */}
         <TokenColumn
           title="New Pairs"
@@ -453,10 +453,10 @@ export default function PulsePage() {
       </div>
 
       {/* Footer Stats */}
-      <div className={`flex items-center justify-between px-4 py-3 backdrop-blur-md border text-xs flex-shrink-0 ${
+      <div className={`flex flex-col md:flex-row items-start md:items-center justify-between gap-2 px-4 py-3 backdrop-blur-md border text-xs flex-shrink-0 ${
         isDark ? 'bg-white/5 border-white/10 text-white/50' : 'bg-black/5 border-black/10 text-gray-500'
       }`}>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 md:gap-4 flex-wrap">
           <span>
             <strong className={isDark ? 'text-white/80' : 'text-gray-700'}>{newPairs.length}</strong> new pairs
           </span>
@@ -468,7 +468,7 @@ export default function PulsePage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <span>Data from Moralis + PumpPortal</span>
+          <span className="hidden md:inline">Data from Moralis + PumpPortal</span>
           <a
             href="https://docs.axiom.trade/axiom/finding-tokens/pulse"
             target="_blank"
