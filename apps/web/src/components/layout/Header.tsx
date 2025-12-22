@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
-import { LogOut, User, Shield, Copy, Check, Key, ChevronDown, Sun, Moon, CreditCard, Wallet, Loader2, ExternalLink, ArrowUpRight, Mail, PieChart } from "lucide-react";
+import { LogOut, User, Shield, Copy, Check, Key, ChevronDown, Sun, Moon, CreditCard, Wallet, Loader2, ExternalLink, ArrowUpRight, Mail, PieChart, Menu, X } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 import { useAuthStore } from "@/stores/authStore";
 import { useThemeStore } from "@/stores/themeStore";
@@ -62,6 +62,7 @@ export function Header() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [pendingRedirect, setPendingRedirect] = useState<string | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const currentUser = session?.user as SessionUser | undefined;
@@ -262,17 +263,17 @@ export function Header() {
 
   return (
     <>
-      <header className="fixed top-0 left-0 right-0 z-50 px-6 md:px-10 lg:px-16 py-5">
-        <div className="max-w-[1600px] mx-auto flex items-center relative">
+      <header className="fixed top-0 left-0 right-0 z-50 px-4 md:px-10 lg:px-16 py-3 md:py-5">
+        <div className="max-w-[1600px] mx-auto flex items-center justify-between">
           {/* Left - Logo */}
-          <Link href="/" className={`flex items-center px-4 py-2 rounded-full border backdrop-blur-sm ${
+          <Link href="/" className={`flex items-center px-3 md:px-4 py-1.5 md:py-2 rounded-full border backdrop-blur-sm ${
             isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
           }`}>
             <span className={`font-medium text-sm ${isDark ? 'text-white' : 'text-black'}`}>[poly<span className="text-[#FF6B4A]">x</span>]</span>
           </Link>
 
-          {/* Center - Navigation (absolutely positioned to stay centered) */}
-          <nav className={`absolute left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1.5 rounded-full border backdrop-blur-sm ${
+          {/* Center - Navigation (hidden on mobile) */}
+          <nav className={`hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-1 px-2 py-1.5 rounded-full border backdrop-blur-sm ${
             isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
           }`}>
             <Link
@@ -328,12 +329,12 @@ export function Header() {
             </Link>
           </nav>
 
-          {/* Right - Actions (ml-auto pushes to right) */}
-          <div className="flex items-center gap-2 ml-auto">
+          {/* Right - Actions */}
+          <div className="flex items-center gap-2">
             {/* Theme Toggle */}
             <button
               onClick={toggleTheme}
-              className={`p-2.5 rounded-full border backdrop-blur-md transition-colors ${
+              className={`p-2 md:p-2.5 rounded-full border backdrop-blur-md transition-colors ${
                 isDark
                   ? 'bg-white/5 border-white/10 hover:bg-white/10 text-white/60 hover:text-white'
                   : 'bg-black/5 border-black/10 hover:bg-black/10 text-black/60 hover:text-black'
@@ -343,14 +344,14 @@ export function Header() {
               {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
 
-            {/* Show wallet and user menu when logged in */}
+            {/* Desktop: Show wallet and user menu when logged in */}
             {currentUser ? (
               <>
-                {/* Wallet Balance - clickable to open wallet modal */}
+                {/* Wallet Balance - hidden on mobile, clickable to open wallet modal */}
                 {walletAddress && (
                   <button
                     onClick={handleOpenWallet}
-                    className={`flex items-center gap-2 rounded-full border backdrop-blur-md px-3 py-2 text-sm font-medium transition-colors ${
+                    className={`hidden md:flex items-center gap-2 rounded-full border backdrop-blur-md px-3 py-2 text-sm font-medium transition-colors ${
                       isDark
                         ? 'bg-white/5 border-white/10 hover:bg-white/10'
                         : 'bg-black/5 border-black/10 hover:bg-black/10'
@@ -374,8 +375,8 @@ export function Header() {
                   </button>
                 )}
 
-                {/* User Account Dropdown */}
-                <div className="relative" ref={dropdownRef}>
+                {/* User Account Dropdown - hidden on mobile */}
+                <div className="hidden md:block relative" ref={dropdownRef}>
                   <button
                     onClick={() => setShowDropdown(!showDropdown)}
                     className={`flex items-center gap-2 px-3 py-2 rounded-full border backdrop-blur-md transition-colors ${
@@ -448,13 +449,25 @@ export function Header() {
                     </div>
                   )}
                 </div>
+
+                {/* Mobile: Hamburger menu */}
+                <button
+                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                  className={`md:hidden p-2 rounded-full border backdrop-blur-md transition-colors ${
+                    isDark
+                      ? 'bg-white/5 border-white/10 hover:bg-white/10 text-white'
+                      : 'bg-black/5 border-black/10 hover:bg-black/10 text-black'
+                  }`}
+                >
+                  {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+                </button>
               </>
             ) : (
               <>
-                {/* Login/Signup buttons when not logged in */}
+                {/* Desktop: Login/Signup buttons */}
                 <button
                   onClick={() => openAuthModal("signin")}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-full border text-sm transition-all ${
+                  className={`hidden md:flex items-center gap-2 px-4 py-2 rounded-full border text-sm transition-all ${
                     isDark
                       ? 'bg-white/5 border-white/10 text-white hover:bg-white/10'
                       : 'bg-black/5 border-black/10 text-black hover:bg-black/10'
@@ -465,15 +478,174 @@ export function Header() {
                 </button>
                 <button
                   onClick={() => openAuthModal("signup")}
-                  className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all bg-[#FF6B4A] text-white hover:bg-[#FF5A36]"
+                  className="hidden md:flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all bg-[#FF6B4A] text-white hover:bg-[#FF5A36]"
                 >
                   <Wallet className="w-4 h-4" />
                   <span>Sign Up</span>
+                </button>
+
+                {/* Mobile: Hamburger menu */}
+                <button
+                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                  className={`md:hidden p-2 rounded-full border backdrop-blur-md transition-colors ${
+                    isDark
+                      ? 'bg-white/5 border-white/10 hover:bg-white/10 text-white'
+                      : 'bg-black/5 border-black/10 hover:bg-black/10 text-black'
+                  }`}
+                >
+                  {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
                 </button>
               </>
             )}
           </div>
         </div>
+
+        {/* Mobile Menu */}
+        {mobileMenuOpen && (
+          <div className={`md:hidden absolute top-full left-0 right-0 mt-2 mx-4 rounded-2xl border backdrop-blur-md shadow-xl overflow-hidden ${
+            isDark ? 'bg-[#1a1a1a]/95 border-white/10' : 'bg-white/95 border-black/10'
+          }`}>
+            {/* Navigation Links */}
+            <div className={`p-2 border-b ${isDark ? 'border-white/10' : 'border-black/10'}`}>
+              <Link
+                href="/pulse"
+                onClick={(e) => { handleNavClick(e, "/pulse"); setMobileMenuOpen(false); }}
+                className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
+                  isActive('/pulse')
+                    ? 'bg-[#FF6B4A] text-white'
+                    : isDark
+                      ? 'text-white/70 hover:bg-white/5'
+                      : 'text-black/70 hover:bg-black/5'
+                }`}
+              >
+                Pulse
+              </Link>
+              <Link
+                href="/dashboard"
+                onClick={(e) => { handleNavClick(e, "/dashboard"); setMobileMenuOpen(false); }}
+                className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
+                  isActive('/dashboard')
+                    ? 'bg-[#FF6B4A] text-white'
+                    : isDark
+                      ? 'text-white/70 hover:bg-white/5'
+                      : 'text-black/70 hover:bg-black/5'
+                }`}
+              >
+                Dashboard
+              </Link>
+              <Link
+                href="/solutions"
+                onClick={() => setMobileMenuOpen(false)}
+                className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
+                  isActive('/solutions')
+                    ? 'bg-[#FF6B4A] text-white'
+                    : isDark
+                      ? 'text-white/70 hover:bg-white/5'
+                      : 'text-black/70 hover:bg-black/5'
+                }`}
+              >
+                Solutions
+              </Link>
+              <Link
+                href="/markets"
+                onClick={(e) => { handleNavClick(e, "/markets"); setMobileMenuOpen(false); }}
+                className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
+                  isActive('/markets')
+                    ? 'bg-[#FF6B4A] text-white'
+                    : isDark
+                      ? 'text-white/70 hover:bg-white/5'
+                      : 'text-black/70 hover:bg-black/5'
+                }`}
+              >
+                Markets
+              </Link>
+            </div>
+
+            {/* User Section */}
+            {currentUser ? (
+              <div className="p-2">
+                {/* Wallet Balance */}
+                {walletAddress && (
+                  <button
+                    onClick={() => { handleOpenWallet(); setMobileMenuOpen(false); }}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors ${
+                      isDark ? 'hover:bg-white/5' : 'hover:bg-black/5'
+                    }`}
+                  >
+                    <Image
+                      src="/solana-logo.png"
+                      alt="Solana"
+                      width={20}
+                      height={20}
+                      className="rounded-full"
+                    />
+                    <span className={`font-medium ${isDark ? 'text-white' : 'text-black'}`}>
+                      {balance ? (balance.sol.uiBalance < 0.001 ? "0.00" : balance.sol.uiBalance.toFixed(4)) : "0.00"} SOL
+                    </span>
+                    <span className={`text-xs ${isDark ? 'text-white/40' : 'text-black/40'}`}>{shortenAddress(walletAddress)}</span>
+                  </button>
+                )}
+                <Link
+                  href="/portfolio"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors ${
+                    isDark ? 'text-white/70 hover:bg-white/5' : 'text-black/70 hover:bg-black/5'
+                  }`}
+                >
+                  <PieChart className="h-4 w-4" />
+                  Portfolio
+                </Link>
+                <Link
+                  href="/dashboard/license"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors ${
+                    isDark ? 'text-white/70 hover:bg-white/5' : 'text-black/70 hover:bg-black/5'
+                  }`}
+                >
+                  <CreditCard className="h-4 w-4" />
+                  License & Billing
+                </Link>
+                <button
+                  onClick={() => { handleOpenSecurity(); setMobileMenuOpen(false); }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors ${
+                    isDark ? 'text-white/70 hover:bg-white/5' : 'text-black/70 hover:bg-black/5'
+                  }`}
+                >
+                  <Key className="h-4 w-4" />
+                  Security
+                </button>
+                <button
+                  onClick={() => { handleLogout(); setMobileMenuOpen(false); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign Out
+                </button>
+              </div>
+            ) : (
+              <div className="p-3 flex gap-2">
+                <button
+                  onClick={() => { openAuthModal("signin"); setMobileMenuOpen(false); }}
+                  className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border text-sm transition-all ${
+                    isDark
+                      ? 'bg-white/5 border-white/10 text-white'
+                      : 'bg-black/5 border-black/10 text-black'
+                  }`}
+                >
+                  <Mail className="w-4 h-4" />
+                  Log In
+                </button>
+                <button
+                  onClick={() => { openAuthModal("signup"); setMobileMenuOpen(false); }}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium bg-[#FF6B4A] text-white"
+                >
+                  <Wallet className="w-4 h-4" />
+                  Sign Up
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </header>
 
       {/* Auth Modal */}
