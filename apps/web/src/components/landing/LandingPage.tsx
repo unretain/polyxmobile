@@ -261,7 +261,7 @@ export function LandingPage() {
   const [tokenPrice, setTokenPrice] = useState<number | null>(null);
   const [candles, setCandles] = useState<OHLCVCandle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [timeframe, setTimeframe] = useState<Timeframe>("1m");
+  const [timeframe, setTimeframe] = useState<Timeframe>("4h");
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   const currentToken = FEATURED_TOKENS[tokenIndex];
