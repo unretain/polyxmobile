@@ -680,26 +680,23 @@ class MoralisService {
 
       // Helper to extract price from a swap
       // For per-trade candles, we need to calculate price from the ACTUAL exchange ratio
-      // Moralis usdPrice is often the CURRENT price, not the historical price at swap time
       const getPriceAndVolume = (swap: MoralisSwap): { price: number; volume: number } => {
         let price = 0;
-        const boughtIsToken = swap.bought?.address?.toLowerCase() === address.toLowerCase();
-        const soldIsToken = swap.sold?.address?.toLowerCase() === address.toLowerCase();
+        const addressLower = address.toLowerCase();
+        const boughtIsToken = swap.bought?.address?.toLowerCase() === addressLower;
+        const soldIsToken = swap.sold?.address?.toLowerCase() === addressLower;
 
         // SOL address for reference (canonical Wrapped SOL address)
         const SOL_ADDRESSES = [
-          "So11111111111111111111111111111111111111112".toLowerCase(),
-          "so11111111111111111111111111111111111111112", // lowercase variant
+          "so11111111111111111111111111111111111111112",
         ];
 
         // Check if address is SOL
         const isSolAddress = (addr: string | undefined) =>
           addr && SOL_ADDRESSES.includes(addr.toLowerCase());
 
-        // Calculate price from exchange ratio: (SOL amount * SOL price) / Token amount
-        // This gives us the actual price at the time of the swap
+        // Method 1: Calculate price from exchange ratio (SOL amount * SOL price / Token amount)
         if (boughtIsToken && swap.bought?.amount && isSolAddress(swap.sold?.address)) {
-          // User bought tokens with SOL: price = SOL spent / tokens received
           const tokenAmount = parseFloat(swap.bought.amount);
           const solAmount = parseFloat(swap.sold?.amount || "0");
           const solPrice = swap.sold?.usdPrice || 0;
@@ -707,15 +704,16 @@ class MoralisService {
             price = (solAmount * solPrice) / tokenAmount;
           }
         } else if (soldIsToken && swap.sold?.amount && isSolAddress(swap.bought?.address)) {
-          // User sold tokens for SOL: price = SOL received / tokens sold
           const tokenAmount = parseFloat(swap.sold.amount);
           const solAmount = parseFloat(swap.bought?.amount || "0");
           const solPrice = swap.bought?.usdPrice || 0;
           if (tokenAmount > 0 && solAmount > 0 && solPrice > 0) {
             price = (solAmount * solPrice) / tokenAmount;
           }
-        } else {
-          // Fallback: use usdAmount / amount (may not have historical accuracy)
+        }
+
+        // Method 2: Use usdAmount / amount directly from Moralis
+        if (price === 0) {
           if (boughtIsToken && swap.bought?.usdAmount && swap.bought?.amount) {
             const tokenAmount = parseFloat(swap.bought.amount);
             if (tokenAmount > 0) {
@@ -725,6 +723,30 @@ class MoralisService {
             const tokenAmount = parseFloat(swap.sold.amount);
             if (tokenAmount > 0) {
               price = swap.sold.usdAmount / tokenAmount;
+            }
+          }
+        }
+
+        // Method 3: Use the token's usdPrice directly (Moralis provides this)
+        if (price === 0) {
+          if (boughtIsToken && swap.bought?.usdPrice) {
+            price = swap.bought.usdPrice;
+          } else if (soldIsToken && swap.sold?.usdPrice) {
+            price = swap.sold.usdPrice;
+          }
+        }
+
+        // Method 4: Calculate from totalValueUsd / token amount
+        if (price === 0 && swap.totalValueUsd > 0) {
+          if (boughtIsToken && swap.bought?.amount) {
+            const tokenAmount = parseFloat(swap.bought.amount);
+            if (tokenAmount > 0) {
+              price = swap.totalValueUsd / tokenAmount;
+            }
+          } else if (soldIsToken && swap.sold?.amount) {
+            const tokenAmount = parseFloat(swap.sold.amount);
+            if (tokenAmount > 0) {
+              price = swap.totalValueUsd / tokenAmount;
             }
           }
         }
