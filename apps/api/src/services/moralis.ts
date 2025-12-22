@@ -654,16 +654,22 @@ class MoralisService {
         });
 
         allSwaps = allSwaps.concat(swaps);
+
+        // Log progress every 10 pages
+        if (page % 10 === 0 || page < 3) {
+          console.log(`📊 [getOHLCVFromSwaps] Page ${page + 1}: got ${swaps.length} swaps, total: ${allSwaps.length}, cursor: ${nextCursor ? 'yes' : 'no'}`);
+        }
+
         cursor = nextCursor;
 
         // Stop only when no more pages available
         // We want to fetch as much as possible up to maxPages
         if (!cursor || swaps.length < 100) {
-          console.log(`📊 [getOHLCVFromSwaps] Stopping at page ${page + 1} - no more data (cursor: ${!!cursor}, swaps: ${swaps.length})`);
+          console.log(`📊 [getOHLCVFromSwaps] Stopping at page ${page + 1} - no more data (cursor: ${!!cursor}, swaps: ${swaps.length}, total: ${allSwaps.length})`);
           break;
         }
       }
-      console.log(`📊 [getOHLCVFromSwaps] Fetched ${allSwaps.length} total swaps`);
+      console.log(`📊 [getOHLCVFromSwaps] Fetched ${allSwaps.length} total swaps for ${address.substring(0, 8)}...`);
 
       // Sort swaps by timestamp ASC (oldest first) for correct open/close calculation
       // API returns DESC (newest first), but we need oldest first so:
