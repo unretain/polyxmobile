@@ -700,64 +700,63 @@ pulseRoutes.get("/metadata/:address", async (req, res) => {
 });
 
 // GET /api/pulse/trades/:address - Get recent trades/swaps for a token
-// SOURCE: Moralis swaps API
+// SOURCE: Database (synced from Moralis) - no API calls per request
 pulseRoutes.get("/trades/:address", async (req, res) => {
   try {
     const { address } = req.params;
     const limit = parseInt(req.query.limit as string) || 50;
 
-    // Check cache first (10 second TTL)
+    // Check cache first (5 second TTL - DB reads are fast)
     const cacheKey = `pulse:trades:${address}:${limit}`;
     const cached = await cache.get(cacheKey);
     if (cached) {
       return res.json(JSON.parse(cached));
     }
 
-    const { swaps, cursor } = await moralisService.getTokenSwaps(address, {
-      order: "DESC",
-      limit,
+    // Ensure swaps are synced for this token
+    const syncStatus = await swapSyncService.getSyncStatus(address);
+    if (!syncStatus?.swapsSynced) {
+      // Sync in background, return empty for now
+      swapSyncService.syncHistoricalSwaps(address).catch(() => {});
+    }
+
+    // Get trades from database
+    const dbTrades = await prisma.tokenSwap.findMany({
+      where: { tokenAddress: address },
+      orderBy: { timestamp: "desc" },
+      take: limit,
     });
 
-    // Format swaps for frontend display
-    // Moralis swap structure: bought = what wallet received, sold = what wallet paid
-    // transactionType: "buy" = wallet bought the token, "sell" = wallet sold the token
-    const trades = swaps.map((swap) => {
-      // Use transactionType directly from Moralis
-      const isBuy = swap.transactionType === "buy";
-
-      // For a buy: bought = the token, sold = SOL/quote
-      // For a sell: sold = the token, bought = SOL/quote
-      const tokenSide = isBuy ? swap.bought : swap.sold;
-      const quoteSide = isBuy ? swap.sold : swap.bought;
-
-      return {
-        txHash: swap.transactionHash,
-        timestamp: new Date(swap.blockTimestamp).getTime(),
-        type: isBuy ? "buy" : "sell",
-        wallet: swap.walletAddress,
-        tokenAmount: tokenSide?.amount,
-        tokenAmountUsd: tokenSide?.usdAmount,
-        tokenSymbol: tokenSide?.symbol,
-        otherAmount: quoteSide?.amount,
-        otherSymbol: quoteSide?.symbol,
-        otherAmountUsd: quoteSide?.usdAmount,
-        priceUsd: tokenSide?.usdPrice,
-        totalValueUsd: swap.totalValueUsd,
-        pairLabel: swap.pairLabel,
-        exchangeName: swap.exchangeName,
-      };
+    // Get token info for symbol
+    const tokenInfo = await prisma.pulseToken.findUnique({
+      where: { address },
+      select: { symbol: true },
     });
+
+    const trades = dbTrades.map((swap) => ({
+      txHash: swap.txHash,
+      timestamp: swap.timestamp.getTime(),
+      type: swap.type,
+      wallet: swap.walletAddress,
+      tokenAmount: swap.tokenAmount.toString(),
+      tokenAmountUsd: swap.totalValueUsd,
+      tokenSymbol: tokenInfo?.symbol || "???",
+      otherAmount: swap.solAmount.toString(),
+      otherSymbol: "SOL",
+      otherAmountUsd: swap.solAmount * (swap.priceUsd > 0 ? swap.totalValueUsd / (swap.tokenAmount * swap.priceUsd) : 200),
+      priceUsd: swap.priceUsd,
+      totalValueUsd: swap.totalValueUsd,
+    }));
 
     const response = {
       address,
       trades,
       total: trades.length,
-      cursor,
       timestamp: Date.now(),
-      source: "moralis",
+      source: "database",
     };
 
-    await cache.set(cacheKey, JSON.stringify(response), 10);
+    await cache.set(cacheKey, JSON.stringify(response), 5);
     res.json(response);
   } catch (error) {
     console.error("Error fetching trades:", error);
@@ -809,60 +808,66 @@ pulseRoutes.get("/holders/:address", async (req, res) => {
 });
 
 // GET /api/pulse/stats/:address - Get token trading stats/analytics
-// SOURCE: Moralis pair stats API
+// SOURCE: Database (PulseToken table) - no API calls per request
 pulseRoutes.get("/stats/:address", async (req, res) => {
   try {
     const { address } = req.params;
 
-    // Check cache first (30 second TTL)
+    // Check cache first (5 second TTL - DB reads are fast)
     const cacheKey = `pulse:stats:${address}`;
     const cached = await cache.get(cacheKey);
     if (cached) {
       return res.json(JSON.parse(cached));
     }
 
-    // Fetch token data, stats, and pairs in parallel
-    const [tokenData, tokenStats, pairs] = await Promise.all([
-      moralisService.getTokenData(address),
-      moralisService.getTokenStats(address),
-      moralisService.getTokenPairs(address),
-    ]);
+    // Get from database first
+    const dbToken = await prisma.pulseToken.findUnique({
+      where: { address },
+    });
 
-    const mainPair = pairs?.find((p) => !p.inactivePair) || pairs?.[0];
+    if (dbToken) {
+      // Calculate 24h volume from trades in DB
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const volume24hResult = await prisma.tokenSwap.aggregate({
+        where: {
+          tokenAddress: address,
+          timestamp: { gte: oneDayAgo },
+        },
+        _sum: { totalValueUsd: true },
+      });
 
-    let volume24h = mainPair?.volume24hrUsd || tokenData?.volume24h || 0;
+      const response = {
+        address,
+        price: dbToken.price,
+        priceChange24h: dbToken.priceChange24h,
+        marketCap: dbToken.marketCap,
+        liquidity: dbToken.liquidity,
+        volume24h: volume24hResult._sum.totalValueUsd || dbToken.volume24h || 0,
+        stats: {
+          txCount: dbToken.txCount,
+        },
+        timestamp: Date.now(),
+        source: "database",
+      };
 
-    // If volume is still 0, try DexScreener
-    if (volume24h === 0) {
-      try {
-        const dexPairs = await dexScreenerService.getTokenPairs(address);
-        if (dexPairs.length > 0) {
-          const dexVolume = dexPairs[0].volume?.h24 || 0;
-          if (dexVolume > 0) {
-            volume24h = dexVolume;
-            console.log(`📈 Stats enriched volume24h from DexScreener: $${dexVolume.toLocaleString()}`);
-          }
-        }
-      } catch (err) {
-        console.log(`Could not enrich stats volume from DexScreener for ${address}`);
-      }
+      await cache.set(cacheKey, JSON.stringify(response), 5);
+      return res.json(response);
     }
 
+    // Token not in DB - return empty stats
+    // The pulseSync should add it eventually
     const response = {
       address,
-      price: tokenData?.price || 0,
-      priceChange24h: tokenData?.priceChange24h || 0,
-      marketCap: tokenData?.marketCap || 0,
-      liquidity: mainPair?.liquidityUsd || tokenData?.liquidity || 0,
-      volume24h,
-      stats: tokenStats || {},
-      exchange: mainPair?.exchangeName || "Unknown",
-      pairAddress: mainPair?.pairAddress,
+      price: 0,
+      priceChange24h: 0,
+      marketCap: 0,
+      liquidity: 0,
+      volume24h: 0,
+      stats: {},
       timestamp: Date.now(),
-      source: "moralis",
+      source: "not-found",
     };
 
-    await cache.set(cacheKey, JSON.stringify(response), 30);
     res.json(response);
   } catch (error) {
     console.error("Error fetching token stats:", error);
