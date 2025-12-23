@@ -635,12 +635,12 @@ export function LandingPage() {
               </div>
             </Link>
 
-            {/* Right: cards under chart - stacks on mobile */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-              {/* Ready to trade Card - Coral accent with line draw animation - spans 2 columns */}
+            {/* Right: cards under chart - 3 equal columns on desktop */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+              {/* Ready to trade Card - Coral accent with line draw animation */}
               <button
                 onClick={handleLaunchApp}
-                className="group col-span-2 rounded-2xl bg-[#FF6B4A] py-4 md:py-6 px-4 md:px-5 hover:scale-[1.02] transition-all relative overflow-hidden text-left"
+                className="group col-span-2 md:col-span-1 rounded-2xl bg-[#FF6B4A] py-4 md:py-6 px-4 md:px-5 hover:scale-[1.02] transition-all relative overflow-hidden text-left"
               >
                 <div className="relative flex flex-col justify-between h-full">
                   <div className="text-base md:text-lg font-bold text-white">Ready to trade?</div>
