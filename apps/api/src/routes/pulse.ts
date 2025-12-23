@@ -637,21 +637,22 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
       console.log(`📊 [OHLCV] Candle range: ${firstTs} to ${lastTs}`);
     }
 
-    // If DB has very few candles, also check PumpPortal for real-time data
-    // (very new tokens may not have swaps synced yet)
-    if (ohlcv.length < 10) {
+    // If DB has NO candles, check PumpPortal for real-time 1s data
+    // Only use for 1s timeframe - PumpPortal only has 1-second candles
+    // For other timeframes, we need to aggregate from DB swaps
+    if (ohlcv.length === 0 && timeframe === "1s") {
       const pumpPortalOhlcv = pumpPortalService.getTokenOHLCV(address);
-      console.log(`📊 [OHLCV] PumpPortal fallback: ${pumpPortalOhlcv.length} candles`);
-      if (pumpPortalOhlcv.length > ohlcv.length) {
+      console.log(`📊 [OHLCV] PumpPortal fallback: ${pumpPortalOhlcv.length} 1s candles`);
+      if (pumpPortalOhlcv.length > 0) {
         ohlcv = pumpPortalOhlcv;
         source = "pumpportal-realtime";
       }
     }
 
-    // Last resort: Generate flat candles from current price
+    // Last resort: If no candles at all, create ONE candle at current price
+    // Don't generate fake history - that's misleading
     if (ohlcv.length === 0) {
       try {
-        // Check DB for token price first
         const dbToken = await prisma.pulseToken.findUnique({
           where: { address },
           select: { price: true },
@@ -660,20 +661,17 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
         const price = dbToken?.price || 0;
         if (price > 0) {
           const nowMs = Date.now();
-          const startTime = Math.floor(nowMs / 60000) * 60000;
-          ohlcv = [];
-          for (let i = 59; i >= 0; i--) {
-            ohlcv.push({
-              timestamp: startTime - (i * 60000),
-              open: price,
-              high: price,
-              low: price,
-              close: price,
-              volume: 0,
-            });
-          }
+          const candleTime = Math.floor(nowMs / intervalMs) * intervalMs;
+          ohlcv = [{
+            timestamp: candleTime,
+            open: price,
+            high: price,
+            low: price,
+            close: price,
+            volume: 0,
+          }];
           source = "database-price";
-          console.log(`📊 Generated flat OHLCV from DB price: $${price}`);
+          console.log(`📊 Generated single candle from DB price: $${price}`);
         }
       } catch (priceError) {
         console.warn(`Failed to get price for ${address}`);
