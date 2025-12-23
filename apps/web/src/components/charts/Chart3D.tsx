@@ -446,30 +446,41 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       const startIdx = Math.max(0, newLength - TARGET_VISIBLE_CANDLES);
       const endIdx = newLength - 1;
 
-      console.log(`[Chart3D] NEW DATASET: showing indices ${startIdx}-${endIdx} (${endIdx - startIdx + 1} candles)`);
+      console.log(`[Chart3D] NEW DATASET (${newLength} candles): showing indices ${startIdx}-${endIdx}`);
 
       viewRangeRef.current = { startIdx, endIdx };
       setViewRange({ startIdx, endIdx });
-    } else if (newLength > prevLength) {
+    } else if (newLength > prevLength && newLength !== prevLength) {
       // Data was added - check if prepended or appended
-      const firstTsOld = prevLength > 0 ? safeData[newLength - prevLength]?.timestamp : null;
+      const addedCount = newLength - prevLength;
       const firstTsNew = safeData[0].timestamp;
 
-      if (firstTsNew < (firstTsOld || Infinity)) {
+      // To detect prepend: check if the first timestamp is older than what we had before
+      // We stored prevLength, so index [addedCount] should be the old first candle
+      const oldFirstIdx = addedCount;
+      const firstTsOld = oldFirstIdx < safeData.length ? safeData[oldFirstIdx]?.timestamp : null;
+
+      if (firstTsOld && firstTsNew < firstTsOld) {
         // Data was PREPENDED (historical data loaded on left)
         // Shift our indices right to keep viewing the same candles
-        const prependedCount = newLength - prevLength;
-        const newStartIdx = viewRangeRef.current.startIdx + prependedCount;
-        const newEndIdx = viewRangeRef.current.endIdx + prependedCount;
+        const newStartIdx = viewRangeRef.current.startIdx + addedCount;
+        const newEndIdx = viewRangeRef.current.endIdx + addedCount;
 
-        console.log(`[Chart3D] PREPENDED ${prependedCount} candles, shifting indices to ${newStartIdx}-${newEndIdx}`);
+        // CRITICAL: Clamp to valid range to prevent indices exceeding data length
+        const clampedStartIdx = Math.min(newStartIdx, newLength - 1);
+        const clampedEndIdx = Math.min(newEndIdx, newLength - 1);
 
-        viewRangeRef.current = { startIdx: newStartIdx, endIdx: newEndIdx };
-        setViewRange({ startIdx: newStartIdx, endIdx: newEndIdx });
+        console.log(`[Chart3D] PREPENDED ${addedCount} candles (total: ${newLength}), shifting indices ${viewRangeRef.current.startIdx}-${viewRangeRef.current.endIdx} -> ${clampedStartIdx}-${clampedEndIdx}`);
+
+        viewRangeRef.current = { startIdx: clampedStartIdx, endIdx: clampedEndIdx };
+        setViewRange({ startIdx: clampedStartIdx, endIdx: clampedEndIdx });
+      } else {
+        console.log(`[Chart3D] APPENDED ${addedCount} candles (total: ${newLength}), keeping indices ${viewRangeRef.current.startIdx}-${viewRangeRef.current.endIdx}`);
       }
-      // If data was appended (new candles on right), keep indices the same
+      // Update prevLength AFTER processing
       prevDataLengthRef.current = newLength;
-    } else {
+    } else if (newLength !== prevLength) {
+      // Data length changed but decreased (shouldn't happen normally)
       prevDataLengthRef.current = newLength;
     }
   }, [safeData]);
@@ -494,12 +505,26 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       return [];
     }
 
-    // Clamp indices to valid range
-    const startIdx = Math.max(0, Math.min(safeData.length - 1, viewRange.startIdx));
-    const endIdx = Math.max(0, Math.min(safeData.length - 1, viewRange.endIdx));
+    // Calculate desired visible count from the view range
+    const desiredCount = viewRange.endIdx - viewRange.startIdx + 1;
 
-    if (startIdx > endIdx) {
-      return safeData.slice(-1); // Fallback: show last candle
+    // Clamp endIdx first
+    let endIdx = Math.min(safeData.length - 1, viewRange.endIdx);
+
+    // Then calculate startIdx to maintain the visible count
+    let startIdx = endIdx - desiredCount + 1;
+
+    // If startIdx goes negative, clamp it and adjust endIdx
+    if (startIdx < 0) {
+      startIdx = 0;
+      endIdx = Math.min(safeData.length - 1, startIdx + desiredCount - 1);
+    }
+
+    // Safety check - should never happen but just in case
+    if (startIdx > endIdx || endIdx < 0) {
+      console.warn(`[Chart3D] Invalid indices: ${startIdx}-${endIdx}, falling back to last ${TARGET_VISIBLE_CANDLES}`);
+      startIdx = Math.max(0, safeData.length - TARGET_VISIBLE_CANDLES);
+      endIdx = safeData.length - 1;
     }
 
     const slice = safeData.slice(startIdx, endIdx + 1);
