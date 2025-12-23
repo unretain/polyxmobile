@@ -190,7 +190,68 @@ export async function GET(req: NextRequest) {
     const dailyPnLMap = new Map<string, DailyPnL>();
     const positions = new Map<string, Position>();
 
-    // Initialize positions with baseline data (for accurate cost basis)
+    // First, process ALL trades to build complete positions (for accurate cost basis and totals)
+    // This ensures positions show up even if all trades were outside the display period
+    const allPositions = new Map<string, Position>();
+
+    for (const trade of allTrades) {
+      const isBuy = trade.inputMint === SOL_MINT;
+      const tokenMint = isBuy ? trade.outputMint : trade.inputMint;
+      const tokenSymbol = isBuy ? trade.outputSymbol : trade.inputSymbol;
+      const tradeDate = trade.confirmedAt || trade.createdAt;
+
+      const solAmount = isBuy
+        ? Number(trade.amountIn) / 1e9
+        : Number(trade.amountOut) / 1e9;
+      const tokenAmount = isBuy
+        ? Number(trade.amountOut) / 1e6
+        : Number(trade.amountIn) / 1e6;
+
+      if (!allPositions.has(tokenMint)) {
+        allPositions.set(tokenMint, {
+          mint: tokenMint,
+          symbol: tokenSymbol,
+          name: "",
+          image: null,
+          totalBought: 0,
+          totalSold: 0,
+          avgBuyPrice: 0,
+          avgSellPrice: 0,
+          totalBuyCost: 0,
+          totalSellRevenue: 0,
+          currentBalance: 0,
+          realizedPnl: 0,
+          unrealizedPnl: 0,
+          trades: 0,
+          lastTradeAt: null,
+        });
+      }
+      const pos = allPositions.get(tokenMint)!;
+      pos.trades++;
+      pos.lastTradeAt = tradeDate;
+
+      if (isBuy) {
+        pos.totalBought += tokenAmount;
+        pos.totalBuyCost += solAmount;
+        pos.currentBalance += tokenAmount;
+        pos.avgBuyPrice = pos.totalBuyCost / pos.totalBought;
+      } else {
+        pos.totalSold += tokenAmount;
+        pos.totalSellRevenue += solAmount;
+        pos.currentBalance -= tokenAmount;
+        if (pos.totalSold > 0) {
+          pos.avgSellPrice = pos.totalSellRevenue / pos.totalSold;
+        }
+
+        // Calculate realized PnL for this sell
+        const costBasis = pos.avgBuyPrice * tokenAmount;
+        const sellRevenue = solAmount;
+        const tradePnl = sellRevenue - costBasis;
+        pos.realizedPnl += tradePnl;
+      }
+    }
+
+    // Initialize display period positions with baseline data (for accurate cost basis)
     for (const [mint, baseline] of baselinePositions) {
       positions.set(mint, {
         mint,
@@ -295,7 +356,9 @@ export async function GET(req: NextRequest) {
       (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
     );
 
-    const positionsArray = Array.from(positions.values())
+    // Use allPositions for the positions list - this includes ALL trades, not just display period
+    // This ensures positions show up even if all trades were outside the current display window
+    const positionsArray = Array.from(allPositions.values())
       .filter(p => p.trades > 0)
       .sort((a, b) => (b.lastTradeAt?.getTime() || 0) - (a.lastTradeAt?.getTime() || 0));
 
@@ -369,10 +432,14 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Calculate totals
+    // Calculate totals from ALL positions (not just display period)
     const totalRealizedPnl = positionsArray.reduce((sum, p) => sum + p.realizedPnl, 0);
-    const totalVolume = dailyPnL.reduce((sum, d) => sum + d.volume, 0);
-    const totalTrades = trades.length;
+    const totalVolume = allTrades.reduce((sum, t) => {
+      const isBuy = t.inputMint === SOL_MINT;
+      const solAmount = isBuy ? Number(t.amountIn) / 1e9 : Number(t.amountOut) / 1e9;
+      return sum + solAmount;
+    }, 0);
+    const totalTrades = allTrades.length;
 
     // Calculate streak
     let currentStreak = 0;
