@@ -415,7 +415,8 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   }, [safeData]);
 
   // Track the data identity to detect token/timeframe switches
-  const dataIdentityRef = useRef<number>(0);
+  // We use first + last timestamp combo to detect changes
+  const dataIdentityRef = useRef<string>("");
   const prevDataLengthRef = useRef<number>(0);
 
   // ============================================================================
@@ -423,24 +424,36 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   // ============================================================================
   useEffect(() => {
     if (safeData.length === 0) {
-      dataIdentityRef.current = 0;
+      dataIdentityRef.current = "";
       prevDataLengthRef.current = 0;
       return;
     }
 
+    const firstTs = safeData[0].timestamp;
     const lastTs = safeData[safeData.length - 1].timestamp;
-    const lastTsHour = Math.floor(lastTs / 3600000);
 
-    // Detect if this is a completely different token/timeframe
-    const isNewDataset = dataIdentityRef.current === 0 ||
-                         Math.abs(lastTsHour - dataIdentityRef.current) > 24;
+    // Create identity from first and last timestamp (hour-rounded)
+    // This detects both token changes AND timeframe changes
+    const firstTsHour = Math.floor(firstTs / 3600000);
+    const lastTsHour = Math.floor(lastTs / 3600000);
+    const newIdentity = `${firstTsHour}-${lastTsHour}`;
 
     const prevLength = prevDataLengthRef.current;
     const newLength = safeData.length;
 
+    // Detect if this is a completely different dataset
+    // A dataset is "new" if:
+    // 1. We have no previous identity
+    // 2. The last timestamp changed significantly (different token or timeframe switch)
+    // 3. Data length decreased significantly (timeframe switch often shows fewer candles initially)
+    const prevLastTsHour = dataIdentityRef.current ? parseInt(dataIdentityRef.current.split('-')[1]) : 0;
+    const isNewDataset = !dataIdentityRef.current ||
+                         Math.abs(lastTsHour - prevLastTsHour) > 24 ||
+                         (prevLength > 0 && newLength < prevLength * 0.5); // Data shrunk by >50%
+
     if (isNewDataset) {
-      // New token - initialize to show last N candles
-      dataIdentityRef.current = lastTsHour;
+      // New token/timeframe - initialize to show last N candles
+      dataIdentityRef.current = newIdentity;
       prevDataLengthRef.current = newLength;
 
       const startIdx = Math.max(0, newLength - TARGET_VISIBLE_CANDLES);
@@ -450,37 +463,46 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
 
       viewRangeRef.current = { startIdx, endIdx };
       setViewRange({ startIdx, endIdx });
-    } else if (newLength > prevLength && newLength !== prevLength) {
+    } else if (newLength > prevLength) {
       // Data was added - check if prepended or appended
       const addedCount = newLength - prevLength;
-      const firstTsNew = safeData[0].timestamp;
+      const currentVisibleCount = viewRangeRef.current.endIdx - viewRangeRef.current.startIdx;
 
-      // To detect prepend: check if the first timestamp is older than what we had before
-      // We stored prevLength, so index [addedCount] should be the old first candle
+      // To detect prepend: the first timestamp should be older than before
+      // If data was prepended, safeData[addedCount] should be the old first candle
       const oldFirstIdx = addedCount;
       const firstTsOld = oldFirstIdx < safeData.length ? safeData[oldFirstIdx]?.timestamp : null;
 
-      if (firstTsOld && firstTsNew < firstTsOld) {
+      if (firstTsOld && firstTs < firstTsOld) {
         // Data was PREPENDED (historical data loaded on left)
         // Shift our indices right to keep viewing the same candles
-        const newStartIdx = viewRangeRef.current.startIdx + addedCount;
-        const newEndIdx = viewRangeRef.current.endIdx + addedCount;
+        let newStartIdx = viewRangeRef.current.startIdx + addedCount;
+        let newEndIdx = viewRangeRef.current.endIdx + addedCount;
 
-        // CRITICAL: Clamp to valid range to prevent indices exceeding data length
-        const clampedStartIdx = Math.min(newStartIdx, newLength - 1);
-        const clampedEndIdx = Math.min(newEndIdx, newLength - 1);
+        // Clamp to valid range while PRESERVING visible count
+        if (newEndIdx >= newLength) {
+          newEndIdx = newLength - 1;
+          newStartIdx = Math.max(0, newEndIdx - currentVisibleCount);
+        }
+        if (newStartIdx < 0) {
+          newStartIdx = 0;
+          newEndIdx = Math.min(newLength - 1, newStartIdx + currentVisibleCount);
+        }
 
-        console.log(`[Chart3D] PREPENDED ${addedCount} candles (total: ${newLength}), shifting indices ${viewRangeRef.current.startIdx}-${viewRangeRef.current.endIdx} -> ${clampedStartIdx}-${clampedEndIdx}`);
+        console.log(`[Chart3D] PREPENDED ${addedCount} (total: ${newLength}), indices ${viewRangeRef.current.startIdx}-${viewRangeRef.current.endIdx} -> ${newStartIdx}-${newEndIdx}`);
 
-        viewRangeRef.current = { startIdx: clampedStartIdx, endIdx: clampedEndIdx };
-        setViewRange({ startIdx: clampedStartIdx, endIdx: clampedEndIdx });
+        viewRangeRef.current = { startIdx: newStartIdx, endIdx: newEndIdx };
+        setViewRange({ startIdx: newStartIdx, endIdx: newEndIdx });
       } else {
-        console.log(`[Chart3D] APPENDED ${addedCount} candles (total: ${newLength}), keeping indices ${viewRangeRef.current.startIdx}-${viewRangeRef.current.endIdx}`);
+        console.log(`[Chart3D] APPENDED ${addedCount} (total: ${newLength}), keeping indices ${viewRangeRef.current.startIdx}-${viewRangeRef.current.endIdx}`);
       }
-      // Update prevLength AFTER processing
+
+      // Update identity to track the new first timestamp
+      dataIdentityRef.current = newIdentity;
       prevDataLengthRef.current = newLength;
-    } else if (newLength !== prevLength) {
-      // Data length changed but decreased (shouldn't happen normally)
+    } else if (newLength < prevLength) {
+      // Data shrunk but not enough to be a "new dataset" - just update tracking
+      dataIdentityRef.current = newIdentity;
       prevDataLengthRef.current = newLength;
     }
   }, [safeData]);
