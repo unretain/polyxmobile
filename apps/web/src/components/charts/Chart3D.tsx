@@ -276,6 +276,28 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
+  // Track if we've ever received data - prevents "No data" flash on initial load
+  const [hasEverHadData, setHasEverHadData] = useState(false);
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+
+  // Mark initial load as complete after first non-loading state with data check
+  useEffect(() => {
+    if (!isLoading && !initialLoadComplete) {
+      // Small delay to prevent flash - give parent time to start loading
+      const timer = setTimeout(() => {
+        setInitialLoadComplete(true);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoading, initialLoadComplete]);
+
+  // Track if we've ever had data
+  useEffect(() => {
+    if (data.length > 0) {
+      setHasEverHadData(true);
+    }
+  }, [data]);
+
   // ============================================================================
   // DATA PROCESSING - Sort and validate incoming data
   // ============================================================================
@@ -1237,8 +1259,8 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
             </Suspense>
           </Canvas>
         )}
-        {/* Overlay message when no data */}
-        {isMounted && visibleData.length === 0 && !isLoading && (
+        {/* Overlay message when no data - only show after initial load attempt completes */}
+        {isMounted && visibleData.length === 0 && !isLoading && initialLoadComplete && !hasEverHadData && (
           <div className={`absolute inset-0 flex items-center justify-center ${isDark ? 'text-white/50 bg-[#0a0a0a]/80' : 'text-gray-500 bg-white/80'}`}>
             No chart data available
           </div>
