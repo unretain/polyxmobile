@@ -58,187 +58,117 @@ export interface DrawingToolbarRenderProps {
   drawingCount: number;
 }
 
-// Speed ball control component - drag left/right with exponential speed increase
-// Now works with index-based view system (candle count)
-interface SpeedBallControlProps {
-  onPan: (candles: number) => boolean; // Returns false if hit boundary
+// Timeline slider - drag to scrub through chart history
+// Shows current position in data with a draggable thumb
+interface TimelineSliderProps {
+  onSeek: (startIdx: number) => void; // Jump to specific start index
   isDark: boolean;
   dataLength: number;
   visibleCount: number;
-  atStart: boolean;
-  atEnd: boolean;
+  startIdx: number; // Current start index in data
 }
 
-function SpeedBallControl({ onPan, isDark, dataLength, visibleCount, atStart, atEnd }: SpeedBallControlProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const ballRef = useRef<HTMLDivElement>(null);
+function TimelineSlider({ onSeek, isDark, dataLength, visibleCount, startIdx }: TimelineSliderProps) {
+  const trackRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState(0);
-  const [hitBoundary, setHitBoundary] = useState<'left' | 'right' | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const startXRef = useRef(0);
-  const containerWidthRef = useRef(0);
-  const dragOffsetRef = useRef(0);
 
-  useEffect(() => {
-    dragOffsetRef.current = dragOffset;
-  }, [dragOffset]);
+  // Calculate the maximum start index (rightmost scroll position)
+  const maxStartIdx = Math.max(0, dataLength - visibleCount);
 
-  // Calculate candles to pan based on drag offset (exponential)
-  const calculatePanCandles = useCallback((offset: number): number => {
-    if (Math.abs(offset) < 0.1) return 0;
+  // Thumb position as percentage (0% = oldest data, 100% = newest data)
+  const thumbPercent = useMemo(() => {
+    if (maxStartIdx <= 0) return 100; // All data fits, show at end
+    return Math.min(100, Math.max(0, (startIdx / maxStartIdx) * 100));
+  }, [startIdx, maxStartIdx]);
 
-    const absOffset = Math.abs(offset);
-    const direction = offset > 0 ? 1 : -1;
+  // Handle click/drag on track
+  const seekToPosition = useCallback((clientX: number) => {
+    if (!trackRef.current || maxStartIdx <= 0) return;
 
-    // Exponential scaling: at offset 0.1 = ~1 candle, at offset 1.0 = ~100 candles
-    const candles = Math.round(Math.pow(absOffset, 2.5) * 100);
-
-    return direction * Math.max(1, candles);
-  }, []);
-
-  useEffect(() => {
-    if (isDragging) {
-      intervalRef.current = setInterval(() => {
-        const candles = calculatePanCandles(dragOffsetRef.current);
-        if (candles !== 0) {
-          const success = onPan(candles);
-          if (!success) {
-            setHitBoundary(candles < 0 ? 'left' : 'right');
-          } else {
-            setHitBoundary(null);
-          }
-        }
-      }, 100);
-
-      return () => {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-      };
-    }
-  }, [isDragging, calculatePanCandles, onPan]);
+    const rect = trackRef.current.getBoundingClientRect();
+    const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const newStartIdx = Math.round(percent * maxStartIdx);
+    onSeek(newStartIdx);
+  }, [maxStartIdx, onSeek]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (!containerRef.current) return;
     e.preventDefault();
     setIsDragging(true);
-    setHitBoundary(null);
-    startXRef.current = e.clientX;
-    containerWidthRef.current = containerRef.current.offsetWidth;
-  }, []);
+    seekToPosition(e.clientX);
+  }, [seekToPosition]);
 
   useEffect(() => {
+    if (!isDragging) return;
+
     const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return;
-      const deltaX = e.clientX - startXRef.current;
-      const maxDrag = containerWidthRef.current / 2;
-      const newOffset = Math.max(-1, Math.min(1, deltaX / maxDrag));
-      setDragOffset(newOffset);
+      seekToPosition(e.clientX);
     };
 
     const handleMouseUp = () => {
       setIsDragging(false);
-      setDragOffset(0);
-      setHitBoundary(null);
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
     };
 
-    if (isDragging) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-    }
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging]);
+  }, [isDragging, seekToPosition]);
 
-  const ballStyle = useMemo(() => {
-    const translateX = dragOffset * 30;
-    const glowIntensity = Math.abs(dragOffset);
-    let glowColor = dragOffset > 0 ? '#10b981' : '#ef4444';
-    if (hitBoundary) glowColor = '#f59e0b';
-
-    return {
-      transform: `translateX(${translateX}px)`,
-      boxShadow: glowIntensity > 0.1 ? `0 0 ${10 + glowIntensity * 20}px ${glowColor}` : 'none',
-      transition: isDragging ? 'none' : 'all 0.2s ease-out',
-    };
-  }, [dragOffset, isDragging, hitBoundary]);
-
-  const speedText = useMemo(() => {
-    if (hitBoundary) return hitBoundary === 'left' ? '◀ START' : 'END ▶';
-    const candles = Math.abs(calculatePanCandles(dragOffset));
-    if (candles === 0) return null;
-    return `${candles}/tick`;
-  }, [dragOffset, calculatePanCandles, hitBoundary]);
-
-  // Progress percentage for the slider
-  const progressPercent = dataLength > 0 ? ((visibleCount / dataLength) * 100) : 0;
+  // Show position info
+  const positionText = useMemo(() => {
+    if (dataLength === 0) return '';
+    const endIdx = Math.min(startIdx + visibleCount - 1, dataLength - 1);
+    return `${startIdx + 1}-${endIdx + 1}`;
+  }, [startIdx, visibleCount, dataLength]);
 
   return (
     <div className="flex items-center gap-3">
-      {/* Sleek timeline slider */}
+      {/* Timeline slider track */}
       <div
-        ref={containerRef}
-        className={`relative flex items-center select-none cursor-ew-resize group`}
-        title="Drag to pan through history"
+        ref={trackRef}
+        onMouseDown={handleMouseDown}
+        className={`relative h-6 flex items-center select-none cursor-pointer group`}
         style={{ width: '200px' }}
+        title="Click or drag to navigate"
       >
         {/* Track background */}
-        <div className={`absolute inset-0 h-1 top-1/2 -translate-y-1/2 rounded-full ${
+        <div className={`absolute inset-x-0 h-1.5 top-1/2 -translate-y-1/2 rounded-full ${
           isDark ? 'bg-white/10' : 'bg-black/10'
         }`} />
 
-        {/* Progress fill */}
+        {/* Progress fill (from left to thumb) */}
         <div
-          className="absolute h-1 top-1/2 -translate-y-1/2 rounded-full bg-gradient-to-r from-[#FF6B4A]/50 to-[#FF6B4A]"
-          style={{ width: `${Math.max(5, progressPercent)}%`, left: 0 }}
-        />
-
-        {/* Draggable thumb */}
-        <div
-          ref={ballRef}
-          onMouseDown={handleMouseDown}
-          className={`relative w-4 h-4 rounded-full cursor-grab active:cursor-grabbing transition-all duration-150 ${
-            hitBoundary
-              ? 'bg-amber-500 scale-125'
-              : isDragging
-                ? 'bg-[#FF6B4A] scale-110'
-                : 'bg-[#FF6B4A] group-hover:scale-110'
-          }`}
+          className="absolute h-1.5 top-1/2 -translate-y-1/2 rounded-full bg-gradient-to-r from-[#FF6B4A]/30 to-[#FF6B4A]/60"
           style={{
-            ...ballStyle,
-            boxShadow: isDragging || hitBoundary
-              ? ballStyle.boxShadow
-              : '0 0 10px rgba(255, 107, 74, 0.5)',
-            marginLeft: `calc(${Math.max(2, Math.min(95, progressPercent))}% - 8px)`,
+            left: 0,
+            width: `${thumbPercent}%`,
           }}
         />
 
-        {/* Speed indicator tooltip */}
-        {isDragging && speedText && (
-          <div className={`absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 rounded text-xs whitespace-nowrap backdrop-blur-sm ${
-            hitBoundary
-              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-              : 'bg-[#FF6B4A]/20 text-[#FF6B4A] border border-[#FF6B4A]/30'
-          }`}>
-            {speedText}
-          </div>
-        )}
+        {/* Thumb */}
+        <div
+          className={`absolute w-4 h-4 rounded-full transition-transform duration-100 ${
+            isDragging
+              ? 'bg-[#FF6B4A] scale-125'
+              : 'bg-[#FF6B4A] group-hover:scale-110'
+          }`}
+          style={{
+            left: `calc(${thumbPercent}% - 8px)`,
+            boxShadow: isDragging
+              ? '0 0 15px rgba(255, 107, 74, 0.8)'
+              : '0 0 8px rgba(255, 107, 74, 0.5)',
+          }}
+        />
       </div>
 
-      {/* Candle count badge */}
-      <div className={`text-xs font-mono px-2 py-0.5 rounded ${
-        isDark ? 'bg-white/5 text-white/40' : 'bg-black/5 text-gray-500'
+      {/* Position indicator */}
+      <div className={`text-xs font-mono px-2 py-0.5 rounded whitespace-nowrap ${
+        isDark ? 'bg-white/5 text-white/50' : 'bg-black/5 text-gray-500'
       }`}>
-        {visibleCount}<span className="opacity-50">/{dataLength}</span>
+        {positionText}<span className="opacity-50">/{dataLength}</span>
       </div>
     </div>
   );
@@ -626,16 +556,6 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     return slice;
   }, [safeData, viewRange]);
 
-  // Calculate boundary states for SpeedBallControl
-  const atStart = useMemo(() => {
-    return viewRange.startIdx <= 0;
-  }, [viewRange.startIdx]);
-
-  const atEnd = useMemo(() => {
-    if (safeData.length === 0) return true;
-    return viewRange.endIdx >= safeData.length - 1;
-  }, [viewRange.endIdx, safeData.length]);
-
   // Chart layout constants
   const CHART_WIDTH = 60; // Viewport width (what camera sees)
   const PRICE_HEIGHT = 10;
@@ -825,6 +745,21 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     setViewRange({ startIdx: newStart, endIdx: newEnd });
 
     return !hitBoundary;
+  }, [safeData.length]);
+
+  // Seek to a specific start index (used by timeline slider)
+  const seekToIndex = useCallback((newStartIdx: number) => {
+    if (safeData.length === 0) return;
+
+    const visibleCount = viewRangeRef.current.endIdx - viewRangeRef.current.startIdx;
+    const maxStartIdx = Math.max(0, safeData.length - visibleCount - 1);
+
+    // Clamp to valid range
+    const clampedStart = Math.max(0, Math.min(maxStartIdx, newStartIdx));
+    const newEnd = Math.min(safeData.length - 1, clampedStart + visibleCount);
+
+    viewRangeRef.current = { startIdx: clampedStart, endIdx: newEnd };
+    setViewRange({ startIdx: clampedStart, endIdx: newEnd });
   }, [safeData.length]);
 
   // Scroll wheel to pan time axis left/right
@@ -1311,13 +1246,12 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
         {/* Speed ball control - hide when using custom toolbar (compact mode) or when showDrawingTools is false */}
         {!renderToolbar && showDrawingTools && (
           <div className="mx-4 mb-2 flex items-center justify-center">
-            <SpeedBallControl
-              onPan={panByCandles}
+            <TimelineSlider
+              onSeek={seekToIndex}
               isDark={isDark}
               dataLength={safeData.length}
               visibleCount={visibleData.length}
-              atStart={atStart}
-              atEnd={atEnd}
+              startIdx={viewRange.startIdx}
             />
           </div>
         )}
