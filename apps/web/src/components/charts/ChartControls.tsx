@@ -9,9 +9,10 @@ interface ChartControlsProps {
   chartType: ChartType;
   onPeriodChange: (period: string) => void;
   showPulseOption?: boolean; // Show 1s option for Pulse tokens
+  isLoading?: boolean; // Show loading state on the selected timeframe button
 }
 
-export function ChartControls({ period, chartType, onPeriodChange, showPulseOption = false }: ChartControlsProps) {
+export function ChartControls({ period, chartType, onPeriodChange, showPulseOption = false, isLoading = false }: ChartControlsProps) {
   const { isDark } = useThemeStore();
 
   // Line chart: periods are TIME RANGES (1m = last minute, 15m = last 15 minutes)
@@ -29,18 +30,29 @@ export function ChartControls({ period, chartType, onPeriodChange, showPulseOpti
         <button
           key={p.value}
           onClick={() => onPeriodChange(p.value)}
+          disabled={isLoading}
           className={cn(
-            "px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium transition-colors",
+            "px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium transition-colors relative",
             period === p.value
               ? "bg-[#FF6B4A] text-white"
               : isDark
                 ? "text-white/60 hover:bg-white/10 hover:text-white"
                 : "text-gray-600 hover:bg-gray-200 hover:text-gray-900",
             // Highlight 1s option with a different color when available
-            p.value === "1s" && period !== "1s" && "text-[#FF6B4A]/70 hover:text-[#FF6B4A]"
+            p.value === "1s" && period !== "1s" && "text-[#FF6B4A]/70 hover:text-[#FF6B4A]",
+            // Disabled state when loading
+            isLoading && "opacity-50 cursor-wait"
           )}
         >
-          {p.label}
+          {/* Show spinner on the selected button when loading */}
+          {isLoading && period === p.value ? (
+            <span className="flex items-center gap-1">
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              <span className="hidden md:inline">{p.label}</span>
+            </span>
+          ) : (
+            p.label
+          )}
         </button>
       ))}
     </div>

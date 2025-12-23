@@ -621,38 +621,11 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
       }
     }
 
-    // For non-1s timeframes: Use Moralis OHLCV API (proper candlestick data from pairs)
+    // For non-1s timeframes: Build OHLCV from swap history (same as 1s but with interval aggregation)
+    // This ensures consistent behavior - both 1s and 1m get full trade history
+    // The Moralis OHLCV API returns limited data, so we use swaps for everything
     if (timeframe !== "1s") {
-      console.log(`📊 [OHLCV] Fetching ${timeframe} candles for ${address} (from: ${new Date(effectiveFromDate * 1000).toISOString()}, to: ${new Date(effectiveToDate * 1000).toISOString()})`);
-      try {
-        const startTime = Date.now();
-        const moralisOhlcv = await moralisService.getOHLCV(address, timeframe as any, {
-          fromDate: effectiveFromDate,
-          toDate: effectiveToDate,
-        });
-        const elapsed = Date.now() - startTime;
-        console.log(`📊 [OHLCV] Moralis API returned ${moralisOhlcv.length} ${timeframe} candles in ${elapsed}ms`);
-
-        if (moralisOhlcv.length > 0) {
-          ohlcv = moralisOhlcv;
-          source = "moralis";
-          const firstTs = new Date(ohlcv[0].timestamp).toISOString();
-          const lastTs = new Date(ohlcv[ohlcv.length - 1].timestamp).toISOString();
-          console.log(`📊 [OHLCV] Candle range: ${firstTs} to ${lastTs}`);
-        }
-      } catch (moralisError: any) {
-        // Expected for very new tokens without trading pairs yet
-        if (!moralisError.message?.includes("No trading pairs")) {
-          console.error(`📊 [OHLCV] Moralis OHLCV API failed for ${address}:`, moralisError.message);
-        } else {
-          console.log(`📊 [OHLCV] No trading pairs found for ${address}, will try swaps fallback`);
-        }
-      }
-    }
-
-    // FALLBACK for non-1s: Try building OHLCV from swaps if we have nothing or very little
-    if (timeframe !== "1s" && ohlcv.length < 10) {
-      console.log(`📊 [OHLCV] Moralis API returned only ${ohlcv.length} candles, trying swaps fallback...`);
+      console.log(`📊 [OHLCV] Building ${timeframe} candles from swaps for ${address}`);
       try {
         // Map timeframe to interval in milliseconds
         const intervalMap: Record<string, number> = {
@@ -666,25 +639,39 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
         };
         const intervalMs = intervalMap[timeframe] || 60000;
 
-        // Fetch more swaps for longer timeframes to cover historical period
-        const maxSwaps = timeframe === "1min" ? 3000 : 5000;
-        console.log(`📊 [OHLCV] Fetching swaps with interval ${intervalMs}ms, maxSwaps ${maxSwaps}`);
+        // Use 5000 swaps for all timeframes to get full history
         const startTime = Date.now();
-        const swapOhlcv = await moralisService.getOHLCVFromSwaps(address, intervalMs, maxSwaps, false);
+        const swapOhlcv = await moralisService.getOHLCVFromSwaps(address, intervalMs, 5000, false);
         const elapsed = Date.now() - startTime;
-        console.log(`📊 [OHLCV] Swaps fallback returned ${swapOhlcv.length} candles in ${elapsed}ms`);
+        console.log(`📊 [OHLCV] Built ${swapOhlcv.length} ${timeframe} candles from swaps in ${elapsed}ms`);
 
-        if (swapOhlcv.length > ohlcv.length) {
+        if (swapOhlcv.length > 0) {
           ohlcv = swapOhlcv;
           source = "moralis-swaps";
-          if (ohlcv.length > 0) {
-            const firstTs = new Date(ohlcv[0].timestamp).toISOString();
-            const lastTs = new Date(ohlcv[ohlcv.length - 1].timestamp).toISOString();
-            console.log(`📊 [OHLCV] Swaps candle range: ${firstTs} to ${lastTs}`);
-          }
+          const firstTs = new Date(ohlcv[0].timestamp).toISOString();
+          const lastTs = new Date(ohlcv[ohlcv.length - 1].timestamp).toISOString();
+          console.log(`📊 [OHLCV] Candle range: ${firstTs} to ${lastTs}`);
         }
       } catch (swapError: any) {
-        console.error(`📊 [OHLCV] Swaps fallback failed for ${address}:`, swapError.message);
+        console.error(`📊 [OHLCV] Swaps OHLCV failed for ${address}:`, swapError.message);
+      }
+
+      // Fallback to Moralis OHLCV API if swaps returned nothing
+      if (ohlcv.length === 0) {
+        console.log(`📊 [OHLCV] Swaps returned nothing, trying Moralis OHLCV API...`);
+        try {
+          const moralisOhlcv = await moralisService.getOHLCV(address, timeframe as any, {
+            fromDate: effectiveFromDate,
+            toDate: effectiveToDate,
+          });
+          if (moralisOhlcv.length > 0) {
+            ohlcv = moralisOhlcv;
+            source = "moralis";
+            console.log(`📊 [OHLCV] Moralis API returned ${ohlcv.length} ${timeframe} candles`);
+          }
+        } catch (moralisError: any) {
+          console.log(`📊 [OHLCV] Moralis OHLCV API also failed:`, moralisError.message);
+        }
       }
     }
 
