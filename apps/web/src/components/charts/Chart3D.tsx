@@ -548,22 +548,34 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   // ============================================================================
   // VISIBLE DATA - Uses index range to slice data (FIXED candle count)
   // ============================================================================
+  // NOTE: This memo runs BEFORE the view initialization effect in the same render.
+  // So when switching timeframes, we may have stale viewRange from the previous
+  // timeframe. We must detect this and show correct data anyway.
+  // ============================================================================
   const visibleData = useMemo(() => {
     if (safeData.length === 0) {
       return [];
     }
 
-    // Handle uninitialized view range (before data effect runs)
-    // This prevents showing only 1 candle at the start (index 0)
-    const isUninitialized = viewRange.startIdx === 0 && viewRange.endIdx === 0 && safeData.length > 1;
-    if (isUninitialized) {
-      // Show the most recent N candles until properly initialized
+    // Detect if viewRange is stale/uninitialized for this data:
+    // 1. Both indices are 0 (initial state)
+    // 2. endIdx is beyond the data length (stale from larger dataset)
+    // 3. The visible count is wildly different from TARGET (stale from different timeframe)
+    const isUninitialized = viewRange.startIdx === 0 && viewRange.endIdx === 0;
+    const isOutOfBounds = viewRange.endIdx >= safeData.length;
+    const currentVisibleCount = viewRange.endIdx - viewRange.startIdx + 1;
+    const expectedMinCount = Math.min(TARGET_VISIBLE_CANDLES, safeData.length);
+    // If visible count is less than half of expected and we have more data, it's stale
+    const isStaleCount = currentVisibleCount < expectedMinCount / 2 && safeData.length > currentVisibleCount * 2;
+
+    if (isUninitialized || isOutOfBounds || isStaleCount) {
+      // Show the most recent N candles until effect properly initializes viewRange
       const startIdx = Math.max(0, safeData.length - TARGET_VISIBLE_CANDLES);
       const endIdx = safeData.length - 1;
       return safeData.slice(startIdx, endIdx + 1);
     }
 
-    // Calculate desired visible count from the view range
+    // Normal path: use viewRange as-is
     const desiredCount = viewRange.endIdx - viewRange.startIdx + 1;
 
     // Clamp endIdx first
