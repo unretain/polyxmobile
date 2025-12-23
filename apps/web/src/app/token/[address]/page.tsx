@@ -614,11 +614,11 @@ export default function TokenPage() {
     fetchOhlcv();
 
     // Poll interval depends on timeframe:
-    // - 1s real-time: poll every 2 seconds (reduced from 1s to prevent race conditions)
-    // - Short timeframes (1min-15min): poll every 5 seconds
-    // - Longer timeframes: poll every 15 seconds
-    const pollInterval = chartPeriod === "1s" ? 2000 :
-                         ["1m", "5m", "15m", "1h"].includes(chartPeriod) ? 5000 : 15000;
+    // - 1s real-time: poll every 1 second for live data
+    // - Short timeframes (1min-15min): poll every 2 seconds
+    // - Longer timeframes: poll every 5 seconds
+    const pollInterval = chartPeriod === "1s" ? 1000 :
+                         ["1m", "5m", "15m", "1h"].includes(chartPeriod) ? 2000 : 5000;
     ohlcvIntervalRef.current = setInterval(fetchOhlcv, pollInterval);
 
     return () => {
@@ -646,7 +646,7 @@ export default function TokenPage() {
 
     setTradesLoading(true);
     fetchTrades();
-    tradesIntervalRef.current = setInterval(fetchTrades, 10000);
+    tradesIntervalRef.current = setInterval(fetchTrades, 2000); // Live trades every 2 seconds
 
     return () => {
       if (tradesIntervalRef.current) clearInterval(tradesIntervalRef.current);

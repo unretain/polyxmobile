@@ -326,6 +326,7 @@ class SwapSyncService {
   }
 
   // Get OHLCV - checks DB first, syncs if needed, then returns from DB
+  // LIVE MODE: Always fetch latest swaps on every request for real-time data
   async getOHLCV(
     tokenAddress: string,
     intervalMs: number = 60000,
@@ -335,16 +336,12 @@ class SwapSyncService {
     const status = await this.getSyncStatus(tokenAddress);
 
     if (!status?.swapsSynced) {
-      // Not synced yet - sync now (async but await for it)
+      // Not synced yet - sync now (await for it)
       console.log(`[SwapSync] Token ${tokenAddress.slice(0, 8)}... not synced, syncing now...`);
       await this.syncHistoricalSwaps(tokenAddress);
     } else {
-      // Synced - check if we need new swaps (if last sync > 10 seconds ago)
-      const lastSync = status.lastSwapSync?.getTime() || 0;
-      if (Date.now() - lastSync > 10000) {
-        // Sync new swaps in background (don't await)
-        this.syncNewSwaps(tokenAddress).catch(() => {});
-      }
+      // LIVE: Always sync new swaps on every request (don't await to keep response fast)
+      this.syncNewSwaps(tokenAddress).catch(() => {});
     }
 
     // Return from DB
