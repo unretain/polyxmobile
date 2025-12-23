@@ -515,37 +515,76 @@ export default function PortfolioPage() {
                         const chartWidth = width - padding.left - padding.right;
                         const chartHeight = height - padding.top - padding.bottom;
 
-                        // Build cumulative data points
-                        // All periods start at 0 - we show the PnL accumulated DURING the period
-                        // The baseline from before the period is not shown on the chart
-                        const baseline = 0;
-                        let cumulative = baseline;
-                        const dataPoints = [{ cumPnl: baseline, label: 'Start' }];
-                        chartData.forEach(d => {
-                          cumulative += d.pnl;
-                          dataPoints.push({ cumPnl: cumulative, label: d.date });
-                        });
-                        if (dataPoints.length === 1) {
-                          dataPoints.push({ cumPnl: baseline, label: 'Now' });
+                        // Get time range based on period
+                        const now = new Date();
+                        let periodStart: Date;
+                        switch (period) {
+                          case "1d":
+                            periodStart = new Date(now);
+                            periodStart.setHours(0, 0, 0, 0);
+                            break;
+                          case "7d":
+                            periodStart = new Date(now);
+                            periodStart.setDate(periodStart.getDate() - 7);
+                            periodStart.setHours(0, 0, 0, 0);
+                            break;
+                          case "30d":
+                            periodStart = new Date(now);
+                            periodStart.setDate(periodStart.getDate() - 30);
+                            periodStart.setHours(0, 0, 0, 0);
+                            break;
+                          default:
+                            // For "all", use first trade date or 30 days ago
+                            periodStart = chartData.length > 0
+                              ? new Date(chartData[0].date)
+                              : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
                         }
+                        const timeRange = now.getTime() - periodStart.getTime();
 
-                        // Scale to fit
+                        // Build time-based data points with step chart logic
+                        // Start at 0, then step to new value on each trade day, hold until next
+                        const dataPoints: { time: number; cumPnl: number; label: string }[] = [];
+
+                        // Start point at period start
+                        dataPoints.push({ time: periodStart.getTime(), cumPnl: 0, label: 'Start' });
+
+                        // Add each trade day - step chart style
+                        let cumulative = 0;
+                        chartData.forEach(d => {
+                          const tradeTime = new Date(d.date).getTime();
+                          // Add point just before trade at previous value (horizontal line)
+                          if (dataPoints.length > 0) {
+                            dataPoints.push({ time: tradeTime, cumPnl: cumulative, label: d.date });
+                          }
+                          // Add point at trade with new value (vertical step)
+                          cumulative += d.pnl;
+                          dataPoints.push({ time: tradeTime, cumPnl: cumulative, label: d.date });
+                        });
+
+                        // End point at now with final value (horizontal line to present)
+                        dataPoints.push({ time: now.getTime(), cumPnl: cumulative, label: 'Now' });
+
+                        // Scale Y values
                         const values = dataPoints.map(d => d.cumPnl);
                         let minVal = Math.min(...values);
                         let maxVal = Math.max(...values);
-                        // Add padding
                         const range = maxVal - minVal || 0.0001;
                         minVal -= range * 0.1;
                         maxVal += range * 0.1;
+
+                        const timeToX = (time: number) => {
+                          const normalized = (time - periodStart.getTime()) / timeRange;
+                          return padding.left + normalized * chartWidth;
+                        };
 
                         const valueToY = (val: number) => {
                           const normalized = (val - minVal) / (maxVal - minVal);
                           return padding.top + (1 - normalized) * chartHeight;
                         };
 
-                        // Generate smooth curve points
-                        const points = dataPoints.map((d, i) => ({
-                          x: padding.left + (i / (dataPoints.length - 1)) * chartWidth,
+                        // Generate points
+                        const points = dataPoints.map(d => ({
+                          x: timeToX(d.time),
                           y: valueToY(d.cumPnl),
                           data: d
                         }));
@@ -553,7 +592,7 @@ export default function PortfolioPage() {
                         // Create line path
                         const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
 
-                        const finalPnl = dataPoints[dataPoints.length - 1].cumPnl;
+                        const finalPnl = cumulative;
                         const isPositive = finalPnl >= 0;
                         const lineColor = isPositive ? '#22c55e' : '#ef4444';
 
@@ -572,29 +611,58 @@ export default function PortfolioPage() {
                       })()}
                     </svg>
 
-                    {/* Hover zones for tooltips */}
-                    <div className="absolute inset-0 flex">
+                    {/* Hover zones for tooltips - time-based positioning */}
+                    <div className="absolute inset-0">
                       {(() => {
-                        // All periods start at 0
-                        const baseline = 0;
                         const solPrice = balance?.sol.priceUsd || 0;
-                        const allPoints: { cumPnl: number; label: string; dailyPnl?: number }[] = [];
-                        let cumulative = baseline;
 
-                        // Add baseline
-                        allPoints.push({ cumPnl: baseline, label: 'Start' });
+                        // Get time range based on period (same logic as SVG chart)
+                        const now = new Date();
+                        let periodStart: Date;
+                        switch (period) {
+                          case "1d":
+                            periodStart = new Date(now);
+                            periodStart.setHours(0, 0, 0, 0);
+                            break;
+                          case "7d":
+                            periodStart = new Date(now);
+                            periodStart.setDate(periodStart.getDate() - 7);
+                            periodStart.setHours(0, 0, 0, 0);
+                            break;
+                          case "30d":
+                            periodStart = new Date(now);
+                            periodStart.setDate(periodStart.getDate() - 30);
+                            periodStart.setHours(0, 0, 0, 0);
+                            break;
+                          default:
+                            periodStart = chartData.length > 0
+                              ? new Date(chartData[0].date)
+                              : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                        }
+                        const timeRange = now.getTime() - periodStart.getTime();
 
-                        // Add each day
+                        // Build hover points matching the step chart data
+                        const hoverPoints: { time: number; cumPnl: number; label: string; dailyPnl?: number }[] = [];
+
+                        // Start point
+                        hoverPoints.push({ time: periodStart.getTime(), cumPnl: 0, label: 'Start' });
+
+                        // Trade days - show the cumulative AFTER the trade
+                        let cumulative = 0;
                         chartData.forEach(day => {
                           cumulative += day.pnl;
-                          allPoints.push({ cumPnl: cumulative, label: day.date, dailyPnl: day.pnl });
+                          hoverPoints.push({
+                            time: new Date(day.date).getTime(),
+                            cumPnl: cumulative,
+                            label: day.date,
+                            dailyPnl: day.pnl
+                          });
                         });
 
-                        if (allPoints.length === 1) {
-                          allPoints.push({ cumPnl: baseline, label: 'Now' });
-                        }
+                        // End point at now
+                        hoverPoints.push({ time: now.getTime(), cumPnl: cumulative, label: 'Now' });
 
-                        return allPoints.map((point, idx) => {
+                        return hoverPoints.map((point, idx) => {
                           const isPositive = point.cumPnl >= 0;
                           const displayValue = currencyMode === "usd" ? point.cumPnl * solPrice : point.cumPnl;
 
@@ -611,14 +679,27 @@ export default function PortfolioPage() {
                             formattedValue = `${isPositive ? '' : '-'}${Math.abs(point.cumPnl).toFixed(6)} SOL`;
                           }
 
-                          const dateLabel = point.label === 'Start' ? 'Starting Point'
+                          const dateLabel = point.label === 'Start' ? 'Period Start (0)'
                             : point.label === 'Now' ? 'Current'
-                            : new Date(point.label).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+                            : new Date(point.label).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
+                          // Calculate position as percentage of time range
+                          const leftPercent = ((point.time - periodStart.getTime()) / timeRange) * 100;
 
                           return (
-                            <div key={idx} className="flex-1 group relative h-full">
+                            <div
+                              key={idx}
+                              className="absolute top-0 bottom-0 group"
+                              style={{
+                                left: `${leftPercent}%`,
+                                width: '40px',
+                                marginLeft: '-20px'
+                              }}
+                            >
                               {/* Vertical hover line */}
-                              <div className={`absolute top-0 bottom-0 left-1/2 w-px opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none ${isDark ? 'bg-white/20' : 'bg-black/20'}`} />
+                              <div className={`absolute top-0 bottom-0 left-1/2 w-px opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none ${isDark ? 'bg-white/40' : 'bg-black/40'}`} />
+                              {/* Dot marker */}
+                              <div className={`absolute left-1/2 -ml-1.5 w-3 h-3 rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none ${isPositive ? 'bg-green-500' : 'bg-red-500'}`} style={{ top: '50%', marginTop: '-6px' }} />
                               {/* Tooltip */}
                               <div className={`absolute top-4 left-1/2 -translate-x-1/2 px-3 py-2 rounded-lg text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl ${isDark ? 'bg-[#1a1a1a] border border-white/10' : 'bg-white border border-gray-200'}`}>
                                 <div className={`text-base font-semibold ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
@@ -627,6 +708,11 @@ export default function PortfolioPage() {
                                 <div className={`text-xs ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
                                   {dateLabel}
                                 </div>
+                                {point.dailyPnl !== undefined && (
+                                  <div className={`text-xs mt-1 ${point.dailyPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                    Day: {point.dailyPnl >= 0 ? '+' : ''}{currencyMode === "usd" ? `$${(point.dailyPnl * solPrice).toFixed(2)}` : `${point.dailyPnl.toFixed(6)} SOL`}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           );
