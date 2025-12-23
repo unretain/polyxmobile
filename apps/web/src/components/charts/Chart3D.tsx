@@ -232,6 +232,7 @@ interface Chart3DProps {
   renderToolbar?: (props: DrawingToolbarRenderProps) => React.ReactNode; // Custom toolbar renderer
   showWatermark?: boolean; // Show embedded watermark in the 3D scene (for free tier)
   theme?: "dark" | "light"; // Override global theme (for embed previews)
+  timeframe?: string; // Current timeframe (1s, 1m, 5m, etc.) - used to detect timeframe switches
 }
 
 // 3D Watermark component rendered in Three.js scene
@@ -309,7 +310,7 @@ function Watermark3D({ chartWidth, chartHeight }: { chartWidth: number; chartHei
   );
 }
 
-export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLoadMore, hasMoreData = true, isLoadingMore = false, showDrawingTools = true, renderToolbar, showWatermark = false, theme }: Chart3DProps) {
+export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLoadMore, hasMoreData = true, isLoadingMore = false, showDrawingTools = true, renderToolbar, showWatermark = false, theme, timeframe }: Chart3DProps) {
   const { isDark: globalIsDark } = useThemeStore();
   const isDark = theme ? theme === "dark" : globalIsDark;
 
@@ -318,18 +319,40 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
 
   // ============================================================================
   // DATA CACHE - Stores all received data, handles empty arrays gracefully
+  // Also ensures data is sorted by timestamp (oldest first) for correct display
   // ============================================================================
   const lastValidDataRef = useRef<OHLCV[]>([]);
 
   const safeData = useMemo(() => {
+    let result: OHLCV[];
+
     if (data.length > 0) {
-      lastValidDataRef.current = data;
+      result = data;
+    } else if (lastValidDataRef.current.length > 0) {
+      result = lastValidDataRef.current;
+    } else {
       return data;
     }
-    if (lastValidDataRef.current.length > 0) {
-      return lastValidDataRef.current;
+
+    // Ensure data is sorted by timestamp (oldest first)
+    // This fixes the "latest candle at beginning" issue
+    if (result.length > 1) {
+      const first = result[0].timestamp;
+      const last = result[result.length - 1].timestamp;
+
+      if (first > last) {
+        // Data is in reverse order (newest first), reverse it
+        console.log(`[Chart3D] Data was in reverse order, reversing...`);
+        result = [...result].reverse();
+      }
     }
-    return data;
+
+    // Cache the valid data
+    if (data.length > 0) {
+      lastValidDataRef.current = result;
+    }
+
+    return result;
   }, [data]);
 
   // ============================================================================
@@ -414,66 +437,60 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     return { minTs, maxTs, avgInterval, count: safeData.length };
   }, [safeData]);
 
-  // Track the data identity to detect token/timeframe switches
-  // We use first + last timestamp combo to detect changes
-  const dataIdentityRef = useRef<string>("");
+  // Track the previous timeframe and data to detect changes
+  const prevTimeframeRef = useRef<string | undefined>(undefined);
   const prevDataLengthRef = useRef<number>(0);
+  const prevFirstTsRef = useRef<number>(0);
 
   // ============================================================================
-  // INITIALIZE/UPDATE VIEW RANGE WHEN DATA CHANGES
+  // INITIALIZE/UPDATE VIEW RANGE WHEN DATA OR TIMEFRAME CHANGES
   // ============================================================================
   useEffect(() => {
     if (safeData.length === 0) {
-      dataIdentityRef.current = "";
+      prevTimeframeRef.current = timeframe;
       prevDataLengthRef.current = 0;
+      prevFirstTsRef.current = 0;
       return;
     }
 
     const firstTs = safeData[0].timestamp;
     const lastTs = safeData[safeData.length - 1].timestamp;
-
-    // Create identity from first and last timestamp (hour-rounded)
-    // This detects both token changes AND timeframe changes
-    const firstTsHour = Math.floor(firstTs / 3600000);
-    const lastTsHour = Math.floor(lastTs / 3600000);
-    const newIdentity = `${firstTsHour}-${lastTsHour}`;
-
     const prevLength = prevDataLengthRef.current;
     const newLength = safeData.length;
 
-    // Detect if this is a completely different dataset
-    // A dataset is "new" if:
-    // 1. We have no previous identity
-    // 2. The last timestamp changed significantly (different token or timeframe switch)
-    // 3. Data length decreased significantly (timeframe switch often shows fewer candles initially)
-    const prevLastTsHour = dataIdentityRef.current ? parseInt(dataIdentityRef.current.split('-')[1]) : 0;
-    const isNewDataset = !dataIdentityRef.current ||
-                         Math.abs(lastTsHour - prevLastTsHour) > 24 ||
-                         (prevLength > 0 && newLength < prevLength * 0.5); // Data shrunk by >50%
+    // Detect if this is a completely different dataset:
+    // 1. Timeframe changed (1s -> 1m, etc.)
+    // 2. Token changed (first timestamp changed by more than 1 day)
+    // 3. First load (no previous data)
+    const timeframeChanged = timeframe !== prevTimeframeRef.current && prevTimeframeRef.current !== undefined;
+    const tokenChanged = prevFirstTsRef.current > 0 && Math.abs(firstTs - prevFirstTsRef.current) > 86400000; // 1 day
+    const isFirstLoad = prevLength === 0;
+
+    const isNewDataset = isFirstLoad || timeframeChanged || tokenChanged;
 
     if (isNewDataset) {
       // New token/timeframe - initialize to show last N candles
-      dataIdentityRef.current = newIdentity;
-      prevDataLengthRef.current = newLength;
-
       const startIdx = Math.max(0, newLength - TARGET_VISIBLE_CANDLES);
       const endIdx = newLength - 1;
 
-      console.log(`[Chart3D] NEW DATASET (${newLength} candles): showing indices ${startIdx}-${endIdx}`);
+      console.log(`[Chart3D] NEW DATASET (${newLength} candles, tf=${timeframe}): indices ${startIdx}-${endIdx}${timeframeChanged ? ' [TIMEFRAME CHANGE]' : ''}${tokenChanged ? ' [TOKEN CHANGE]' : ''}`);
 
       viewRangeRef.current = { startIdx, endIdx };
       setViewRange({ startIdx, endIdx });
+
+      // Update tracking refs
+      prevTimeframeRef.current = timeframe;
+      prevDataLengthRef.current = newLength;
+      prevFirstTsRef.current = firstTs;
     } else if (newLength > prevLength) {
-      // Data was added - check if prepended or appended
+      // Data was added to same dataset - check if prepended or appended
       const addedCount = newLength - prevLength;
       const currentVisibleCount = viewRangeRef.current.endIdx - viewRangeRef.current.startIdx;
 
-      // To detect prepend: the first timestamp should be older than before
-      // If data was prepended, safeData[addedCount] should be the old first candle
-      const oldFirstIdx = addedCount;
-      const firstTsOld = oldFirstIdx < safeData.length ? safeData[oldFirstIdx]?.timestamp : null;
+      // Prepend detection: if new first timestamp is older than previous first timestamp
+      const wasPrepended = firstTs < prevFirstTsRef.current;
 
-      if (firstTsOld && firstTs < firstTsOld) {
+      if (wasPrepended) {
         // Data was PREPENDED (historical data loaded on left)
         // Shift our indices right to keep viewing the same candles
         let newStartIdx = viewRangeRef.current.startIdx + addedCount;
@@ -489,23 +506,23 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
           newEndIdx = Math.min(newLength - 1, newStartIdx + currentVisibleCount);
         }
 
-        console.log(`[Chart3D] PREPENDED ${addedCount} (total: ${newLength}), indices ${viewRangeRef.current.startIdx}-${viewRangeRef.current.endIdx} -> ${newStartIdx}-${newEndIdx}`);
+        console.log(`[Chart3D] PREPENDED ${addedCount} (total: ${newLength}), indices -> ${newStartIdx}-${newEndIdx}`);
 
         viewRangeRef.current = { startIdx: newStartIdx, endIdx: newEndIdx };
         setViewRange({ startIdx: newStartIdx, endIdx: newEndIdx });
       } else {
-        console.log(`[Chart3D] APPENDED ${addedCount} (total: ${newLength}), keeping indices ${viewRangeRef.current.startIdx}-${viewRangeRef.current.endIdx}`);
+        console.log(`[Chart3D] APPENDED ${addedCount} (total: ${newLength}), keeping indices`);
       }
 
-      // Update identity to track the new first timestamp
-      dataIdentityRef.current = newIdentity;
+      // Update tracking refs
       prevDataLengthRef.current = newLength;
-    } else if (newLength < prevLength) {
-      // Data shrunk but not enough to be a "new dataset" - just update tracking
-      dataIdentityRef.current = newIdentity;
+      prevFirstTsRef.current = firstTs;
+    } else {
+      // Data shrunk or stayed same - just update tracking
       prevDataLengthRef.current = newLength;
+      prevFirstTsRef.current = firstTs;
     }
-  }, [safeData]);
+  }, [safeData, timeframe]);
 
   // ============================================================================
   // DETECT LEFT EDGE FOR LOADING MORE DATA
