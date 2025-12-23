@@ -89,7 +89,7 @@ const MORALIS_LINE_CONFIG: Record<string, { interval: string; seconds: number }>
 
 // CANDLESTICK CHART: period = candle interval (size of each candle)
 const MORALIS_CANDLE_CONFIG: Record<string, { interval: string; seconds: number }> = {
-  "1s": { interval: "1s", seconds: 0 },           // Per-trade candles (pump.fun style), fetch ALL
+  "1s": { interval: "1s", seconds: 86400 },       // Per-trade candles (pump.fun style), 24 hours of data
   "1m": { interval: "1min", seconds: 7200 },      // 1 min candles, 2 hours of data
   "5m": { interval: "5min", seconds: 36000 },     // 5 min candles, 10 hours of data
   "15m": { interval: "30min", seconds: 86400 },   // 30 min candles, 24 hours of data
