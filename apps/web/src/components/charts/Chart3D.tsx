@@ -5,13 +5,15 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, PerspectiveCamera, Environment } from "@react-three/drei";
 import * as THREE from "three";
 
-// Component to reactively update scene background based on theme
+// Component to keep scene background transparent (coral gradient shows through)
 function SceneBackground({ isDark }: { isDark: boolean }) {
-  const { scene } = useThree();
+  const { scene, gl } = useThree();
 
   useEffect(() => {
-    scene.background = new THREE.Color(isDark ? '#0a0a0a' : '#f9fafb');
-  }, [scene, isDark]);
+    // Keep transparent so coral gradient shows through
+    scene.background = null;
+    gl.setClearColor(0x000000, 0);
+  }, [scene, gl, isDark]);
 
   return null;
 }
@@ -176,44 +178,66 @@ function SpeedBallControl({ onPan, isDark, dataLength, visibleCount, atStart, at
     return `${candles}/tick`;
   }, [dragOffset, calculatePanCandles, hitBoundary]);
 
-  return (
-    <div className="flex items-center gap-2">
-      {/* Position indicator */}
-      <div className={`text-xs font-mono ${isDark ? 'text-white/30' : 'text-gray-400'}`}>
-        {visibleCount}
-      </div>
+  // Progress percentage for the slider
+  const progressPercent = dataLength > 0 ? ((visibleCount / dataLength) * 100) : 0;
 
+  return (
+    <div className="flex items-center gap-3">
+      {/* Sleek timeline slider */}
       <div
         ref={containerRef}
-        className={`relative w-20 h-10 flex items-center justify-center select-none ${
-          isDark ? 'bg-white/5' : 'bg-black/5'
-        } border ${isDark ? 'border-white/10' : 'border-black/10'} cursor-ew-resize ${
-          hitBoundary ? 'animate-pulse' : ''
-        }`}
-        title="Drag ball left/right to pan - further = faster"
+        className={`relative flex items-center select-none cursor-ew-resize group`}
+        title="Drag to pan through history"
+        style={{ width: '200px' }}
       >
-        <div className={`absolute left-1 text-xs ${atStart ? 'text-amber-500' : isDark ? 'text-white/20' : 'text-gray-300'}`}>◀</div>
-        <div className={`absolute right-1 text-xs ${atEnd ? 'text-amber-500' : isDark ? 'text-white/20' : 'text-gray-300'}`}>▶</div>
-        <div className={`absolute w-12 h-0.5 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+        {/* Track background */}
+        <div className={`absolute inset-0 h-1 top-1/2 -translate-y-1/2 rounded-full ${
+          isDark ? 'bg-white/10' : 'bg-black/10'
+        }`} />
+
+        {/* Progress fill */}
+        <div
+          className="absolute h-1 top-1/2 -translate-y-1/2 rounded-full bg-gradient-to-r from-[#FF6B4A]/50 to-[#FF6B4A]"
+          style={{ width: `${Math.max(5, progressPercent)}%`, left: 0 }}
+        />
+
+        {/* Draggable thumb */}
         <div
           ref={ballRef}
           onMouseDown={handleMouseDown}
-          className={`w-5 h-5 rounded-full cursor-grab active:cursor-grabbing z-10 ${
-            hitBoundary ? 'bg-amber-500' : isDragging ? 'bg-[#FF6B4A]' : isDark ? 'bg-white/40 hover:bg-white/60' : 'bg-gray-400 hover:bg-gray-500'
+          className={`relative w-4 h-4 rounded-full cursor-grab active:cursor-grabbing transition-all duration-150 ${
+            hitBoundary
+              ? 'bg-amber-500 scale-125'
+              : isDragging
+                ? 'bg-[#FF6B4A] scale-110'
+                : 'bg-[#FF6B4A] group-hover:scale-110'
           }`}
-          style={ballStyle}
+          style={{
+            ...ballStyle,
+            boxShadow: isDragging || hitBoundary
+              ? ballStyle.boxShadow
+              : '0 0 10px rgba(255, 107, 74, 0.5)',
+            marginLeft: `calc(${Math.max(2, Math.min(95, progressPercent))}% - 8px)`,
+          }}
         />
+
+        {/* Speed indicator tooltip */}
         {isDragging && speedText && (
-          <div className={`absolute -top-7 left-1/2 -translate-x-1/2 px-2 py-0.5 text-xs whitespace-nowrap ${
-            hitBoundary ? 'bg-amber-500/20 text-amber-500 font-bold' : isDark ? 'bg-white/10 text-white/70' : 'bg-black/10 text-gray-600'
+          <div className={`absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 rounded text-xs whitespace-nowrap backdrop-blur-sm ${
+            hitBoundary
+              ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+              : 'bg-[#FF6B4A]/20 text-[#FF6B4A] border border-[#FF6B4A]/30'
           }`}>
             {speedText}
           </div>
         )}
       </div>
 
-      <div className={`text-xs font-mono ${isDark ? 'text-white/30' : 'text-gray-400'}`}>
-        /{dataLength}
+      {/* Candle count badge */}
+      <div className={`text-xs font-mono px-2 py-0.5 rounded ${
+        isDark ? 'bg-white/5 text-white/40' : 'bg-black/5 text-gray-500'
+      }`}>
+        {visibleCount}<span className="opacity-50">/{dataLength}</span>
       </div>
     </div>
   );
@@ -1161,12 +1185,14 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
               antialias: true,
               preserveDrawingBuffer: true,
               powerPreference: "high-performance",
-              failIfMajorPerformanceCaveat: false
+              failIfMajorPerformanceCaveat: false,
+              alpha: true // Enable transparency for coral gradient to show through
             }}
             onCreated={({ gl, scene }) => {
               console.log('[Chart3D] Canvas created (key:', webglKey, ')');
-              // Set scene background based on theme
-              scene.background = new THREE.Color(isDark ? '#0a0a0a' : '#f9fafb');
+              // Transparent background to show coral gradient behind
+              scene.background = null;
+              gl.setClearColor(0x000000, 0); // Fully transparent
               // Handle WebGL context loss
               gl.domElement.addEventListener('webglcontextlost', (e) => {
                 console.error('[Chart3D] WebGL context lost!', e);
