@@ -125,6 +125,10 @@ export default function PortfolioPage() {
   // Selected day for share card (null = show period summary)
   const [selectedDayForShare, setSelectedDayForShare] = useState<DailyPnL | null>(null);
 
+  // Chart crosshair state
+  const [chartHover, setChartHover] = useState<{ x: number; y: number } | null>(null);
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+
   // Redirect if not authenticated
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -490,7 +494,19 @@ export default function PortfolioPage() {
               </div>
             ) : viewMode === "chart" ? (
               /* Clean TradingView-style Line Chart */
-              <div className={`h-[250px] relative rounded-lg overflow-hidden ${isDark ? 'bg-[#0a0a0a]' : 'bg-gray-100'}`}>
+              <div
+                ref={chartContainerRef}
+                className={`h-[250px] relative rounded-lg overflow-hidden ${isDark ? 'bg-[#0a0a0a]' : 'bg-gray-100'}`}
+                onMouseMove={(e) => {
+                  if (!chartContainerRef.current) return;
+                  const rect = chartContainerRef.current.getBoundingClientRect();
+                  setChartHover({
+                    x: (e.clientX - rect.left) / rect.width,
+                    y: (e.clientY - rect.top) / rect.height
+                  });
+                }}
+                onMouseLeave={() => setChartHover(null)}
+              >
                 {/* Only show chart if there are trades in the selected period */}
                 {chartData.length > 0 ? (
                   <>
@@ -498,7 +514,7 @@ export default function PortfolioPage() {
                     <svg
                       viewBox="0 0 800 200"
                       preserveAspectRatio="none"
-                      className="w-full h-full"
+                      className="w-full h-full pointer-events-none"
                     >
                       {/* Gradient for negative - fills from line UP to top, solid at line fading up */}
                       <defs>
@@ -611,114 +627,120 @@ export default function PortfolioPage() {
                       })()}
                     </svg>
 
-                    {/* Hover zones for tooltips - time-based positioning */}
-                    <div className="absolute inset-0">
-                      {(() => {
-                        const solPrice = balance?.sol.priceUsd || 0;
+                    {/* Continuous crosshair tooltip */}
+                    {chartHover && (() => {
+                      const solPrice = balance?.sol.priceUsd || 0;
 
-                        // Get time range based on period (same logic as SVG chart)
-                        const now = new Date();
-                        let periodStart: Date;
-                        switch (period) {
-                          case "1d":
-                            periodStart = new Date(now);
-                            periodStart.setHours(0, 0, 0, 0);
-                            break;
-                          case "7d":
-                            periodStart = new Date(now);
-                            periodStart.setDate(periodStart.getDate() - 7);
-                            periodStart.setHours(0, 0, 0, 0);
-                            break;
-                          case "30d":
-                            periodStart = new Date(now);
-                            periodStart.setDate(periodStart.getDate() - 30);
-                            periodStart.setHours(0, 0, 0, 0);
-                            break;
-                          default:
-                            periodStart = chartData.length > 0
-                              ? new Date(chartData[0].date)
-                              : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                      // Get time range based on period (same logic as SVG chart)
+                      const now = new Date();
+                      let periodStart: Date;
+                      switch (period) {
+                        case "1d":
+                          periodStart = new Date(now);
+                          periodStart.setHours(0, 0, 0, 0);
+                          break;
+                        case "7d":
+                          periodStart = new Date(now);
+                          periodStart.setDate(periodStart.getDate() - 7);
+                          periodStart.setHours(0, 0, 0, 0);
+                          break;
+                        case "30d":
+                          periodStart = new Date(now);
+                          periodStart.setDate(periodStart.getDate() - 30);
+                          periodStart.setHours(0, 0, 0, 0);
+                          break;
+                        default:
+                          periodStart = chartData.length > 0
+                            ? new Date(chartData[0].date)
+                            : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                      }
+                      const timeRange = now.getTime() - periodStart.getTime();
+
+                      // Convert mouse X position to time
+                      const hoverTime = periodStart.getTime() + chartHover.x * timeRange;
+
+                      // Build step chart data to find PnL at hover time
+                      const steps: { time: number; cumPnl: number }[] = [];
+                      steps.push({ time: periodStart.getTime(), cumPnl: 0 });
+
+                      let cumulative = 0;
+                      chartData.forEach(day => {
+                        const tradeTime = new Date(day.date).getTime();
+                        cumulative += day.pnl;
+                        steps.push({ time: tradeTime, cumPnl: cumulative });
+                      });
+                      steps.push({ time: now.getTime(), cumPnl: cumulative });
+
+                      // Find the PnL value at hoverTime (step chart - use value from last step before hoverTime)
+                      let pnlAtHover = 0;
+                      for (let i = steps.length - 1; i >= 0; i--) {
+                        if (steps[i].time <= hoverTime) {
+                          pnlAtHover = steps[i].cumPnl;
+                          break;
                         }
-                        const timeRange = now.getTime() - periodStart.getTime();
+                      }
 
-                        // Build hover points matching the step chart data
-                        const hoverPoints: { time: number; cumPnl: number; label: string; dailyPnl?: number }[] = [];
+                      const isPositive = pnlAtHover >= 0;
+                      const displayValue = currencyMode === "usd" ? pnlAtHover * solPrice : pnlAtHover;
 
-                        // Start point
-                        hoverPoints.push({ time: periodStart.getTime(), cumPnl: 0, label: 'Start' });
+                      // Format value
+                      let formattedValue: string;
+                      if (currencyMode === "usd") {
+                        const absVal = Math.abs(displayValue);
+                        if (absVal >= 1000) {
+                          formattedValue = `${isPositive ? '' : '-'}$${(absVal / 1000).toFixed(2)}K`;
+                        } else {
+                          formattedValue = `${isPositive ? '' : '-'}$${absVal.toFixed(2)}`;
+                        }
+                      } else {
+                        formattedValue = `${isPositive ? '' : '-'}${Math.abs(pnlAtHover).toFixed(6)} SOL`;
+                      }
 
-                        // Trade days - show the cumulative AFTER the trade
-                        let cumulative = 0;
-                        chartData.forEach(day => {
-                          cumulative += day.pnl;
-                          hoverPoints.push({
-                            time: new Date(day.date).getTime(),
-                            cumPnl: cumulative,
-                            label: day.date,
-                            dailyPnl: day.pnl
-                          });
-                        });
+                      // Format date
+                      const hoverDate = new Date(hoverTime);
+                      const dateLabel = hoverDate.toLocaleDateString(undefined, {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit'
+                      });
 
-                        // End point at now
-                        hoverPoints.push({ time: now.getTime(), cumPnl: cumulative, label: 'Now' });
+                      // Check tooltip positioning (flip if too close to right edge)
+                      const tooltipOnLeft = chartHover.x > 0.7;
 
-                        return hoverPoints.map((point, idx) => {
-                          const isPositive = point.cumPnl >= 0;
-                          const displayValue = currencyMode === "usd" ? point.cumPnl * solPrice : point.cumPnl;
-
-                          // Format like reference: -$1.82K or +$500
-                          let formattedValue: string;
-                          if (currencyMode === "usd") {
-                            const absVal = Math.abs(displayValue);
-                            if (absVal >= 1000) {
-                              formattedValue = `${isPositive ? '' : '-'}$${(absVal / 1000).toFixed(2)}K`;
-                            } else {
-                              formattedValue = `${isPositive ? '' : '-'}$${absVal.toFixed(2)}`;
-                            }
-                          } else {
-                            formattedValue = `${isPositive ? '' : '-'}${Math.abs(point.cumPnl).toFixed(6)} SOL`;
-                          }
-
-                          const dateLabel = point.label === 'Start' ? 'Period Start (0)'
-                            : point.label === 'Now' ? 'Current'
-                            : new Date(point.label).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-
-                          // Calculate position as percentage of time range
-                          const leftPercent = ((point.time - periodStart.getTime()) / timeRange) * 100;
-
-                          return (
-                            <div
-                              key={idx}
-                              className="absolute top-0 bottom-0 group"
-                              style={{
-                                left: `${leftPercent}%`,
-                                width: '40px',
-                                marginLeft: '-20px'
-                              }}
-                            >
-                              {/* Vertical hover line */}
-                              <div className={`absolute top-0 bottom-0 left-1/2 w-px opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none ${isDark ? 'bg-white/40' : 'bg-black/40'}`} />
-                              {/* Dot marker */}
-                              <div className={`absolute left-1/2 -ml-1.5 w-3 h-3 rounded-full opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none ${isPositive ? 'bg-green-500' : 'bg-red-500'}`} style={{ top: '50%', marginTop: '-6px' }} />
-                              {/* Tooltip */}
-                              <div className={`absolute top-4 left-1/2 -translate-x-1/2 px-3 py-2 rounded-lg text-sm whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl ${isDark ? 'bg-[#1a1a1a] border border-white/10' : 'bg-white border border-gray-200'}`}>
-                                <div className={`text-base font-semibold ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
-                                  {formattedValue}
-                                </div>
-                                <div className={`text-xs ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
-                                  {dateLabel}
-                                </div>
-                                {point.dailyPnl !== undefined && (
-                                  <div className={`text-xs mt-1 ${point.dailyPnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                    Day: {point.dailyPnl >= 0 ? '+' : ''}{currencyMode === "usd" ? `$${(point.dailyPnl * solPrice).toFixed(2)}` : `${point.dailyPnl.toFixed(6)} SOL`}
-                                  </div>
-                                )}
-                              </div>
+                      return (
+                        <div className="absolute inset-0 pointer-events-none">
+                          {/* Vertical crosshair line */}
+                          <div
+                            className={`absolute top-0 bottom-0 w-px ${isDark ? 'bg-white/40' : 'bg-black/40'}`}
+                            style={{ left: `${chartHover.x * 100}%` }}
+                          />
+                          {/* Horizontal crosshair line */}
+                          <div
+                            className={`absolute left-0 right-0 h-px ${isDark ? 'bg-white/20' : 'bg-black/20'}`}
+                            style={{ top: `${chartHover.y * 100}%` }}
+                          />
+                          {/* Tooltip */}
+                          <div
+                            className={`absolute px-3 py-2 rounded-lg text-sm whitespace-nowrap z-10 shadow-xl ${isDark ? 'bg-[#1a1a1a] border border-white/10' : 'bg-white border border-gray-200'}`}
+                            style={{
+                              left: tooltipOnLeft ? 'auto' : `${chartHover.x * 100}%`,
+                              right: tooltipOnLeft ? `${(1 - chartHover.x) * 100}%` : 'auto',
+                              top: '8px',
+                              transform: tooltipOnLeft ? 'translateX(-8px)' : 'translateX(8px)'
+                            }}
+                          >
+                            <div className={`text-base font-semibold ${isPositive ? 'text-green-500' : 'text-red-500'}`}>
+                              {formattedValue}
                             </div>
-                          );
-                        });
-                      })()}
-                    </div>
+                            <div className={`text-xs ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
+                              {dateLabel}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Logo watermark */}
                     <div className="absolute bottom-3 left-3 opacity-40">
