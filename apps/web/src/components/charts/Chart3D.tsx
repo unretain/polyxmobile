@@ -463,24 +463,28 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     // 1. Timeframe changed (1s -> 1m, etc.)
     // 2. First load (no previous data)
     // 3. Data was cleared and re-populated (prevTimeframeRef.current is undefined)
+    // 4. Current view indices are out of bounds for the new data
     //
     // NOTE: We do NOT check "token changed" by timestamp difference anymore.
     // Different timeframes have wildly different date ranges (1s = hours, 1d = years)
     // which caused false positives when switching DOWN in timeframe (e.g., 1h -> 1s).
-    // The wasCleared check already handles timeframe switches properly since
-    // setOhlcv([]) is called before fetching new data.
     const timeframeChanged = timeframe !== prevTimeframeRef.current && prevTimeframeRef.current !== undefined;
     const isFirstLoad = prevLength === 0;
-    const wasCleared = prevTimeframeRef.current === undefined; // Data was cleared, treat as fresh
+    const wasCleared = prevTimeframeRef.current === undefined;
 
-    const isNewDataset = isFirstLoad || timeframeChanged || wasCleared;
+    // Check if current view indices are invalid for the new data
+    // This catches the case where cached stale data was used to set indices,
+    // then real data arrives with fewer candles, making indices out of bounds
+    const viewOutOfBounds = viewRangeRef.current.endIdx >= newLength || viewRangeRef.current.startIdx >= newLength;
+
+    const isNewDataset = isFirstLoad || timeframeChanged || wasCleared || viewOutOfBounds;
 
     if (isNewDataset) {
       // New token/timeframe - initialize to show last N candles
       const startIdx = Math.max(0, newLength - TARGET_VISIBLE_CANDLES);
       const endIdx = newLength - 1;
 
-      console.log(`[Chart3D] NEW DATASET (${newLength} candles, tf=${timeframe}): indices ${startIdx}-${endIdx}${timeframeChanged ? ' [TIMEFRAME]' : ''}${wasCleared ? ' [CLEARED]' : ''}${isFirstLoad ? ' [FIRST]' : ''}`);
+      console.log(`[Chart3D] NEW DATASET (${newLength} candles, tf=${timeframe}): indices ${startIdx}-${endIdx}${timeframeChanged ? ' [TIMEFRAME]' : ''}${wasCleared ? ' [CLEARED]' : ''}${isFirstLoad ? ' [FIRST]' : ''}${viewOutOfBounds ? ' [OUT_OF_BOUNDS]' : ''}`);
 
       viewRangeRef.current = { startIdx, endIdx };
       setViewRange({ startIdx, endIdx });
