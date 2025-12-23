@@ -125,17 +125,17 @@ pulseRoutes.get("/new-pairs", async (req, res) => {
 // GET /api/pulse/graduating - Get coins about to graduate from pump.fun
 // "Final Stretch" = Market cap $10K-$69K (approaching graduation threshold)
 // Uses DB for enriched data + PumpPortal for real-time updates
-// Shows NEWEST tokens first, filters out anything > 30 minutes old
+// Shows NEWEST tokens first, filters out anything > 1 hour old
 pulseRoutes.get("/graduating", async (req, res) => {
   try {
-    const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000;
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
 
     // Get from DB (enriched with Moralis data)
     // Sort by creation time descending - newest first
     const dbTokens = await prisma.pulseToken.findMany({
       where: {
         category: PulseCategory.GRADUATING,
-        tokenCreatedAt: { gte: new Date(thirtyMinutesAgo) },
+        tokenCreatedAt: { gte: new Date(oneHourAgo) },
       },
       orderBy: { tokenCreatedAt: "desc" }, // Newest first
     });
@@ -153,8 +153,8 @@ pulseRoutes.get("/graduating", async (req, res) => {
       if (seenAddresses.has(rt.address)) continue;
       const mc = rt.marketCap || 0;
       if (mc < 10000 || mc >= 69000) continue; // Filter to $10K-$69K
-      // Filter out tokens older than 30 minutes
-      if (rt.createdAt && rt.createdAt < thirtyMinutesAgo) continue;
+      // Filter out tokens older than 1 hour
+      if (rt.createdAt && rt.createdAt < oneHourAgo) continue;
       seenAddresses.add(rt.address);
 
       const dbToken = dbTokenMap.get(rt.address);
@@ -217,14 +217,21 @@ pulseRoutes.get("/graduating", async (req, res) => {
 
 // GET /api/pulse/graduated - Get coins that graduated to Raydium/PumpSwap
 // Uses DB for enriched data + PumpPortal for real-time migrations
-// Fetches individual token data for any tokens missing MC/Volume
+// Shows NEWEST tokens first, filters out anything > 1 hour old
 pulseRoutes.get("/graduated", async (req, res) => {
   try {
-    console.log(`[Graduated] Fetching graduated tokens...`);
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    console.log(`[Graduated] Fetching graduated tokens (max 1hr old)...`);
 
-    // Get from DB (enriched with Moralis data)
+    // Get from DB (enriched with Moralis data) - only tokens from last 1 hour
     const dbTokens = await prisma.pulseToken.findMany({
-      where: { category: PulseCategory.GRADUATED },
+      where: {
+        category: PulseCategory.GRADUATED,
+        OR: [
+          { graduatedAt: { gte: new Date(oneHourAgo) } },
+          { tokenCreatedAt: { gte: new Date(oneHourAgo) } },
+        ],
+      },
       orderBy: { graduatedAt: "desc" },
       take: 50,
     });
@@ -251,6 +258,8 @@ pulseRoutes.get("/graduated", async (req, res) => {
       if (seenAddresses.has(rt.address)) continue;
       // Skip tokens with 0 market cap - they need enrichment
       if (!rt.marketCap || rt.marketCap === 0) continue;
+      // Filter out tokens older than 1 hour
+      if (rt.createdAt && rt.createdAt < oneHourAgo) continue;
 
       seenAddresses.add(rt.address);
       const dbToken = dbTokenMap.get(rt.address);
