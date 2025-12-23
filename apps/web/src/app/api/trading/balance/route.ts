@@ -4,10 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { getJupiterService, SOL_MINT } from "@/lib/jupiter";
 import { config } from "@/lib/config";
 import { TradeStatus } from "@prisma/client";
-import { generateWalletForUser } from "@/lib/wallet";
-
-// Get wallet encryption secret
-const WALLET_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "dev-only-secret";
 
 // GET /api/trading/balance
 export async function GET(req: NextRequest) {
@@ -24,52 +20,70 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Get user wallet
+    // Get user wallet - first try by session ID
     let user = await prisma.user.findUnique({
       where: { id: session.user.id },
       select: {
+        id: true,
         walletAddress: true,
         email: true,
       },
     });
 
-    console.log("[balance] User lookup:", {
-      userId: session.user.id,
+    console.log("[balance] User lookup by ID:", {
+      sessionUserId: session.user.id,
+      sessionEmail: session.user.email,
       found: !!user,
       hasWallet: !!user?.walletAddress,
-      email: user?.email?.substring(0, 5) + "...",
+      userEmail: user?.email,
     });
 
+    // If not found by ID, try by email (session might have stale ID)
+    if (!user && session.user.email) {
+      console.log("[balance] Trying lookup by email:", session.user.email);
+      user = await prisma.user.findUnique({
+        where: { email: session.user.email },
+        select: {
+          id: true,
+          walletAddress: true,
+          email: true,
+        },
+      });
+      console.log("[balance] User lookup by email:", {
+        found: !!user,
+        hasWallet: !!user?.walletAddress,
+        userId: user?.id,
+      });
+    }
+
     if (!user) {
-      console.error("[balance] User not found in database:", session.user.id);
+      // List all users for debugging
+      const allUsers = await prisma.user.findMany({
+        select: { id: true, email: true, walletAddress: true },
+        take: 10,
+      });
+      console.error("[balance] User not found. Session:", {
+        id: session.user.id,
+        email: session.user.email,
+      });
+      console.error("[balance] Available users:", allUsers.map(u => ({
+        id: u.id,
+        email: u.email,
+        wallet: u.walletAddress?.substring(0, 8) + "...",
+      })));
       return NextResponse.json(
-        { error: "User not found" },
+        { error: "User not found", debug: { sessionId: session.user.id, sessionEmail: session.user.email } },
         { status: 404 }
       );
     }
 
-    // Auto-generate wallet if user doesn't have one
-    let walletAddress = user.walletAddress;
+    const walletAddress = user.walletAddress;
     if (!walletAddress) {
-      console.log("[balance] User has no wallet, generating one...");
-      try {
-        const { publicKey, encryptedPrivateKey } = generateWalletForUser(WALLET_SECRET);
-        await prisma.user.update({
-          where: { id: session.user.id },
-          data: {
-            walletAddress: publicKey,
-            walletEncrypted: encryptedPrivateKey,
-          },
-        });
-        walletAddress = publicKey;
-        console.log("[balance] Generated wallet:", walletAddress.substring(0, 8) + "...");
-      } catch (walletError) {
-        console.error("[balance] Failed to generate wallet:", walletError);
-        return NextResponse.json(
-          { error: "Failed to create wallet" },
-          { status: 500 }
-        );
-      }
+      console.error("[balance] User exists but has no wallet:", user.id, user.email);
+      return NextResponse.json(
+        { error: "No wallet found for user", debug: { userId: user.id, email: user.email } },
+        { status: 400 }
+      );
     }
     console.log("[balance] Fetching for wallet:", walletAddress.substring(0, 8) + "...");
 
@@ -197,7 +211,7 @@ export async function GET(req: NextRequest) {
     const totalValueUsd = solValueUsd !== null ? solValueUsd + tokensValueUsd : null;
 
     return NextResponse.json({
-      walletAddress: user.walletAddress,
+      walletAddress,
       sol: {
         mint: SOL_MINT,
         balance: solBalance.toString(),
