@@ -88,15 +88,17 @@ const MORALIS_LINE_CONFIG: Record<string, { interval: string; seconds: number }>
 };
 
 // CANDLESTICK CHART: period = candle interval (size of each candle)
+// Backend fetches ALL data from DB - frontend just maps intervals
+// The 'seconds' value is unused but kept for compatibility
 const MORALIS_CANDLE_CONFIG: Record<string, { interval: string; seconds: number }> = {
-  "1s": { interval: "1s", seconds: 86400 },       // Per-trade candles (pump.fun style), 24 hours of data
-  "1m": { interval: "1min", seconds: 7200 },      // 1 min candles, 2 hours of data
-  "5m": { interval: "5min", seconds: 36000 },     // 5 min candles, 10 hours of data
-  "15m": { interval: "30min", seconds: 86400 },   // 30 min candles, 24 hours of data
-  "1h": { interval: "1h", seconds: 86400 * 5 },   // 1 hour candles, 5 days of data
-  "4h": { interval: "4h", seconds: 86400 * 20 },  // 4 hour candles, 20 days of data
-  "1d": { interval: "1d", seconds: 86400 * 180 }, // 1 day candles, 6 months of data
-  "1w": { interval: "1w", seconds: 86400 * 365 * 2 }, // 1 week candles, 2 years of data
+  "1s": { interval: "1s", seconds: 0 },       // 1 second candles
+  "1m": { interval: "1min", seconds: 0 },     // 1 minute candles
+  "5m": { interval: "5min", seconds: 0 },     // 5 minute candles
+  "15m": { interval: "30min", seconds: 0 },   // 15 minute (uses 30min interval)
+  "1h": { interval: "1h", seconds: 0 },       // 1 hour candles
+  "4h": { interval: "4h", seconds: 0 },       // 4 hour candles
+  "1d": { interval: "1d", seconds: 0 },       // 1 day candles
+  "1w": { interval: "1w", seconds: 0 },       // 1 week candles
 };
 
 // Get the appropriate config based on API source, chart type, and period
@@ -639,17 +641,13 @@ export default function TokenPage() {
 
     const fetchOhlcv = async () => {
       try {
-        // Calculate time range
-        const now = Math.floor(Date.now() / 1000);
-        const fromDate = now - config.seconds;
-
         let response;
         let ohlcvData: OHLCV[] = [];
 
         if (fromPulse) {
-          // PULSE TOKENS: Use Moralis API via /api/pulse/ohlcv
+          // PULSE TOKENS: Backend fetches ALL swaps from DB, no time filtering needed
           response = await fetch(
-            `${API_URL}/api/pulse/ohlcv/${address}?timeframe=${config.interval}&fromDate=${fromDate}&toDate=${now}`
+            `${API_URL}/api/pulse/ohlcv/${address}?timeframe=${config.interval}`
           );
 
           if (!response.ok) {
@@ -660,7 +658,9 @@ export default function TokenPage() {
           ohlcvData = result.data || [];
         } else {
           // DASHBOARD TOKENS: Use Birdeye API via /api/tokens/:address/ohlcv
-          // Birdeye has proper OHLCV data with correct price continuity
+          // Birdeye needs time range params
+          const now = Math.floor(Date.now() / 1000);
+          const fromDate = now - config.seconds;
           response = await fetch(
             `${API_URL}/api/tokens/${address}/ohlcv?timeframe=${config.interval}&from=${fromDate}&to=${now}&limit=500`
           );
