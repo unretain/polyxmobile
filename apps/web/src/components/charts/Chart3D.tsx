@@ -629,32 +629,67 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   const candleDepth = Math.min(0.9, Math.max(0.15, spacing * 0.8));
 
   // Calculate price bounds from visible data (auto-adjusts Y-axis)
-  // IMPORTANT: Include current live price so Y-axis reflects current market cap
+  // IMPORTANT: Uses IQR-based outlier filtering to prevent extreme stretching
   const bounds = useMemo(() => {
     if (visibleData.length === 0) {
       return { minPrice: 0, maxPrice: 1, maxVolume: 1, priceRange: 1 };
     }
 
-    let minPrice = Infinity;
-    let maxPrice = -Infinity;
+    // Collect all prices for outlier detection
+    const allPrices: number[] = [];
     let maxVolume = 0;
 
     for (const candle of visibleData) {
-      // Use open/close for bounds instead of just high/low for smoother visualization
-      const candleMin = Math.min(candle.open, candle.close, candle.low);
-      const candleMax = Math.max(candle.open, candle.close, candle.high);
-
-      if (isFinite(candleMin) && candleMin > 0) minPrice = Math.min(minPrice, candleMin);
-      if (isFinite(candleMax) && candleMax > 0) maxPrice = Math.max(maxPrice, candleMax);
+      // Include all price points from each candle
+      if (isFinite(candle.open) && candle.open > 0) allPrices.push(candle.open);
+      if (isFinite(candle.close) && candle.close > 0) allPrices.push(candle.close);
+      if (isFinite(candle.high) && candle.high > 0) allPrices.push(candle.high);
+      if (isFinite(candle.low) && candle.low > 0) allPrices.push(candle.low);
       if (isFinite(candle.volume)) maxVolume = Math.max(maxVolume, candle.volume);
     }
 
-    // CRITICAL: Include current live price in bounds so Y-axis shows current market cap
-    // This ensures the displayed "Market Cap: $X" is within the Y-axis range
+    // Include current live price
     if (price && isFinite(price) && price > 0) {
-      minPrice = Math.min(minPrice, price);
-      maxPrice = Math.max(maxPrice, price);
+      allPrices.push(price);
     }
+
+    if (allPrices.length === 0) {
+      return { minPrice: 0, maxPrice: 1, maxVolume: maxVolume || 1, priceRange: 1 };
+    }
+
+    // Sort prices for percentile calculation
+    allPrices.sort((a, b) => a - b);
+
+    // Use IQR (Interquartile Range) to filter outliers
+    // Q1 = 25th percentile, Q3 = 75th percentile
+    const q1Index = Math.floor(allPrices.length * 0.25);
+    const q3Index = Math.floor(allPrices.length * 0.75);
+    const q1 = allPrices[q1Index];
+    const q3 = allPrices[q3Index];
+    const iqr = q3 - q1;
+
+    // Define bounds: Q1 - 2*IQR to Q3 + 2*IQR (wider than typical 1.5*IQR for trading charts)
+    // This keeps most price action but filters extreme outliers
+    const lowerBound = q1 - 2 * iqr;
+    const upperBound = q3 + 2 * iqr;
+
+    // Filter prices within bounds (or use percentiles if IQR is 0)
+    let filteredPrices = allPrices.filter(p => p >= lowerBound && p <= upperBound);
+
+    // If filtering removed too much data, fall back to 2nd-98th percentile
+    if (filteredPrices.length < allPrices.length * 0.5) {
+      const p2Index = Math.floor(allPrices.length * 0.02);
+      const p98Index = Math.floor(allPrices.length * 0.98);
+      filteredPrices = allPrices.slice(p2Index, p98Index + 1);
+    }
+
+    // If still empty, use all prices
+    if (filteredPrices.length === 0) {
+      filteredPrices = allPrices;
+    }
+
+    let minPrice = filteredPrices[0];
+    let maxPrice = filteredPrices[filteredPrices.length - 1];
 
     // Fallback for bad data
     if (!isFinite(minPrice) || !isFinite(maxPrice) || minPrice <= 0 || maxPrice <= 0) {
