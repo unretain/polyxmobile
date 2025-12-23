@@ -136,22 +136,28 @@ export function Header() {
     }
   }, [isAuthenticated, pendingRedirect, router]);
 
+  // Track if user has no wallet (400 response) - don't keep trying
+  const [noWallet, setNoWallet] = useState(false);
+
   // Fetch balance
   const fetchBalance = useCallback(async () => {
-    if (status !== "authenticated") return;
+    if (status !== "authenticated" || noWallet) return;
     setBalanceLoading(true);
     try {
       const res = await fetch("/api/trading/balance");
       if (res.ok) {
         const data = await res.json();
         setBalance(data);
+      } else if (res.status === 400) {
+        // User doesn't have a wallet yet - stop trying
+        setNoWallet(true);
       }
     } catch (err) {
       console.error("Failed to fetch balance:", err);
     } finally {
       setBalanceLoading(false);
     }
-  }, [status]);
+  }, [status, noWallet]);
 
   // Fetch balance on mount and when authenticated
   useEffect(() => {
