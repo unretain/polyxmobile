@@ -226,23 +226,11 @@ function parseSwapsFromTransactions(transactions: any[], walletAddress: string):
         }
       }
 
-      // Calculate SOL flow - track gross amounts, not just net
-      // This is important because sells often have small fees that make net negative
-      let solIn = 0;
-      let solOut = 0;
-      for (const transfer of nativeTransfers) {
-        if (transfer.toUserAccount === walletAddress) {
-          solIn += transfer.amount || 0;
-        }
-        if (transfer.fromUserAccount === walletAddress) {
-          solOut += transfer.amount || 0;
-        }
-      }
-
-      // For determining direction, use the LARGER amount (gross flow)
-      // Small fees/tips shouldn't flip the direction
-      const grossSolIn = solIn;
-      const grossSolOut = solOut;
+      // Get TRUE net SOL change from accountData (includes all fees, tips, rent)
+      // This is the ACTUAL impact on wallet balance - most accurate
+      const accountData = tx.accountData || [];
+      const walletAccountData = accountData.find((a: any) => a.account === walletAddress);
+      const netSolChange = walletAccountData?.nativeBalanceChange || 0;
 
       // Find the non-SOL token with the largest net change
       let mainToken: { mint: string; net: number; decimals: number } | null = null;
@@ -258,28 +246,23 @@ function parseSwapsFromTransactions(transactions: any[], walletAddress: string):
       // Skip if no significant token movement
       if (!mainToken || Math.abs(mainTokenNet) < 1) continue;
 
-      // Skip if no significant SOL movement (at least 0.001 SOL either direction)
-      if (grossSolIn < 1000000 && grossSolOut < 1000000) continue;
+      // Skip if no significant SOL movement (at least 0.0001 SOL)
+      if (Math.abs(netSolChange) < 100000) continue;
 
-      // Determine swap direction based on token flow and gross SOL amounts
-      // Token received + SOL sent = BUY
-      // Token sent + SOL received = SELL
+      // Determine swap direction based on token and SOL flow
+      // BUY: received tokens (positive), spent SOL (negative netSolChange)
+      // SELL: sent tokens (negative), received SOL (positive netSolChange)
       let sent: { mint: string; amount: number; decimals: number } | null = null;
       let received: { mint: string; amount: number; decimals: number } | null = null;
 
-      if (mainTokenNet > 0 && grossSolOut > grossSolIn) {
-        // BUY: received tokens, sent more SOL than received
-        // Use gross SOL out minus SOL in (to account for refunds)
-        const solSpent = grossSolOut - grossSolIn;
-        if (solSpent > 0) {
-          sent = { mint: SOL_MINT, amount: solSpent, decimals: 9 };
-          received = { mint: mainToken.mint, amount: mainTokenNet, decimals: mainToken.decimals };
-        }
-      } else if (mainTokenNet < 0 && grossSolIn > 0) {
+      if (mainTokenNet > 0 && netSolChange < 0) {
+        // BUY: received tokens, spent SOL
+        sent = { mint: SOL_MINT, amount: Math.abs(netSolChange), decimals: 9 };
+        received = { mint: mainToken.mint, amount: mainTokenNet, decimals: mainToken.decimals };
+      } else if (mainTokenNet < 0 && netSolChange > 0) {
         // SELL: sent tokens, received SOL
-        // Use gross SOL in as the amount received (ignore fees paid out)
         sent = { mint: mainToken.mint, amount: Math.abs(mainTokenNet), decimals: mainToken.decimals };
-        received = { mint: SOL_MINT, amount: grossSolIn, decimals: 9 };
+        received = { mint: SOL_MINT, amount: netSolChange, decimals: 9 };
       }
 
       // Skip if we couldn't detect both sides
