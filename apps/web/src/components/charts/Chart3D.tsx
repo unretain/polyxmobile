@@ -642,20 +642,16 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   const VOLUME_Z_OFFSET = 4;
 
   // Calculate spacing and candle dimensions
-  // FIXED candle size regardless of timeframe - same visual size for 1s and 1m
+  // Candles must fit within CHART_WIDTH, spacing adjusts to fill the space
   const candleCount = visibleData.length || 1;
 
-  // Fixed candle dimensions - consistent across all timeframes
-  // This ensures 1m candles look the same size as 1s candles
-  const FIXED_CANDLE_WIDTH = 0.7;
-  const FIXED_CANDLE_DEPTH = 0.7;
+  // Spacing to fill chart width evenly - candles always fit within bounds
+  const spacing = CHART_WIDTH / candleCount;
 
-  // Spacing = candle width (no gaps between candles)
-  const spacing = FIXED_CANDLE_WIDTH;
-
-  // Candle dimensions are fixed
-  const candleWidth = FIXED_CANDLE_WIDTH;
-  const candleDepth = FIXED_CANDLE_DEPTH;
+  // Candle width = spacing (no gaps between candles)
+  // Clamp to reasonable range so candles aren't invisibly thin or comically thick
+  const candleWidth = Math.max(0.05, Math.min(2, spacing * 0.9));
+  const candleDepth = candleWidth;
 
   // Calculate price bounds from visible data (auto-adjusts Y-axis)
   // IMPORTANT: Uses IQR-based outlier filtering to prevent extreme stretching
