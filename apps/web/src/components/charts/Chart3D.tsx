@@ -43,7 +43,8 @@ interface IndexViewRange {
 }
 
 // Visible candle count target - how many candles to show at a time
-const TARGET_VISIBLE_CANDLES = 200;
+// How many candles fit in the viewport: CHART_WIDTH (60) / FIXED_SPACING (0.4) = 150
+const TARGET_VISIBLE_CANDLES = 150;
 
 // Props for external toolbar rendering
 export interface DrawingToolbarRenderProps {
