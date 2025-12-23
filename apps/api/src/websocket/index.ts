@@ -33,6 +33,10 @@ export function setupWebSocket(io: Server) {
         state.tokens.add(data.address);
         socket.join(`token:${data.address}`);
         console.log(`Client ${socket.id} subscribed to token ${data.address}`);
+
+        // LIVE: Also subscribe to PumpPortal trades for this token
+        // This ensures we get real-time trade events from the chain
+        pumpPortalService.subscribeTokenTrades([data.address]);
       }
     });
 
@@ -184,6 +188,40 @@ async function initializePumpPortal(io: Server) {
     // Forward token updates (e.g., logo loaded) to Pulse subscribers
     pumpPortalService.on("pulse:tokenUpdate", (update) => {
       io.to("pulse").emit("pulse:tokenUpdate", update);
+    });
+
+    // LIVE: Forward individual trade events to token subscribers
+    // This enables real-time trade feeds on token pages
+    pumpPortalService.on("trade", (trade) => {
+      // Broadcast to token-specific room
+      io.to(`token:${trade.mint}`).emit("trade", {
+        mint: trade.mint,
+        type: trade.txType,
+        tokenAmount: trade.tokenAmount,
+        solAmount: trade.solAmount,
+        marketCapSol: trade.marketCapSol,
+        trader: trade.traderPublicKey,
+        signature: trade.signature,
+        timestamp: trade.timestamp || Date.now(),
+      });
+
+      // Also broadcast to pulse room for live activity feed
+      io.to("pulse").emit("pulse:trade", {
+        mint: trade.mint,
+        type: trade.txType,
+        solAmount: trade.solAmount,
+        marketCapSol: trade.marketCapSol,
+        timestamp: trade.timestamp || Date.now(),
+      });
+    });
+
+    // LIVE: Forward 1-second OHLCV updates to token subscribers
+    // This enables real-time chart updates without polling
+    pumpPortalService.on("ohlcv:update", (data) => {
+      io.to(`token:${data.mint}`).emit("ohlcv:update", {
+        mint: data.mint,
+        candle: data.candle,
+      });
     });
 
     // Log connection status
