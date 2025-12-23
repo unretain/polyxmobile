@@ -264,7 +264,6 @@ class SwapSyncService {
     }
 
     // ALL modes (including 1s) use interval-based aggregation
-    // perTrade flag is no longer used - 1s just uses 1000ms interval
     const candleMap = new Map<number, OHLCV>();
 
     for (const swap of swaps) {
@@ -292,10 +291,22 @@ class SwapSyncService {
       }
     }
 
-    // Return real candles only - no fake gap filling
-    return Array.from(candleMap.values())
-      .sort((a, b) => a.timestamp - b.timestamp)
-      .slice(-maxCandles);
+    // Sort candles by time
+    const sortedCandles = Array.from(candleMap.values())
+      .sort((a, b) => a.timestamp - b.timestamp);
+
+    // Connect candles: each candle's open = previous candle's close
+    // This creates a continuous visual like TradingView
+    for (let i = 1; i < sortedCandles.length; i++) {
+      const prevClose = sortedCandles[i - 1].close;
+      const candle = sortedCandles[i];
+      candle.open = prevClose;
+      // Recalculate high/low to include the new open
+      candle.high = Math.max(candle.high, prevClose);
+      candle.low = Math.min(candle.low, prevClose);
+    }
+
+    return sortedCandles.slice(-maxCandles);
   }
 
   // Get OHLCV - checks DB first, syncs if needed, then returns from DB
