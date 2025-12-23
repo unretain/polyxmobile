@@ -626,8 +626,8 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   const baseWidth = CHART_WIDTH / candleCount;
   const candleWidth = Math.min(1.2, Math.max(0.3, baseWidth * 0.85));
 
-  // Spacing is just slightly larger than candle width (tight packing)
-  const spacing = candleWidth * 1.1;
+  // Spacing equals width - candles touch with no gap
+  const spacing = candleWidth;
 
   // Candle depth - same as width for square cross-section
   const candleDepth = candleWidth;
