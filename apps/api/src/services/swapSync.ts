@@ -292,49 +292,10 @@ class SwapSyncService {
       }
     }
 
-    // Sort candles by time
-    const sortedCandles = Array.from(candleMap.values()).sort(
-      (a, b) => a.timestamp - b.timestamp
-    );
-
-    if (sortedCandles.length === 0) {
-      return [];
-    }
-
-    // Fill gaps between candles with flat candles (same OHLC as previous close)
-    // This makes the chart continuous like TradingView
-    const filledCandles: OHLCV[] = [];
-    const firstCandle = sortedCandles[0];
-    const lastCandle = sortedCandles[sortedCandles.length - 1];
-
-    let currentTime = firstCandle.timestamp;
-    let candleIndex = 0;
-    let lastPrice = firstCandle.open;
-
-    while (currentTime <= lastCandle.timestamp && filledCandles.length < maxCandles) {
-      const existingCandle = sortedCandles[candleIndex];
-
-      if (existingCandle && existingCandle.timestamp === currentTime) {
-        // Real candle exists for this interval
-        filledCandles.push(existingCandle);
-        lastPrice = existingCandle.close;
-        candleIndex++;
-      } else {
-        // No trade in this interval - create flat candle with previous close
-        filledCandles.push({
-          timestamp: currentTime,
-          open: lastPrice,
-          high: lastPrice,
-          low: lastPrice,
-          close: lastPrice,
-          volume: 0,
-        });
-      }
-
-      currentTime += intervalMs;
-    }
-
-    return filledCandles.slice(-maxCandles);
+    // Return real candles only - no fake gap filling
+    return Array.from(candleMap.values())
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .slice(-maxCandles);
   }
 
   // Get OHLCV - checks DB first, syncs if needed, then returns from DB
