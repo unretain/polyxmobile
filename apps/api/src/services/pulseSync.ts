@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { moralisService } from "./moralis";
 import { pumpPortalService } from "./pumpportal";
+import { swapSyncService } from "./swapSync";
 import { PulseCategory } from "@prisma/client";
 
 // Sync interval in milliseconds
@@ -346,23 +347,70 @@ async function cleanupStaleTokens(): Promise<number> {
   }
 }
 
+// Sync swaps for tokens that don't have swaps synced yet
+// This runs after token list sync to populate swap history
+async function syncTokenSwaps(): Promise<number> {
+  try {
+    // Get all pulse tokens that don't have swaps synced
+    const unsyncedTokens = await prisma.pulseToken.findMany({
+      where: {
+        NOT: {
+          address: {
+            in: (await prisma.tokenSyncStatus.findMany({
+              where: { swapsSynced: true },
+              select: { tokenAddress: true },
+            })).map(s => s.tokenAddress),
+          },
+        },
+      },
+      orderBy: { marketCap: "desc" }, // Prioritize higher MC tokens
+      take: 5, // Sync 5 tokens per cycle to avoid rate limits
+    });
+
+    if (unsyncedTokens.length === 0) {
+      return 0;
+    }
+
+    console.log(`[PulseSync] Syncing swaps for ${unsyncedTokens.length} tokens...`);
+
+    let synced = 0;
+    for (const token of unsyncedTokens) {
+      try {
+        const result = await swapSyncService.syncHistoricalSwaps(token.address);
+        if (result.synced) {
+          synced++;
+          console.log(`[PulseSync] Synced ${result.count} swaps for ${token.symbol}`);
+        }
+      } catch (err) {
+        console.error(`[PulseSync] Failed to sync swaps for ${token.symbol}:`, err);
+      }
+    }
+
+    return synced;
+  } catch (err) {
+    console.error("[PulseSync] Swap sync error:", err);
+    return 0;
+  }
+}
+
 // Main sync function
 export async function syncPulseTokens(): Promise<{
   new: number;
   graduating: number;
   graduated: number;
   cleaned: number;
+  swapsSynced: number;
 }> {
   if (isSyncing) {
     console.log("[PulseSync] Already syncing, skipping...");
-    return { new: 0, graduating: 0, graduated: 0, cleaned: 0 };
+    return { new: 0, graduating: 0, graduated: 0, cleaned: 0, swapsSynced: 0 };
   }
 
   isSyncing = true;
   const startTime = Date.now();
 
   try {
-    // Run all syncs in parallel
+    // First sync token lists
     const [newCount, graduatingCount, graduatedCount, cleanedCount] = await Promise.all([
       syncNewPairs(),
       syncGraduatingPairs(),
@@ -370,15 +418,19 @@ export async function syncPulseTokens(): Promise<{
       cleanupStaleTokens(),
     ]);
 
+    // Then sync swaps for unsynced tokens (after token list is updated)
+    const swapsSynced = await syncTokenSwaps();
+
     lastSyncTime = Date.now();
     const duration = lastSyncTime - startTime;
-    console.log(`[PulseSync] Completed in ${duration}ms - New: ${newCount}, Graduating: ${graduatingCount}, Graduated: ${graduatedCount}, Cleaned: ${cleanedCount}`);
+    console.log(`[PulseSync] Completed in ${duration}ms - New: ${newCount}, Graduating: ${graduatingCount}, Graduated: ${graduatedCount}, Cleaned: ${cleanedCount}, SwapsSynced: ${swapsSynced}`);
 
     return {
       new: newCount,
       graduating: graduatingCount,
       graduated: graduatedCount,
       cleaned: cleanedCount,
+      swapsSynced,
     };
   } catch (err) {
     console.error("[PulseSync] Sync error:", err);
