@@ -26,20 +26,18 @@ import type { OHLCV } from "@/stores/chartStore";
 import { useThemeStore } from "@/stores/themeStore";
 
 // ============================================================================
-// TIMESTAMP-BASED VIEW SYSTEM (TradingView-style)
+// INDEX-BASED VIEW SYSTEM
 // ============================================================================
-// Instead of percentage-based viewStart/viewEnd (0-1), we use timestamps.
-// This provides stable view positioning even when data length changes.
+// We use start/end INDICES into the data array, not timestamps.
+// This ensures a FIXED number of visible candles regardless of time density.
 //
-// View state: { fromTimestamp: number, toTimestamp: number }
-// - Stays stable when new candles are appended to the right
-// - Stays stable when historical candles are prepended to the left
-// - Only resets when switching to a completely different token/timeframe
+// When data is prepended (historical load), we shift indices to maintain position.
+// When data is appended (new candles), indices stay the same (view doesn't move).
 // ============================================================================
 
-interface TimestampViewRange {
-  from: number; // Start timestamp in ms
-  to: number;   // End timestamp in ms
+interface IndexViewRange {
+  startIdx: number; // First visible candle index
+  endIdx: number;   // Last visible candle index (inclusive)
 }
 
 // Visible candle count target - how many candles to show at a time
@@ -58,58 +56,52 @@ export interface DrawingToolbarRenderProps {
 }
 
 // Speed ball control component - drag left/right with exponential speed increase
-// Now works with timestamp-based view system
+// Now works with index-based view system (candle count)
 interface SpeedBallControlProps {
-  onPan: (ms: number) => boolean; // Returns false if hit boundary, ms = milliseconds to pan
+  onPan: (candles: number) => boolean; // Returns false if hit boundary
   isDark: boolean;
   dataLength: number;
-  visibleCount: number; // Number of currently visible candles
-  atStart: boolean; // At oldest data
-  atEnd: boolean;   // At newest data
-  avgCandleInterval: number; // Average interval between candles in ms
+  visibleCount: number;
+  atStart: boolean;
+  atEnd: boolean;
 }
 
-function SpeedBallControl({ onPan, isDark, dataLength, visibleCount, atStart, atEnd, avgCandleInterval }: SpeedBallControlProps) {
+function SpeedBallControl({ onPan, isDark, dataLength, visibleCount, atStart, atEnd }: SpeedBallControlProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const ballRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState(0); // -1 to 1, 0 is center
+  const [dragOffset, setDragOffset] = useState(0);
   const [hitBoundary, setHitBoundary] = useState<'left' | 'right' | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const startXRef = useRef(0);
   const containerWidthRef = useRef(0);
-  const dragOffsetRef = useRef(0); // Ref to avoid stale closure in interval
+  const dragOffsetRef = useRef(0);
 
-  // Keep ref in sync with state
   useEffect(() => {
     dragOffsetRef.current = dragOffset;
   }, [dragOffset]);
 
-  // Calculate milliseconds to pan based on drag offset (exponential)
-  const calculatePanMs = useCallback((offset: number): number => {
-    if (Math.abs(offset) < 0.1) return 0; // Dead zone in center
+  // Calculate candles to pan based on drag offset (exponential)
+  const calculatePanCandles = useCallback((offset: number): number => {
+    if (Math.abs(offset) < 0.1) return 0;
 
     const absOffset = Math.abs(offset);
-    const direction = offset > 0 ? 1 : -1; // Positive = right (newer), Negative = left (older)
-
-    // Base speed: 1 candle worth of time
-    const baseMs = avgCandleInterval;
+    const direction = offset > 0 ? 1 : -1;
 
     // Exponential scaling: at offset 0.1 = ~1 candle, at offset 1.0 = ~100 candles
-    const speedMultiplier = Math.pow(absOffset, 2.5) * 100;
+    const candles = Math.round(Math.pow(absOffset, 2.5) * 100);
 
-    return Math.round(direction * baseMs * speedMultiplier);
-  }, [avgCandleInterval]);
+    return direction * Math.max(1, candles);
+  }, []);
 
-  // Interval-based panning (throttled to ~10fps)
   useEffect(() => {
     if (isDragging) {
       intervalRef.current = setInterval(() => {
-        const ms = calculatePanMs(dragOffsetRef.current);
-        if (ms !== 0) {
-          const success = onPan(ms);
+        const candles = calculatePanCandles(dragOffsetRef.current);
+        if (candles !== 0) {
+          const success = onPan(candles);
           if (!success) {
-            setHitBoundary(ms < 0 ? 'left' : 'right');
+            setHitBoundary(candles < 0 ? 'left' : 'right');
           } else {
             setHitBoundary(null);
           }
@@ -123,7 +115,7 @@ function SpeedBallControl({ onPan, isDark, dataLength, visibleCount, atStart, at
         }
       };
     }
-  }, [isDragging, calculatePanMs, onPan]);
+  }, [isDragging, calculatePanCandles, onPan]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (!containerRef.current) return;
@@ -179,11 +171,10 @@ function SpeedBallControl({ onPan, isDark, dataLength, visibleCount, atStart, at
 
   const speedText = useMemo(() => {
     if (hitBoundary) return hitBoundary === 'left' ? '◀ START' : 'END ▶';
-    const ms = Math.abs(calculatePanMs(dragOffset));
-    if (ms === 0) return null;
-    const candles = Math.round(ms / avgCandleInterval);
+    const candles = Math.abs(calculatePanCandles(dragOffset));
+    if (candles === 0) return null;
     return `${candles}/tick`;
-  }, [dragOffset, calculatePanMs, hitBoundary, avgCandleInterval]);
+  }, [dragOffset, calculatePanCandles, hitBoundary]);
 
   return (
     <div className="flex items-center gap-2">
@@ -342,16 +333,16 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   }, [data]);
 
   // ============================================================================
-  // TIMESTAMP-BASED VIEW STATE
+  // INDEX-BASED VIEW STATE
   // ============================================================================
-  // Instead of percentages (0-1), we track actual timestamps for view range.
-  // This is stable across data length changes (prepend/append).
+  // We track start/end indices into the data array.
+  // This ensures FIXED candle count regardless of time density.
   //
-  // viewRange.from = left edge timestamp (older)
-  // viewRange.to = right edge timestamp (newer)
+  // viewRange.startIdx = first visible candle index
+  // viewRange.endIdx = last visible candle index (inclusive)
   // ============================================================================
-  const [viewRange, setViewRange] = useState<TimestampViewRange>({ from: 0, to: 0 });
-  const viewRangeRef = useRef<TimestampViewRange>({ from: 0, to: 0 });
+  const [viewRange, setViewRange] = useState<IndexViewRange>({ startIdx: 0, endIdx: 0 });
+  const viewRangeRef = useRef<IndexViewRange>({ startIdx: 0, endIdx: 0 });
 
   const [isMounted, setIsMounted] = useState(false);
   const lastUpdateTimeRef = useRef(0);
@@ -359,7 +350,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   // Shift+Right-click pan state
   const isPanningRef = useRef(false);
   const panStartXRef = useRef(0);
-  const panStartViewRef = useRef<TimestampViewRange>({ from: 0, to: 0 });
+  const panStartViewRef = useRef<IndexViewRange>({ startIdx: 0, endIdx: 0 });
 
   const [isShiftHeld, setIsShiftHeld] = useState(false);
   const isShiftHeldRef = useRef(false);
@@ -424,41 +415,64 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   }, [safeData]);
 
   // Track the data identity to detect token/timeframe switches
-  // We use a hash of first + last + middle timestamps
-  const dataIdentityRef = useRef<string>('');
+  const dataIdentityRef = useRef<number>(0);
+  const prevDataLengthRef = useRef<number>(0);
 
   // ============================================================================
   // INITIALIZE/UPDATE VIEW RANGE WHEN DATA CHANGES
   // ============================================================================
   useEffect(() => {
     if (safeData.length === 0) {
-      dataIdentityRef.current = '';
+      dataIdentityRef.current = 0;
+      prevDataLengthRef.current = 0;
       return;
     }
 
-    // Create identity from timestamps (stable across small changes)
-    const firstTs = safeData[0].timestamp;
     const lastTs = safeData[safeData.length - 1].timestamp;
-    const midTs = safeData[Math.floor(safeData.length / 2)].timestamp;
-    const newIdentity = `${Math.floor(firstTs / 3600000)}-${Math.floor(midTs / 3600000)}-${Math.floor(lastTs / 3600000)}`;
+    const lastTsHour = Math.floor(lastTs / 3600000);
 
-    const prevIdentity = dataIdentityRef.current;
-    const isNewDataset = prevIdentity === '' || newIdentity !== prevIdentity;
+    // Detect if this is a completely different token/timeframe
+    const isNewDataset = dataIdentityRef.current === 0 ||
+                         Math.abs(lastTsHour - dataIdentityRef.current) > 24;
+
+    const prevLength = prevDataLengthRef.current;
+    const newLength = safeData.length;
 
     if (isNewDataset) {
-      // New token or timeframe - initialize view to show last N candles
-      dataIdentityRef.current = newIdentity;
+      // New token - initialize to show last N candles
+      dataIdentityRef.current = lastTsHour;
+      prevDataLengthRef.current = newLength;
 
-      const targetCandles = Math.min(TARGET_VISIBLE_CANDLES, safeData.length);
-      const targetDuration = targetCandles * dataStats.avgInterval;
-      const newFrom = Math.max(firstTs, lastTs - targetDuration);
-      const newTo = lastTs;
+      const startIdx = Math.max(0, newLength - TARGET_VISIBLE_CANDLES);
+      const endIdx = newLength - 1;
 
-      viewRangeRef.current = { from: newFrom, to: newTo };
-      setViewRange({ from: newFrom, to: newTo });
+      console.log(`[Chart3D] NEW DATASET: showing indices ${startIdx}-${endIdx} (${endIdx - startIdx + 1} candles)`);
+
+      viewRangeRef.current = { startIdx, endIdx };
+      setViewRange({ startIdx, endIdx });
+    } else if (newLength > prevLength) {
+      // Data was added - check if prepended or appended
+      const firstTsOld = prevLength > 0 ? safeData[newLength - prevLength]?.timestamp : null;
+      const firstTsNew = safeData[0].timestamp;
+
+      if (firstTsNew < (firstTsOld || Infinity)) {
+        // Data was PREPENDED (historical data loaded on left)
+        // Shift our indices right to keep viewing the same candles
+        const prependedCount = newLength - prevLength;
+        const newStartIdx = viewRangeRef.current.startIdx + prependedCount;
+        const newEndIdx = viewRangeRef.current.endIdx + prependedCount;
+
+        console.log(`[Chart3D] PREPENDED ${prependedCount} candles, shifting indices to ${newStartIdx}-${newEndIdx}`);
+
+        viewRangeRef.current = { startIdx: newStartIdx, endIdx: newEndIdx };
+        setViewRange({ startIdx: newStartIdx, endIdx: newEndIdx });
+      }
+      // If data was appended (new candles on right), keep indices the same
+      prevDataLengthRef.current = newLength;
+    } else {
+      prevDataLengthRef.current = newLength;
     }
-    // If same dataset, view stays where it is (timestamp-based = stable)
-  }, [safeData, dataStats.avgInterval]);
+  }, [safeData]);
 
   // ============================================================================
   // DETECT LEFT EDGE FOR LOADING MORE DATA
@@ -466,88 +480,41 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   useEffect(() => {
     if (safeData.length === 0 || !hasMoreData || isLoadingMore || !onLoadMore) return;
 
-    // If view is within 5% of oldest data, request more
-    const oldestTs = safeData[0].timestamp;
-    const viewDuration = viewRangeRef.current.to - viewRangeRef.current.from;
-    const buffer = viewDuration * 0.05;
-
-    if (viewRangeRef.current.from <= oldestTs + buffer) {
+    // If view starts within 10 candles of the beginning, request more
+    if (viewRangeRef.current.startIdx <= 10) {
       onLoadMore();
     }
   }, [viewRange, safeData, hasMoreData, isLoadingMore, onLoadMore]);
 
   // ============================================================================
-  // VISIBLE DATA - Uses timestamp range to slice data (stable across changes)
+  // VISIBLE DATA - Uses index range to slice data (FIXED candle count)
   // ============================================================================
-  // No aggregation - we render all candles in view. WebGL can handle 200-400.
-  // If user zooms out too far, we just show more candles (up to a limit).
-  const MAX_VISIBLE_CANDLES = 400; // Increased limit since no aggregation
-
   const visibleData = useMemo(() => {
-    if (safeData.length === 0 || viewRange.from === 0 || viewRange.to === 0) {
+    if (safeData.length === 0) {
       return [];
     }
 
-    // Binary search for start index (first candle >= viewRange.from)
-    let startIdx = 0;
-    let lo = 0, hi = safeData.length - 1;
-    while (lo <= hi) {
-      const mid = Math.floor((lo + hi) / 2);
-      if (safeData[mid].timestamp >= viewRange.from) {
-        startIdx = mid;
-        hi = mid - 1;
-      } else {
-        lo = mid + 1;
-      }
-    }
-    // Include one candle before if exists (for smooth left edge)
-    if (startIdx > 0) startIdx--;
+    // Clamp indices to valid range
+    const startIdx = Math.max(0, Math.min(safeData.length - 1, viewRange.startIdx));
+    const endIdx = Math.max(0, Math.min(safeData.length - 1, viewRange.endIdx));
 
-    // Binary search for end index (last candle <= viewRange.to)
-    let endIdx = safeData.length - 1;
-    lo = 0; hi = safeData.length - 1;
-    while (lo <= hi) {
-      const mid = Math.floor((lo + hi) / 2);
-      if (safeData[mid].timestamp <= viewRange.to) {
-        endIdx = mid;
-        lo = mid + 1;
-      } else {
-        hi = mid - 1;
-      }
+    if (startIdx > endIdx) {
+      return safeData.slice(-1); // Fallback: show last candle
     }
-    // Include one candle after if exists (for smooth right edge)
-    if (endIdx < safeData.length - 1) endIdx++;
 
     const slice = safeData.slice(startIdx, endIdx + 1);
-
-    // If way too many candles, just take evenly spaced samples
-    // This is a fallback - normally view range should limit to ~200
-    if (slice.length > MAX_VISIBLE_CANDLES) {
-      const step = Math.ceil(slice.length / MAX_VISIBLE_CANDLES);
-      const sampled: OHLCV[] = [];
-      for (let i = 0; i < slice.length; i += step) {
-        sampled.push(slice[i]);
-      }
-      // Always include last candle
-      if (sampled[sampled.length - 1] !== slice[slice.length - 1]) {
-        sampled.push(slice[slice.length - 1]);
-      }
-      return sampled;
-    }
-
     return slice;
   }, [safeData, viewRange]);
 
   // Calculate boundary states for SpeedBallControl
   const atStart = useMemo(() => {
-    if (safeData.length === 0) return true;
-    return viewRange.from <= safeData[0].timestamp + dataStats.avgInterval;
-  }, [viewRange.from, safeData, dataStats.avgInterval]);
+    return viewRange.startIdx <= 0;
+  }, [viewRange.startIdx]);
 
   const atEnd = useMemo(() => {
     if (safeData.length === 0) return true;
-    return viewRange.to >= safeData[safeData.length - 1].timestamp - dataStats.avgInterval;
-  }, [viewRange.to, safeData, dataStats.avgInterval]);
+    return viewRange.endIdx >= safeData.length - 1;
+  }, [viewRange.endIdx, safeData.length]);
 
   // Chart layout constants
   const CHART_WIDTH = 60;
@@ -673,45 +640,42 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   }, [visibleData]);
 
   // ============================================================================
-  // PAN BY MILLISECONDS (timestamp-based navigation)
+  // PAN BY CANDLES (index-based navigation)
   // ============================================================================
-  // Positive ms = pan right (toward newer data)
-  // Negative ms = pan left (toward older data)
+  // Positive count = pan right (toward newer data)
+  // Negative count = pan left (toward older data)
   // Returns true if pan was successful, false if hit boundary
-  const panByMs = useCallback((ms: number): boolean => {
+  const panByCandles = useCallback((count: number): boolean => {
     if (safeData.length === 0) return false;
 
-    const oldestTs = safeData[0].timestamp;
-    const newestTs = safeData[safeData.length - 1].timestamp;
-    const viewDuration = viewRangeRef.current.to - viewRangeRef.current.from;
-
-    let newFrom = viewRangeRef.current.from + ms;
-    let newTo = viewRangeRef.current.to + ms;
+    const visibleCount = viewRangeRef.current.endIdx - viewRangeRef.current.startIdx;
+    let newStart = viewRangeRef.current.startIdx + count;
+    let newEnd = viewRangeRef.current.endIdx + count;
 
     let hitBoundary = false;
 
     // Clamp to data range
-    if (newFrom < oldestTs) {
-      newFrom = oldestTs;
-      newTo = oldestTs + viewDuration;
-      hitBoundary = ms < 0;
+    if (newStart < 0) {
+      newStart = 0;
+      newEnd = visibleCount;
+      hitBoundary = count < 0;
     }
-    if (newTo > newestTs) {
-      newTo = newestTs;
-      newFrom = Math.max(oldestTs, newestTs - viewDuration);
-      hitBoundary = ms > 0;
+    if (newEnd >= safeData.length) {
+      newEnd = safeData.length - 1;
+      newStart = Math.max(0, newEnd - visibleCount);
+      hitBoundary = count > 0;
     }
 
     // Only update if position actually changed
-    if (Math.abs(newFrom - viewRangeRef.current.from) < 1000) {
+    if (newStart === viewRangeRef.current.startIdx) {
       return !hitBoundary;
     }
 
-    viewRangeRef.current = { from: newFrom, to: newTo };
-    setViewRange({ from: newFrom, to: newTo });
+    viewRangeRef.current = { startIdx: newStart, endIdx: newEnd };
+    setViewRange({ startIdx: newStart, endIdx: newEnd });
 
     return !hitBoundary;
-  }, [safeData]);
+  }, [safeData.length]);
 
   // Scroll wheel to pan time axis left/right
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -728,11 +692,10 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
 
     if (safeData.length === 0) return;
 
-    // Pan by ~20 candles worth of time per scroll
-    const panAmount = dataStats.avgInterval * 20;
+    // Pan by ~20 candles per scroll
     const direction = e.deltaY > 0 ? 1 : -1;
-    panByMs(direction * panAmount);
-  }, [safeData.length, dataStats.avgInterval, panByMs]);
+    panByCandles(direction * 20);
+  }, [safeData.length, panByCandles]);
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -754,16 +717,14 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   const handleDoubleClick = useCallback(() => {
     if (safeData.length === 0) return;
 
-    const lastTs = safeData[safeData.length - 1].timestamp;
-    const firstTs = safeData[0].timestamp;
-    const targetDuration = Math.min(TARGET_VISIBLE_CANDLES * dataStats.avgInterval, lastTs - firstTs);
-    const newFrom = lastTs - targetDuration;
+    const startIdx = Math.max(0, safeData.length - TARGET_VISIBLE_CANDLES);
+    const endIdx = safeData.length - 1;
 
-    viewRangeRef.current = { from: newFrom, to: lastTs };
-    setViewRange({ from: newFrom, to: lastTs });
+    viewRangeRef.current = { startIdx, endIdx };
+    setViewRange({ startIdx, endIdx });
     setYScale(1.0);
     yScaleRef.current = 1.0;
-  }, [safeData, dataStats.avgInterval]);
+  }, [safeData.length]);
 
   // Track shift key state globally for panning and disabling OrbitControls
   useEffect(() => {
@@ -790,7 +751,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     };
   }, []);
 
-  // Shift+Right-click drag to pan X-axis (timestamp-based)
+  // Shift+Right-click drag to pan X-axis (index-based)
   useEffect(() => {
     if (!isMounted) return;
 
@@ -827,28 +788,27 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       const rect = container.getBoundingClientRect();
       const deltaX = (e.clientX - panStartXRef.current) / rect.width;
 
-      const oldestTs = safeData[0].timestamp;
-      const newestTs = safeData[safeData.length - 1].timestamp;
-      const viewDuration = panStartViewRef.current.to - panStartViewRef.current.from;
+      const visibleCount = panStartViewRef.current.endIdx - panStartViewRef.current.startIdx;
 
-      // Drag right = move forward in time (negative deltaX in timestamp)
-      const panAmount = -deltaX * viewDuration * 2; // 2x multiplier for responsiveness
+      // Drag right = move toward newer data (positive indices)
+      // Use total data length for sensitivity scaling
+      const panAmount = Math.round(-deltaX * safeData.length * 0.5);
 
-      let newFrom = panStartViewRef.current.from + panAmount;
-      let newTo = panStartViewRef.current.to + panAmount;
+      let newStart = panStartViewRef.current.startIdx + panAmount;
+      let newEnd = panStartViewRef.current.endIdx + panAmount;
 
       // Clamp to data range
-      if (newFrom < oldestTs) {
-        newFrom = oldestTs;
-        newTo = oldestTs + viewDuration;
+      if (newStart < 0) {
+        newStart = 0;
+        newEnd = visibleCount;
       }
-      if (newTo > newestTs) {
-        newTo = newestTs;
-        newFrom = Math.max(oldestTs, newestTs - viewDuration);
+      if (newEnd >= safeData.length) {
+        newEnd = safeData.length - 1;
+        newStart = Math.max(0, newEnd - visibleCount);
       }
 
-      viewRangeRef.current = { from: newFrom, to: newTo };
-      setViewRange({ from: newFrom, to: newTo });
+      viewRangeRef.current = { startIdx: newStart, endIdx: newEnd };
+      setViewRange({ startIdx: newStart, endIdx: newEnd });
     };
 
     const handleMouseUp = (e: MouseEvent) => {
@@ -1200,13 +1160,12 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
         {!renderToolbar && showDrawingTools && (
           <div className="mx-4 mb-2 flex items-center justify-center">
             <SpeedBallControl
-              onPan={panByMs}
+              onPan={panByCandles}
               isDark={isDark}
               dataLength={safeData.length}
               visibleCount={visibleData.length}
               atStart={atStart}
               atEnd={atEnd}
-              avgCandleInterval={dataStats.avgInterval}
             />
           </div>
         )}
