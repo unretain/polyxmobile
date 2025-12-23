@@ -374,7 +374,7 @@ export default function TokenPage() {
   const [topHolders, setTopHolders] = useState<TopHolder[]>([]);
   const [holdersLoading, setHoldersLoading] = useState(false);
   const [chartType, setChartType] = useState<ChartType>("candle");
-  const [chartPeriod, setChartPeriod] = useState("1s"); // Will be set by useEffect based on source
+  const [chartPeriod, setChartPeriod] = useState<string | null>(null); // Loaded from localStorage
   const [supplyData, setSupplyData] = useState<{
     totalSupply: number | null;
     maxSupply: number | null;
@@ -391,8 +391,25 @@ export default function TokenPage() {
     setHasMounted(true);
   }, []);
 
-  // Set chart defaults based on source (Pulse = 1s real-time, Dashboard = 24h)
+  // Load chart period from localStorage, with source-specific defaults
   useEffect(() => {
+    const storageKey = fromPulse ? "polyx-chart-period-pulse" : "polyx-chart-period-dashboard";
+    const saved = localStorage.getItem(storageKey);
+
+    if (saved) {
+      // Validate the saved period is valid for current chart type
+      const validPeriods = fromPulse
+        ? ["1s", "1m", "5m", "15m", "1h", "4h", "1d", "1w"] // Pulse candle periods
+        : ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"]; // Dashboard candle periods
+
+      if (validPeriods.includes(saved)) {
+        setChartPeriod(saved);
+        setChartType("candle");
+        return;
+      }
+    }
+
+    // Default: Pulse = 1s real-time, Dashboard = 24h
     if (fromPulse) {
       setChartPeriod("1s");
       setChartType("candle");
@@ -400,6 +417,13 @@ export default function TokenPage() {
       setChartPeriod("24h");
     }
   }, [fromPulse]);
+
+  // Save chart period to localStorage when it changes
+  useEffect(() => {
+    if (!chartPeriod) return; // Don't save initial null
+    const storageKey = fromPulse ? "polyx-chart-period-pulse" : "polyx-chart-period-dashboard";
+    localStorage.setItem(storageKey, chartPeriod);
+  }, [chartPeriod, fromPulse]);
 
   const { tokens, fetchTokens } = useTokenStore();
   const { getTokenByAddress, fetchTokenOHLCV } = usePulseStore();
@@ -523,7 +547,7 @@ export default function TokenPage() {
   // CRITICAL: Dashboard tokens use Birdeye API, Pulse tokens use Moralis API
   // IMPORTANT: Never overwrite existing data with empty array (prevents chart crashes)
   useEffect(() => {
-    if (!address) return;
+    if (!address || !chartPeriod) return; // Wait for period to load from localStorage
 
     const config = getChartConfig(chartType, chartPeriod, fromPulse);
     let isInitialFetch = true;
@@ -863,7 +887,7 @@ export default function TokenPage() {
 
             {/* Period/Timeframe Controls */}
             <ChartControls
-              period={chartPeriod}
+              period={chartPeriod || "1s"}
               chartType={chartType}
               onPeriodChange={setChartPeriod}
               showPulseOption={fromPulse}
@@ -889,7 +913,7 @@ export default function TokenPage() {
                 showMarketCap={fromPulse}
                 marketCap={token?.marketCap}
                 price={token?.price}
-                timeframe={chartPeriod}
+                timeframe={chartPeriod || "1s"}
               />
             )}
           </div>
