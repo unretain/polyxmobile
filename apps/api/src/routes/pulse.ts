@@ -649,34 +649,8 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
       }
     }
 
-    // Last resort: If no candles at all, create ONE candle at current price
-    // Don't generate fake history - that's misleading
-    if (ohlcv.length === 0) {
-      try {
-        const dbToken = await prisma.pulseToken.findUnique({
-          where: { address },
-          select: { price: true },
-        });
-
-        const price = dbToken?.price || 0;
-        if (price > 0) {
-          const nowMs = Date.now();
-          const candleTime = Math.floor(nowMs / intervalMs) * intervalMs;
-          ohlcv = [{
-            timestamp: candleTime,
-            open: price,
-            high: price,
-            low: price,
-            close: price,
-            volume: 0,
-          }];
-          source = "database-price";
-          console.log(`📊 Generated single candle from DB price: $${price}`);
-        }
-      } catch (priceError) {
-        console.warn(`Failed to get price for ${address}`);
-      }
-    }
+    // No fake candles - if there's no data, return empty array
+    // The chart will show a loading/empty state
 
     const response = {
       address,
