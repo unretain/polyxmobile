@@ -295,15 +295,42 @@ class SwapSyncService {
     const sortedCandles = Array.from(candleMap.values())
       .sort((a, b) => a.timestamp - b.timestamp);
 
+    // Filter out extreme outlier candles (initial bonding curve prices)
+    // If a candle's price is more than 100x different from the median, skip it
+    if (sortedCandles.length > 2) {
+      const closes = sortedCandles.map(c => c.close).sort((a, b) => a - b);
+      const medianClose = closes[Math.floor(closes.length / 2)];
+
+      // Remove candles that are extreme outliers (>100x from median)
+      const filteredCandles = sortedCandles.filter(candle => {
+        const ratio = candle.close / medianClose;
+        // Keep if within 100x of median (either direction)
+        return ratio > 0.01 && ratio < 100;
+      });
+
+      // Only use filtered if we still have enough candles
+      if (filteredCandles.length >= sortedCandles.length * 0.5) {
+        sortedCandles.length = 0;
+        sortedCandles.push(...filteredCandles);
+      }
+    }
+
     // Connect candles: each candle's open = previous candle's close
     // This creates a continuous visual like TradingView
+    // BUT: Don't connect if there's a huge price gap (>10x) - indicates missing data
     for (let i = 1; i < sortedCandles.length; i++) {
       const prevClose = sortedCandles[i - 1].close;
       const candle = sortedCandles[i];
-      candle.open = prevClose;
-      // Recalculate high/low to include the new open
-      candle.high = Math.max(candle.high, prevClose);
-      candle.low = Math.min(candle.low, prevClose);
+
+      // Check if price gap is reasonable (within 10x)
+      const priceRatio = candle.open / prevClose;
+      if (priceRatio > 0.1 && priceRatio < 10) {
+        // Reasonable gap - connect candles
+        candle.open = prevClose;
+        candle.high = Math.max(candle.high, prevClose);
+        candle.low = Math.min(candle.low, prevClose);
+      }
+      // Otherwise keep candle's original open (don't create artificial spike)
     }
 
     return sortedCandles.slice(-maxCandles);
