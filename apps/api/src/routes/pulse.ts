@@ -128,9 +128,10 @@ pulseRoutes.get("/new-pairs", async (req, res) => {
 pulseRoutes.get("/graduating", async (req, res) => {
   try {
     // Get from DB (enriched with Moralis data)
+    // Sort by market cap descending - highest MC (closest to graduating) at top
     const dbTokens = await prisma.pulseToken.findMany({
       where: { category: PulseCategory.GRADUATING },
-      orderBy: { bondingProgress: "asc" }, // Lowest progress first
+      orderBy: { marketCap: "desc" }, // Highest market cap first (closest to $69k)
     });
 
     // Get real-time from PumpPortal
@@ -188,8 +189,8 @@ pulseRoutes.get("/graduating", async (req, res) => {
       });
     }
 
-    // Sort by bonding progress ascending
-    mergedTokens.sort((a, b) => (a.bondingProgress || 0) - (b.bondingProgress || 0));
+    // Sort by market cap descending - highest MC (closest to $69k graduation) at top
+    mergedTokens.sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0));
 
     const response = {
       data: mergedTokens,
