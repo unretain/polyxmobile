@@ -73,13 +73,17 @@ function TimelineSlider({ onSeek, isDark, dataLength, visibleCount, startIdx }: 
   const [isDragging, setIsDragging] = useState(false);
 
   // Calculate the maximum start index (rightmost scroll position)
+  // Handle edge case where visibleCount > dataLength (all data fits in view)
   const maxStartIdx = Math.max(0, dataLength - visibleCount);
+
+  // Clamp startIdx to valid range (handles stale values during timeframe switches)
+  const safeStartIdx = Math.max(0, Math.min(startIdx, maxStartIdx));
 
   // Thumb position as percentage (0% = oldest data, 100% = newest data)
   const thumbPercent = useMemo(() => {
     if (maxStartIdx <= 0) return 100; // All data fits, show at end
-    return Math.min(100, Math.max(0, (startIdx / maxStartIdx) * 100));
-  }, [startIdx, maxStartIdx]);
+    return Math.min(100, Math.max(0, (safeStartIdx / maxStartIdx) * 100));
+  }, [safeStartIdx, maxStartIdx]);
 
   // Handle click/drag on track
   const seekToPosition = useCallback((clientX: number) => {
@@ -117,12 +121,12 @@ function TimelineSlider({ onSeek, isDark, dataLength, visibleCount, startIdx }: 
     };
   }, [isDragging, seekToPosition]);
 
-  // Show position info
+  // Show position info (use safeStartIdx for consistent display)
   const positionText = useMemo(() => {
     if (dataLength === 0) return '';
-    const endIdx = Math.min(startIdx + visibleCount - 1, dataLength - 1);
-    return `${startIdx + 1}-${endIdx + 1}`;
-  }, [startIdx, visibleCount, dataLength]);
+    const endIdx = Math.min(safeStartIdx + visibleCount - 1, dataLength - 1);
+    return `${safeStartIdx + 1}-${endIdx + 1}`;
+  }, [safeStartIdx, visibleCount, dataLength]);
 
   return (
     <div className="flex items-center gap-3">
@@ -608,19 +612,17 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     const q3 = allPrices[q3Index];
     const iqr = q3 - q1;
 
-    // Define bounds: Q1 - 2*IQR to Q3 + 2*IQR (wider than typical 1.5*IQR for trading charts)
-    // This keeps most price action but filters extreme outliers
-    const lowerBound = q1 - 2 * iqr;
-    const upperBound = q3 + 2 * iqr;
+    // Define bounds: Q1 - 3*IQR to Q3 + 3*IQR (wider than typical to show more price action)
+    // For crypto with high volatility, we want to see big moves, not filter them
+    const lowerBound = q1 - 3 * iqr;
+    const upperBound = q3 + 3 * iqr;
 
     // Filter prices within bounds (or use percentiles if IQR is 0)
     let filteredPrices = allPrices.filter(p => p >= lowerBound && p <= upperBound);
 
-    // If filtering removed too much data, fall back to 2nd-98th percentile
-    if (filteredPrices.length < allPrices.length * 0.5) {
-      const p2Index = Math.floor(allPrices.length * 0.02);
-      const p98Index = Math.floor(allPrices.length * 0.98);
-      filteredPrices = allPrices.slice(p2Index, p98Index + 1);
+    // If filtering removed too much data, use ALL prices (crypto is volatile!)
+    if (filteredPrices.length < allPrices.length * 0.8) {
+      filteredPrices = allPrices;
     }
 
     // If still empty, use all prices
@@ -676,12 +678,12 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   }, []);
 
   // Normalize price to 0-PRICE_HEIGHT range
+  // NOTE: No clamping - prices outside bounds are allowed to extend beyond grid
+  // This prevents "flattening" when extreme prices occur
   const normalizePrice = (price: number) => {
     if (!isFinite(price)) return PRICE_HEIGHT / 2;
     if (bounds.priceRange === 0) return PRICE_HEIGHT / 2;
-    const normalized = ((price - bounds.minPrice) / bounds.priceRange) * PRICE_HEIGHT;
-    // Clamp to valid range (Y scaling is done via group transform)
-    return Math.max(0, Math.min(PRICE_HEIGHT, normalized));
+    return ((price - bounds.minPrice) / bounds.priceRange) * PRICE_HEIGHT;
   };
 
   // Normalize volume to 0-VOLUME_HEIGHT range
