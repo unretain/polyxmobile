@@ -24,6 +24,7 @@ import { ChartControls } from "@/components/charts/ChartControls";
 import { type ChartType, LINE_PERIODS, CANDLE_PERIODS, PULSE_PERIOD } from "@/stores/chartStore";
 import { BarChart3, LineChart } from "lucide-react";
 import { SwapWidget } from "@/components/trading";
+import { io, Socket } from "socket.io-client";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const PUMP_FUN_SUPPLY = 1_000_000_000;
@@ -386,10 +387,94 @@ export default function TokenPage() {
   const ohlcvIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const tradesIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const tokenDataIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
     setHasMounted(true);
   }, []);
+
+  // LIVE: WebSocket subscription for real-time trades and OHLCV (Pulse tokens only)
+  useEffect(() => {
+    if (!address || !fromPulse) return;
+
+    // Connect to WebSocket
+    const socket = io(API_URL, {
+      transports: ["websocket"],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
+    });
+
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log(`🔌 Connected to WebSocket for token ${address.slice(0, 8)}...`);
+      // Subscribe to this specific token's updates
+      socket.emit("subscribe:token", { address });
+    });
+
+    // LIVE: Handle real-time trade events
+    socket.on("trade", (data: { mint: string; type: string; tokenAmount: number; solAmount: number; marketCapSol: number; trader: string; signature: string; timestamp: number }) => {
+      if (data.mint !== address) return;
+
+      // Add new trade to the top of the list
+      const solPrice = 200; // TODO: Get from price service
+      const priceUsd = data.tokenAmount > 0 ? (data.solAmount * solPrice) / data.tokenAmount : 0;
+      const totalValueUsd = data.solAmount * solPrice;
+
+      const newTrade: Trade = {
+        txHash: data.signature,
+        timestamp: data.timestamp,
+        type: data.type as "buy" | "sell",
+        wallet: data.trader,
+        tokenAmount: data.tokenAmount.toString(),
+        tokenAmountUsd: totalValueUsd,
+        otherAmount: data.solAmount.toString(),
+        otherSymbol: "SOL",
+        otherAmountUsd: totalValueUsd,
+        priceUsd: priceUsd,
+        totalValueUsd: totalValueUsd,
+      };
+
+      setTrades((prev) => [newTrade, ...prev].slice(0, 50));
+
+      // Update token market cap if we have pulseToken
+      if (pulseToken) {
+        const marketCapUsd = data.marketCapSol * solPrice;
+        setPulseToken({ ...pulseToken, marketCap: marketCapUsd });
+      }
+    });
+
+    // LIVE: Handle real-time OHLCV candle updates (1-second candles)
+    socket.on("ohlcv:update", (data: { mint: string; candle: { timestamp: number; open: number; high: number; low: number; close: number; volume: number } }) => {
+      if (data.mint !== address) return;
+      if (chartPeriod !== "1s") return; // Only apply to 1s timeframe
+
+      setOhlcv((prev) => {
+        const lastCandle = prev[prev.length - 1];
+
+        if (lastCandle && lastCandle.timestamp === data.candle.timestamp) {
+          // Update existing candle
+          const updated = [...prev];
+          updated[updated.length - 1] = data.candle;
+          return updated;
+        } else {
+          // Add new candle
+          return [...prev, data.candle];
+        }
+      });
+    });
+
+    socket.on("disconnect", () => {
+      console.log(`🔌 Disconnected from WebSocket for token ${address.slice(0, 8)}...`);
+    });
+
+    return () => {
+      socket.emit("unsubscribe:token", { address });
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [address, fromPulse, chartPeriod, pulseToken]);
 
   // Load chart period from localStorage, with source-specific defaults
   useEffect(() => {
