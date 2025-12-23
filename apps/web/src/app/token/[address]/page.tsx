@@ -584,6 +584,8 @@ export default function TokenPage() {
       }
     };
 
+    // Clear existing data when switching timeframes so loading spinner shows
+    setOhlcv([]);
     setChartLoading(true);
     fetchOhlcv();
 
