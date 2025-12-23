@@ -221,14 +221,32 @@ class SwapSyncService {
     }
 
     // Calculate price from amounts if not provided
-    if (priceUsd === 0 && tokenAmount > 0) {
+    // This is critical for bonding curve swaps where usdPrice might be 0
+    if (priceUsd === 0 && tokenAmount > 0 && solAmount > 0) {
+      // Try to get SOL price from swap data
       const solPrice = boughtIsToken ? swap.sold?.usdPrice : swap.bought?.usdPrice;
-      if (solPrice && solAmount > 0) {
+      if (solPrice && solPrice > 0) {
         priceUsd = (solAmount * solPrice) / tokenAmount;
+      } else {
+        // Fallback: Use totalValueUsd if available
+        if (swap.totalValueUsd && swap.totalValueUsd > 0) {
+          priceUsd = swap.totalValueUsd / tokenAmount;
+        } else {
+          // Last resort: estimate SOL at ~$200 (rough average)
+          // This ensures bonding curve trades are captured even without USD data
+          priceUsd = (solAmount * 200) / tokenAmount;
+        }
       }
     }
 
-    if (tokenAmount === 0 || priceUsd === 0) {
+    // Skip if no token amount (invalid swap)
+    if (tokenAmount === 0) {
+      return null;
+    }
+
+    // Allow very small prices (bonding curve starts near 0)
+    // Only skip if price is exactly 0 AND we couldn't calculate it
+    if (priceUsd === 0) {
       return null;
     }
 
