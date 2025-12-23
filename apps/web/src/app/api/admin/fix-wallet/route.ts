@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { generateWalletForUser } from "@/lib/wallet";
+import { generateWalletForUser, restoreWalletFromSecret, encryptPrivateKey } from "@/lib/wallet";
 
 // Get wallet encryption secret
 const WALLET_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "dev-only-secret";
@@ -116,6 +116,79 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    if (action === "restore") {
+      // Restore wallet from private key
+      const { privateKey } = body;
+
+      if (!privateKey) {
+        return NextResponse.json({
+          error: "privateKey is required for restore action",
+        }, { status: 400 });
+      }
+
+      try {
+        // Validate and get public key from private key
+        const wallet = restoreWalletFromSecret(privateKey);
+        const encryptedPrivateKey = encryptPrivateKey(privateKey, WALLET_SECRET);
+
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            walletAddress: wallet.publicKey,
+            walletEncrypted: encryptedPrivateKey,
+          },
+        });
+
+        return NextResponse.json({
+          success: true,
+          message: "Wallet restored from private key",
+          walletAddress: wallet.publicKey,
+        });
+      } catch (err) {
+        return NextResponse.json({
+          error: "Invalid private key",
+          details: err instanceof Error ? err.message : "Unknown error",
+        }, { status: 400 });
+      }
+    }
+
+    if (action === "fix-all") {
+      // Generate wallets for ALL users who don't have one
+      const usersWithoutWallets = await prisma.user.findMany({
+        where: {
+          OR: [
+            { walletAddress: null },
+            { walletEncrypted: null },
+          ],
+        },
+        select: { id: true, email: true },
+      });
+
+      const results: { email: string; wallet: string }[] = [];
+
+      for (const u of usersWithoutWallets) {
+        try {
+          const { publicKey, encryptedPrivateKey } = generateWalletForUser(WALLET_SECRET);
+          await prisma.user.update({
+            where: { id: u.id },
+            data: {
+              walletAddress: publicKey,
+              walletEncrypted: encryptedPrivateKey,
+            },
+          });
+          results.push({ email: u.email, wallet: publicKey });
+        } catch (err) {
+          console.error(`Failed to generate wallet for ${u.email}:`, err);
+        }
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Generated wallets for ${results.length} users`,
+        results,
+      });
+    }
+
     // Default: just return status
     return NextResponse.json({
       message: "Wallet status check",
@@ -123,6 +196,8 @@ export async function POST(req: NextRequest) {
       actions: {
         regenerate: "POST with { action: 'regenerate' } - only works if no wallet exists",
         forceRegenerate: "POST with { action: 'force-regenerate' } - WARNING: creates new wallet, loses old one!",
+        restore: "POST with { action: 'restore', privateKey: '...' } - restore from private key",
+        fixAll: "POST with { action: 'fix-all' } - generate wallets for all users without one",
       },
     });
 
