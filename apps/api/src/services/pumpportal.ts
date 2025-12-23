@@ -6,6 +6,7 @@ import WebSocket from "ws";
 import { EventEmitter } from "events";
 import { solPriceService } from "./solPrice";
 import { moralisService } from "./moralis";
+import { prisma } from "../lib/prisma";
 
 const PUMPPORTAL_WS_URL = "wss://pumpportal.fun/api/data";
 
@@ -589,6 +590,7 @@ class PumpPortalService extends EventEmitter {
   }
 
   // Update 1-second OHLCV from trade event
+  // IMPORTANT: Also persists to database for pre-graduation OHLCV retention
   private updateTradeOHLCV(trade: PumpPortalTrade) {
     // Get real SOL price from Jupiter API
     const solPrice = solPriceService.getPriceSync();
@@ -606,6 +608,7 @@ class PumpPortalService extends EventEmitter {
 
     // Volume in USD for this trade
     const volumeUsd = (trade.solAmount || 0) * solPrice;
+    const tokenAmount = trade.tokenAmount || 0;
 
     // Keep timestamp in milliseconds for consistency
     const timestamp = trade.timestamp || Date.now();
@@ -619,6 +622,13 @@ class PumpPortalService extends EventEmitter {
     if (!priceUsd || priceUsd <= 0) {
       return;
     }
+
+    // PERSIST TO DATABASE: Store trade for pre-graduation OHLCV
+    // This ensures bonding curve trades are available after graduation
+    this.persistTradeToDb(trade, priceUsd, volumeUsd, tokenAmount, timestamp).catch((err) => {
+      // Log error but don't fail - in-memory OHLCV still works
+      console.error(`[PumpPortal] Failed to persist trade to DB:`, err);
+    });
 
     if (lastCandle && lastCandle.timestamp === candleTime) {
       // Update existing candle for this second
@@ -646,6 +656,38 @@ class PumpPortalService extends EventEmitter {
 
     // Emit real-time OHLCV update
     this.emit("ohlcv:update", { mint: trade.mint, candle: candles[candles.length - 1] });
+  }
+
+  // Persist PumpPortal trade to TokenSwap table
+  // This is CRITICAL for retaining pre-graduation OHLCV data
+  private async persistTradeToDb(
+    trade: PumpPortalTrade,
+    priceUsd: number,
+    volumeUsd: number,
+    tokenAmount: number,
+    timestamp: number
+  ): Promise<void> {
+    try {
+      await prisma.tokenSwap.create({
+        data: {
+          tokenAddress: trade.mint,
+          txHash: trade.signature,
+          timestamp: new Date(timestamp),
+          type: trade.txType,
+          walletAddress: trade.traderPublicKey,
+          tokenAmount: tokenAmount,
+          solAmount: trade.solAmount || 0,
+          priceUsd: priceUsd,
+          totalValueUsd: volumeUsd,
+        },
+      });
+    } catch (err: any) {
+      // Ignore duplicate key errors - trade already stored
+      if (err.code === "P2002") {
+        return;
+      }
+      throw err;
+    }
   }
 
   // Get 1-second OHLCV data for a token (with gaps filled)

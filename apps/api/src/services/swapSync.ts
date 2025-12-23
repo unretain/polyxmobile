@@ -356,24 +356,40 @@ class SwapSyncService {
 
   // Get OHLCV - checks DB first, syncs if needed, then returns from DB
   // LIVE MODE: Always fetch latest swaps on every request for real-time data
+  // IMPORTANT: Pre-graduation trades from PumpPortal are already in DB
   // intervalMs: 1000 for 1s, 60000 for 1min, etc.
   async getOHLCV(
     tokenAddress: string,
     intervalMs: number = 60000
   ): Promise<OHLCV[]> {
-    // Check if synced
+    // Check if synced from Moralis
     const status = await this.getSyncStatus(tokenAddress);
 
+    // Check if we have ANY swaps in DB (could be from PumpPortal pre-graduation)
+    const existingSwapCount = await prisma.tokenSwap.count({
+      where: { tokenAddress },
+    });
+
     if (!status?.swapsSynced) {
-      // Not synced yet - sync now (await for it)
-      console.log(`[SwapSync] Token ${tokenAddress.slice(0, 8)}... not synced, syncing now...`);
-      await this.syncHistoricalSwaps(tokenAddress);
+      // Not synced from Moralis yet - try to sync now
+      // This will add Moralis swaps but skipDuplicates preserves PumpPortal trades
+      console.log(`[SwapSync] Token ${tokenAddress.slice(0, 8)}... not Moralis-synced, attempting sync...`);
+
+      // If we have PumpPortal trades, don't block waiting for Moralis
+      if (existingSwapCount > 0) {
+        console.log(`[SwapSync] Token ${tokenAddress.slice(0, 8)}... has ${existingSwapCount} existing swaps (likely PumpPortal)`);
+        // Sync from Moralis in background - will merge with existing PumpPortal trades
+        this.syncHistoricalSwaps(tokenAddress).catch(() => {});
+      } else {
+        // No existing swaps - wait for Moralis sync
+        await this.syncHistoricalSwaps(tokenAddress);
+      }
     } else {
-      // LIVE: Always sync new swaps on every request (don't await to keep response fast)
+      // Already synced - just fetch any new swaps in background
       this.syncNewSwaps(tokenAddress).catch(() => {});
     }
 
-    // Return from DB
+    // Return from DB (includes both PumpPortal and Moralis trades)
     return this.getOHLCVFromDB(tokenAddress, intervalMs);
   }
 
