@@ -205,19 +205,31 @@ async function syncGraduatingPairs(): Promise<number> {
 }
 
 // Sync graduated pairs (migrated to Raydium)
-// Fetches fresh data from Moralis for each token to get accurate MC/Volume
+// NO INDIVIDUAL TOKEN ENRICHMENT - just use list endpoint data to avoid rate limits
 async function syncGraduatedPairs(): Promise<number> {
   let tokens: PulseTokenData[] = [];
 
   try {
-    const moralisTokens = await moralisService.getGraduatedPulsePairs(50);
-    tokens = moralisTokens.map(mapTokenData);
-    console.log(`[PulseSync] Got ${tokens.length} graduated tokens from Moralis`);
+    // Use getGraduatedTokens directly - NO enrichment to avoid 50+ API calls
+    const moralisTokens = await moralisService.getGraduatedTokens(50);
+    tokens = moralisTokens.map((t) => ({
+      address: t.tokenAddress,
+      symbol: t.symbol || "???",
+      name: t.name || "Unknown",
+      logoUri: t.logo,
+      price: parseFloat(t.priceUsd || "0"),
+      priceChange24h: 0, // Not available from list endpoint
+      volume24h: 0, // Not available from list endpoint - will be updated from PumpPortal
+      marketCap: parseFloat(t.fullyDilutedValuation || "0"),
+      liquidity: parseFloat(t.liquidity || "0"),
+      graduatedAt: t.graduatedAt ? new Date(t.graduatedAt).getTime() : Date.now(),
+    }));
+    console.log(`[PulseSync] Got ${tokens.length} graduated tokens from Moralis (no enrichment)`);
   } catch (err) {
     console.error("[PulseSync] Moralis graduated error:", err);
   }
 
-  // Supplement with PumpPortal real-time migrated tokens (only those with data)
+  // Supplement with PumpPortal real-time migrated tokens (these have live MC/volume)
   try {
     const realtimeTokens = pumpPortalService.getMigratedTokens();
     const existingAddresses = new Set(tokens.map(t => t.address));
@@ -227,46 +239,23 @@ async function syncGraduatedPairs(): Promise<number> {
 
     if (newMigratedTokens.length > 0) {
       tokens = [...newMigratedTokens, ...tokens];
-      console.log(`[PulseSync] Added ${newMigratedTokens.length} migrated tokens from PumpPortal`);
+      console.log(`[PulseSync] Added ${newMigratedTokens.length} migrated tokens from PumpPortal (with live data)`);
+    }
+
+    // Also update MC/volume for existing tokens if PumpPortal has better data
+    for (const rt of realtimeTokens as any[]) {
+      const idx = tokens.findIndex(t => t.address === rt.address);
+      if (idx !== -1 && rt.marketCap > 0) {
+        tokens[idx].marketCap = rt.marketCap || tokens[idx].marketCap;
+        tokens[idx].volume24h = rt.volume24h || tokens[idx].volume24h;
+        tokens[idx].price = rt.price || tokens[idx].price;
+      }
     }
   } catch (err) {
     console.error("[PulseSync] PumpPortal migrated error:", err);
   }
 
-  // For tokens with 0 market cap or volume, fetch fresh data from Moralis
-  const tokensNeedingEnrichment = tokens.filter(t => t.marketCap === 0 || t.volume24h === 0);
-  if (tokensNeedingEnrichment.length > 0) {
-    console.log(`[PulseSync] Enriching ${tokensNeedingEnrichment.length} graduated tokens with missing data...`);
-
-    // Fetch in batches to avoid rate limiting
-    const batchSize = 5;
-    for (let i = 0; i < tokensNeedingEnrichment.length; i += batchSize) {
-      const batch = tokensNeedingEnrichment.slice(i, i + batchSize);
-      await Promise.all(batch.map(async (token) => {
-        try {
-          const freshData = await moralisService.getTokenData(token.address);
-          if (freshData) {
-            // Find and update the token in our array
-            const idx = tokens.findIndex(t => t.address === token.address);
-            if (idx !== -1) {
-              tokens[idx] = {
-                ...tokens[idx],
-                price: freshData.price || tokens[idx].price,
-                marketCap: freshData.marketCap || tokens[idx].marketCap,
-                volume24h: freshData.volume24h || tokens[idx].volume24h,
-                liquidity: freshData.liquidity || tokens[idx].liquidity,
-                priceChange24h: freshData.priceChange24h || tokens[idx].priceChange24h,
-                logoUri: freshData.logoURI || tokens[idx].logoUri,
-              };
-              console.log(`[PulseSync] Enriched ${token.symbol}: MC=$${freshData.marketCap?.toLocaleString() || 0}, Vol=$${freshData.volume24h?.toLocaleString() || 0}`);
-            }
-          }
-        } catch (err) {
-          // Ignore individual fetch errors
-        }
-      }));
-    }
-  }
+  // NO MORE ENRICHMENT - removed the getTokenData calls that were causing rate limits
 
   // Upsert to database
   let upserted = 0;
