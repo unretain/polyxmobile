@@ -204,47 +204,82 @@ function parseSwapsFromTransactions(transactions: any[], walletAddress: string):
       const tokenTransfers = tx.tokenTransfers || [];
       const nativeTransfers = tx.nativeTransfers || [];
 
-      // Find tokens sent and received by the wallet
-      let sent: { mint: string; amount: number; decimals: number } | null = null;
-      let received: { mint: string; amount: number; decimals: number } | null = null;
+      // Calculate NET flow for each token (not individual transfers)
+      // This handles complex swaps with wrapped SOL, multiple hops, etc.
+      const tokenFlows = new Map<string, { in: number; out: number; decimals: number }>();
 
-      // Check token transfers
+      // Track token transfers (non-SOL)
       for (const transfer of tokenTransfers) {
-        if (transfer.fromUserAccount === walletAddress && transfer.tokenAmount > 0) {
-          if (!sent || transfer.tokenAmount > sent.amount) {
-            sent = {
-              mint: transfer.mint,
-              amount: transfer.tokenAmount,
-              decimals: transfer.decimals || 6,
-            };
-          }
+        // Skip wrapped SOL - we'll handle native SOL separately
+        if (transfer.mint === SOL_MINT) continue;
+
+        if (!tokenFlows.has(transfer.mint)) {
+          tokenFlows.set(transfer.mint, { in: 0, out: 0, decimals: transfer.decimals || 6 });
         }
-        if (transfer.toUserAccount === walletAddress && transfer.tokenAmount > 0) {
-          if (!received || transfer.tokenAmount > received.amount) {
-            received = {
-              mint: transfer.mint,
-              amount: transfer.tokenAmount,
-              decimals: transfer.decimals || 6,
-            };
-          }
+        const flow = tokenFlows.get(transfer.mint)!;
+
+        if (transfer.toUserAccount === walletAddress) {
+          flow.in += transfer.tokenAmount || 0;
+        }
+        if (transfer.fromUserAccount === walletAddress) {
+          flow.out += transfer.tokenAmount || 0;
         }
       }
 
-      // Check native SOL transfers
+      // Calculate SOL flow - track gross amounts, not just net
+      // This is important because sells often have small fees that make net negative
+      let solIn = 0;
+      let solOut = 0;
       for (const transfer of nativeTransfers) {
-        const solAmount = transfer.amount / 1e9;
-        if (transfer.fromUserAccount === walletAddress && solAmount > 0.001) {
-          // Sending SOL (buying tokens)
-          if (!sent || solAmount > sent.amount / Math.pow(10, sent.decimals)) {
-            sent = { mint: SOL_MINT, amount: transfer.amount, decimals: 9 };
-          }
+        if (transfer.toUserAccount === walletAddress) {
+          solIn += transfer.amount || 0;
         }
-        if (transfer.toUserAccount === walletAddress && solAmount > 0.001) {
-          // Receiving SOL (selling tokens)
-          if (!received || solAmount > received.amount / Math.pow(10, received.decimals)) {
-            received = { mint: SOL_MINT, amount: transfer.amount, decimals: 9 };
-          }
+        if (transfer.fromUserAccount === walletAddress) {
+          solOut += transfer.amount || 0;
         }
+      }
+
+      // For determining direction, use the LARGER amount (gross flow)
+      // Small fees/tips shouldn't flip the direction
+      const grossSolIn = solIn;
+      const grossSolOut = solOut;
+
+      // Find the non-SOL token with the largest net change
+      let mainToken: { mint: string; net: number; decimals: number } | null = null;
+      let mainTokenNet = 0;
+      for (const [mint, flow] of tokenFlows) {
+        const net = flow.in - flow.out;
+        if (Math.abs(net) > Math.abs(mainTokenNet)) {
+          mainTokenNet = net;
+          mainToken = { mint, net, decimals: flow.decimals };
+        }
+      }
+
+      // Skip if no significant token movement
+      if (!mainToken || Math.abs(mainTokenNet) < 1) continue;
+
+      // Skip if no significant SOL movement (at least 0.001 SOL either direction)
+      if (grossSolIn < 1000000 && grossSolOut < 1000000) continue;
+
+      // Determine swap direction based on token flow and gross SOL amounts
+      // Token received + SOL sent = BUY
+      // Token sent + SOL received = SELL
+      let sent: { mint: string; amount: number; decimals: number } | null = null;
+      let received: { mint: string; amount: number; decimals: number } | null = null;
+
+      if (mainTokenNet > 0 && grossSolOut > grossSolIn) {
+        // BUY: received tokens, sent more SOL than received
+        // Use gross SOL out minus SOL in (to account for refunds)
+        const solSpent = grossSolOut - grossSolIn;
+        if (solSpent > 0) {
+          sent = { mint: SOL_MINT, amount: solSpent, decimals: 9 };
+          received = { mint: mainToken.mint, amount: mainTokenNet, decimals: mainToken.decimals };
+        }
+      } else if (mainTokenNet < 0 && grossSolIn > 0) {
+        // SELL: sent tokens, received SOL
+        // Use gross SOL in as the amount received (ignore fees paid out)
+        sent = { mint: mainToken.mint, amount: Math.abs(mainTokenNet), decimals: mainToken.decimals };
+        received = { mint: SOL_MINT, amount: grossSolIn, decimals: 9 };
       }
 
       // Skip if we couldn't detect both sides
