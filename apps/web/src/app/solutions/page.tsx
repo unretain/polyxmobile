@@ -8,6 +8,7 @@ import { Header } from "@/components/layout/Header";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useThemeStore } from "@/stores/themeStore";
+import { useToast } from "@/components/ui/Toast";
 
 // Dynamic import for Chart3D to prevent SSR issues
 const Chart3D = dynamic(
@@ -139,6 +140,7 @@ function SolutionsPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { data: session, status: sessionStatus } = useSession();
+  const { showToast } = useToast();
   const [selectedToken, setSelectedToken] = useState(DEMO_TOKENS[0]);
   const [candles, setCandles] = useState<OHLCVCandle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -249,7 +251,7 @@ function SolutionsPageContent() {
       } catch (err) {
         console.error("Checkout error:", err);
         setCheckoutLoading(null);
-        alert(err instanceof Error ? err.message : "Something went wrong");
+        showToast(err instanceof Error ? err.message : "Something went wrong", "error");
       }
       return;
     }
