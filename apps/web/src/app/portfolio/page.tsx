@@ -141,7 +141,7 @@ export default function PortfolioPage() {
         ? `/api/trading/pnl?period=calendar&year=${calendarYear}&month=${calendarMonth}`
         : `/api/trading/pnl?period=${periodParam}`;
 
-      const res = await fetch(url);
+      const res = await fetch(url, { cache: 'no-store' });
       if (res.ok) {
         const data: PnLResponse = await res.json();
         setPnlData(data);
@@ -491,7 +491,8 @@ export default function PortfolioPage() {
             ) : viewMode === "chart" ? (
               /* Clean TradingView-style Line Chart */
               <div className={`h-[250px] relative rounded-lg overflow-hidden ${isDark ? 'bg-[#0a0a0a]' : 'bg-gray-100'}`}>
-                {chartData.length > 0 || (pnlData?.cumulativePnLBaseline !== undefined && pnlData.cumulativePnLBaseline !== 0) ? (
+                {/* Only show chart if there are trades in the selected period */}
+                {chartData.length > 0 ? (
                   <>
                     {/* SVG Line Chart */}
                     <svg
@@ -515,7 +516,9 @@ export default function PortfolioPage() {
                         const chartHeight = height - padding.top - padding.bottom;
 
                         // Build cumulative data points
-                        const baseline = pnlData?.cumulativePnLBaseline || 0;
+                        // All periods start at 0 - we show the PnL accumulated DURING the period
+                        // The baseline from before the period is not shown on the chart
+                        const baseline = 0;
                         let cumulative = baseline;
                         const dataPoints = [{ cumPnl: baseline, label: 'Start' }];
                         chartData.forEach(d => {
@@ -572,7 +575,8 @@ export default function PortfolioPage() {
                     {/* Hover zones for tooltips */}
                     <div className="absolute inset-0 flex">
                       {(() => {
-                        const baseline = pnlData?.cumulativePnLBaseline || 0;
+                        // All periods start at 0
+                        const baseline = 0;
                         const solPrice = balance?.sol.priceUsd || 0;
                         const allPoints: { cumPnl: number; label: string; dailyPnl?: number }[] = [];
                         let cumulative = baseline;
