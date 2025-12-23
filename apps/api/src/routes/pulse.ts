@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
-// Primary data source: Moralis (pump.fun endpoints + OHLCV)
+// Primary data source: Database (swaps synced from Moralis)
+// OHLCV is built from stored swaps - no API calls per request
 // Fallback: PumpPortal real-time WebSocket for very new tokens
 import { pumpFunService } from "../services/pumpfun";
 import { dexScreenerService } from "../services/dexscreener";
@@ -9,6 +10,7 @@ import { pumpPortalService } from "../services/pumpportal";
 import { meteoraService } from "../services/meteora";
 import { moralisService } from "../services/moralis";
 import { pulseSyncService } from "../services/pulseSync";
+import { swapSyncService } from "../services/swapSync";
 import { prisma } from "../lib/prisma";
 import { PulseCategory } from "@prisma/client";
 import { cache } from "../lib/cache";
@@ -537,166 +539,94 @@ pulseRoutes.get("/token/:address", async (req, res) => {
 });
 
 // GET /api/pulse/ohlcv/:address - Get OHLCV candlestick data
-// PRIMARY SOURCE: Moralis pairs OHLCV API (1min candles by default)
-// FALLBACK: PumpPortal real-time trade tracking, then Moralis swap history
+// PRIMARY SOURCE: Database (swaps synced from Moralis, then built into candles)
+// FALLBACK: PumpPortal real-time trade tracking for very new tokens
+// NO PER-REQUEST API CALLS - all data comes from DB
 pulseRoutes.get("/ohlcv/:address", async (req, res) => {
   try {
     const { address } = req.params;
     const timeframe = (req.query.timeframe as string) || "1min";
-    const fromDate = req.query.fromDate ? parseInt(req.query.fromDate as string, 10) : undefined;
-    const toDate = req.query.toDate ? parseInt(req.query.toDate as string, 10) : undefined;
 
-    // Calculate default date range based on timeframe if not provided
-    const now = Math.floor(Date.now() / 1000);
-    let defaultFromDate = now - 3600; // 1 hour default
-
-    // Extend date range based on timeframe for more historical data
-    if (timeframe === "1s") {
-      defaultFromDate = now - 86400; // 24 hours for per-trade (lots of trades)
-    } else if (timeframe === "1min") {
-      defaultFromDate = now - 86400 * 7; // 7 days for 1min
-    } else if (timeframe === "5min") {
-      defaultFromDate = now - 86400 * 14; // 14 days for 5min
-    } else if (timeframe === "15min" || timeframe === "30min") {
-      defaultFromDate = now - 86400 * 30; // 30 days for 15/30min
-    } else if (timeframe === "1h") {
-      defaultFromDate = now - 86400 * 60; // 60 days for 1h
-    } else if (timeframe === "4h") {
-      defaultFromDate = now - 86400 * 180; // 180 days for 4h
-    } else if (timeframe === "1d") {
-      defaultFromDate = now - 86400 * 365; // 1 year for daily
-    }
-
-    const effectiveFromDate = fromDate || defaultFromDate;
-    const effectiveToDate = toDate || now;
-
-    // Check cache first (30 seconds TTL to prevent rate limiting)
-    // Include date range in cache key for different timeframe requests
-    const cacheKey = `pulse:ohlcv:${address}:${timeframe}:${effectiveFromDate}:${effectiveToDate}`;
+    // Check cache first (5 seconds TTL - DB reads are fast)
+    const cacheKey = `pulse:ohlcv:${address}:${timeframe}`;
     const cached = await cache.get(cacheKey);
     if (cached) {
       const cachedData = JSON.parse(cached);
       console.log(`📊 [Cache HIT] ${timeframe} for ${address}: ${cachedData.data?.length || 0} candles`);
       return res.json(cachedData);
     }
-    console.log(`📊 [Cache MISS] ${timeframe} for ${address} (from: ${new Date(effectiveFromDate * 1000).toISOString()})`);
 
-    let source = "moralis";
+    let source = "database";
     let ohlcv: any[] = [];
 
     // Always subscribe to PumpPortal trades for real-time updates
     pumpPortalService.subscribeTokenTrades([address]);
 
-    // For 1s timeframe: Use per-trade candles (one candle per swap) like pump.fun
-    // This shows every individual trade as its own candle for maximum detail
-    if (timeframe === "1s") {
-      console.log(`📊 [OHLCV] Fetching per-trade candles for ${address} (maxCandles: 5000)`);
-      try {
-        // Build per-trade candles from swap history (up to 5000 trades)
-        // perTrade=true creates one candle per swap, just like pump.fun's native chart
-        const startTime = Date.now();
-        ohlcv = await moralisService.getOHLCVFromSwaps(address, 0, 5000, true);
-        const elapsed = Date.now() - startTime;
-        console.log(`📊 [OHLCV] Got ${ohlcv.length} per-trade candles in ${elapsed}ms`);
+    // Map timeframe to interval in milliseconds
+    const intervalMap: Record<string, number> = {
+      "1s": 0, // Per-trade
+      "1min": 60000,
+      "5min": 300000,
+      "15min": 900000,
+      "30min": 1800000,
+      "1h": 3600000,
+      "4h": 14400000,
+      "1d": 86400000,
+    };
+    const intervalMs = intervalMap[timeframe] || 60000;
+    const perTrade = timeframe === "1s";
 
-        if (ohlcv.length > 0) {
-          source = "moralis-swaps-pertrade";
-          // Log first and last candle timestamps for debugging
-          const firstTs = new Date(ohlcv[0].timestamp).toISOString();
-          const lastTs = new Date(ohlcv[ohlcv.length - 1].timestamp).toISOString();
-          console.log(`📊 [OHLCV] Candle range: ${firstTs} to ${lastTs}`);
-        }
-      } catch (swapError: any) {
-        console.error(`📊 [OHLCV] Moralis swap OHLCV failed for ${address}:`, swapError.message, swapError.stack);
-      }
+    console.log(`📊 [OHLCV] Getting ${timeframe} candles from DB for ${address}`);
+    const startTime = Date.now();
 
-      // If swaps didn't return enough, also check PumpPortal for real-time data
-      if (ohlcv.length < 10) {
-        const pumpPortalOhlcv = pumpPortalService.getTokenOHLCV(address);
-        console.log(`📊 [OHLCV] PumpPortal fallback: ${pumpPortalOhlcv.length} candles`);
-        if (pumpPortalOhlcv.length > ohlcv.length) {
-          ohlcv = pumpPortalOhlcv;
-          source = "pumpportal-realtime";
-        }
+    // Get OHLCV from database (syncs from Moralis if not yet synced)
+    ohlcv = await swapSyncService.getOHLCV(address, intervalMs, perTrade);
+    const elapsed = Date.now() - startTime;
+    console.log(`📊 [OHLCV] Got ${ohlcv.length} candles from DB in ${elapsed}ms`);
+
+    if (ohlcv.length > 0) {
+      const firstTs = new Date(ohlcv[0].timestamp).toISOString();
+      const lastTs = new Date(ohlcv[ohlcv.length - 1].timestamp).toISOString();
+      console.log(`📊 [OHLCV] Candle range: ${firstTs} to ${lastTs}`);
+    }
+
+    // If DB has very few candles, also check PumpPortal for real-time data
+    // (very new tokens may not have swaps synced yet)
+    if (ohlcv.length < 10) {
+      const pumpPortalOhlcv = pumpPortalService.getTokenOHLCV(address);
+      console.log(`📊 [OHLCV] PumpPortal fallback: ${pumpPortalOhlcv.length} candles`);
+      if (pumpPortalOhlcv.length > ohlcv.length) {
+        ohlcv = pumpPortalOhlcv;
+        source = "pumpportal-realtime";
       }
     }
 
-    // For non-1s timeframes: Build OHLCV from swap history (same as 1s but with interval aggregation)
-    // This ensures consistent behavior - both 1s and 1m get full trade history
-    // The Moralis OHLCV API returns limited data, so we use swaps for everything
-    if (timeframe !== "1s") {
-      console.log(`📊 [OHLCV] Building ${timeframe} candles from swaps for ${address}`);
-      try {
-        // Map timeframe to interval in milliseconds
-        const intervalMap: Record<string, number> = {
-          "1min": 60000,
-          "5min": 300000,
-          "15min": 900000,
-          "30min": 1800000,
-          "1h": 3600000,
-          "4h": 14400000,
-          "1d": 86400000,
-        };
-        const intervalMs = intervalMap[timeframe] || 60000;
-
-        // Use 5000 swaps for all timeframes to get full history
-        const startTime = Date.now();
-        const swapOhlcv = await moralisService.getOHLCVFromSwaps(address, intervalMs, 5000, false);
-        const elapsed = Date.now() - startTime;
-        console.log(`📊 [OHLCV] Built ${swapOhlcv.length} ${timeframe} candles from swaps in ${elapsed}ms`);
-
-        if (swapOhlcv.length > 0) {
-          ohlcv = swapOhlcv;
-          source = "moralis-swaps";
-          const firstTs = new Date(ohlcv[0].timestamp).toISOString();
-          const lastTs = new Date(ohlcv[ohlcv.length - 1].timestamp).toISOString();
-          console.log(`📊 [OHLCV] Candle range: ${firstTs} to ${lastTs}`);
-        }
-      } catch (swapError: any) {
-        console.error(`📊 [OHLCV] Swaps OHLCV failed for ${address}:`, swapError.message);
-      }
-
-      // Fallback to Moralis OHLCV API if swaps returned nothing
-      if (ohlcv.length === 0) {
-        console.log(`📊 [OHLCV] Swaps returned nothing, trying Moralis OHLCV API...`);
-        try {
-          const moralisOhlcv = await moralisService.getOHLCV(address, timeframe as any, {
-            fromDate: effectiveFromDate,
-            toDate: effectiveToDate,
-          });
-          if (moralisOhlcv.length > 0) {
-            ohlcv = moralisOhlcv;
-            source = "moralis";
-            console.log(`📊 [OHLCV] Moralis API returned ${ohlcv.length} ${timeframe} candles`);
-          }
-        } catch (moralisError: any) {
-          console.log(`📊 [OHLCV] Moralis OHLCV API also failed:`, moralisError.message);
-        }
-      }
-    }
-
-    // FALLBACK 3: Generate flat candles from current price (shows at least something)
+    // Last resort: Generate flat candles from current price
     if (ohlcv.length === 0) {
       try {
-        const priceData = await moralisService.getTokenPrice(address);
-        if (priceData && priceData.usdPrice > 0) {
-          const nowMs = Date.now();
-          const startTime = Math.floor(nowMs / 60000) * 60000; // Round to minute
+        // Check DB for token price first
+        const dbToken = await prisma.pulseToken.findUnique({
+          where: { address },
+          select: { price: true },
+        });
 
-          // Create 60 minutes of flat candles
+        const price = dbToken?.price || 0;
+        if (price > 0) {
+          const nowMs = Date.now();
+          const startTime = Math.floor(nowMs / 60000) * 60000;
           ohlcv = [];
           for (let i = 59; i >= 0; i--) {
             ohlcv.push({
               timestamp: startTime - (i * 60000),
-              open: priceData.usdPrice,
-              high: priceData.usdPrice,
-              low: priceData.usdPrice,
-              close: priceData.usdPrice,
+              open: price,
+              high: price,
+              low: price,
+              close: price,
               volume: 0,
             });
           }
-          source = "moralis-price";
-          console.log(`📊 Generated flat OHLCV for ${address} from price: $${priceData.usdPrice}`);
+          source = "database-price";
+          console.log(`📊 Generated flat OHLCV from DB price: $${price}`);
         }
       } catch (priceError) {
         console.warn(`Failed to get price for ${address}`);
@@ -710,22 +640,12 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
       timestamp: Date.now(),
       source,
       realtime: pumpPortalService.isConnected(),
-      range: {
-        from: effectiveFromDate,
-        to: effectiveToDate,
-      },
     };
 
-    // Final log summarizing the response
     console.log(`📊 [OHLCV] FINAL RESPONSE for ${address} ${timeframe}: ${ohlcv.length} candles from ${source}`);
 
-    // Cache based on source - shorter for real-time PumpPortal data
-    // PumpPortal real-time: 2 seconds (allow frequent polling for live updates)
-    // Moralis: 30 seconds to prevent rate limiting
-    // No data: 5 seconds (retry faster)
-    const isRealtimeSource = source.includes("pumpportal");
-    const cacheTTL = isRealtimeSource ? 2 : (ohlcv.length > 0 ? 30 : 5);
-    await cache.set(cacheKey, JSON.stringify(response), cacheTTL);
+    // Cache for 5 seconds (DB reads are fast, keep data fresh)
+    await cache.set(cacheKey, JSON.stringify(response), 5);
 
     res.json(response);
   } catch (error) {
