@@ -4,6 +4,10 @@ import { prisma } from "@/lib/prisma";
 import { getJupiterService, SOL_MINT } from "@/lib/jupiter";
 import { config } from "@/lib/config";
 import { TradeStatus } from "@prisma/client";
+import { generateWalletForUser } from "@/lib/wallet";
+
+// Get wallet encryption secret
+const WALLET_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "dev-only-secret";
 
 // GET /api/trading/balance
 export async function GET(req: NextRequest) {
@@ -21,21 +25,52 @@ export async function GET(req: NextRequest) {
     }
 
     // Get user wallet
-    const user = await prisma.user.findUnique({
+    let user = await prisma.user.findUnique({
       where: { id: session.user.id },
       select: {
         walletAddress: true,
+        email: true,
       },
     });
 
-    if (!user?.walletAddress) {
+    console.log("[balance] User lookup:", {
+      userId: session.user.id,
+      found: !!user,
+      hasWallet: !!user?.walletAddress,
+      email: user?.email?.substring(0, 5) + "...",
+    });
+
+    if (!user) {
+      console.error("[balance] User not found in database:", session.user.id);
       return NextResponse.json(
-        { error: "No wallet found" },
-        { status: 400 }
+        { error: "User not found" },
+        { status: 404 }
       );
     }
 
-    const walletAddress = user.walletAddress;
+    // Auto-generate wallet if user doesn't have one
+    let walletAddress = user.walletAddress;
+    if (!walletAddress) {
+      console.log("[balance] User has no wallet, generating one...");
+      try {
+        const { publicKey, encryptedPrivateKey } = generateWalletForUser(WALLET_SECRET);
+        await prisma.user.update({
+          where: { id: session.user.id },
+          data: {
+            walletAddress: publicKey,
+            walletEncrypted: encryptedPrivateKey,
+          },
+        });
+        walletAddress = publicKey;
+        console.log("[balance] Generated wallet:", walletAddress.substring(0, 8) + "...");
+      } catch (walletError) {
+        console.error("[balance] Failed to generate wallet:", walletError);
+        return NextResponse.json(
+          { error: "Failed to create wallet" },
+          { status: 500 }
+        );
+      }
+    }
     console.log("[balance] Fetching for wallet:", walletAddress.substring(0, 8) + "...");
 
     // Always fetch fresh data from RPC - no caching for trading balances
