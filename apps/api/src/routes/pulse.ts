@@ -346,6 +346,32 @@ pulseRoutes.get("/sync/status", async (req, res) => {
   res.json(pulseSyncService.getStatus());
 });
 
+// POST /api/pulse/sync/reset - Clear all swap data and sync statuses
+// This forces a fresh re-sync of all token swaps from Moralis
+pulseRoutes.post("/sync/reset", async (req, res) => {
+  try {
+    console.log("[Reset] Clearing all swap data...");
+
+    // Delete all token swaps
+    const deletedSwaps = await prisma.tokenSwap.deleteMany({});
+    console.log(`[Reset] Deleted ${deletedSwaps.count} swaps`);
+
+    // Delete all sync statuses
+    const deletedStatuses = await prisma.tokenSyncStatus.deleteMany({});
+    console.log(`[Reset] Deleted ${deletedStatuses.count} sync statuses`);
+
+    res.json({
+      success: true,
+      deletedSwaps: deletedSwaps.count,
+      deletedStatuses: deletedStatuses.count,
+      message: "All swap data cleared. Tokens will re-sync on next OHLCV request.",
+    });
+  } catch (error) {
+    console.error("Error resetting swap data:", error);
+    res.status(500).json({ error: "Failed to reset swap data" });
+  }
+});
+
 // GET /api/pulse/king - Get king of the hill coins
 pulseRoutes.get("/king", async (req, res) => {
   try {
