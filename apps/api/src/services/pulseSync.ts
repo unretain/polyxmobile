@@ -143,16 +143,19 @@ async function syncNewPairs(): Promise<number> {
 }
 
 // Sync graduating pairs (near bonding curve completion)
+// "Final Stretch" = tokens with high bonding progress (sorted by Moralis API)
+// No fixed market cap filter - graduation depends on bonding curve, not price
 async function syncGraduatingPairs(): Promise<number> {
   let tokens: PulseTokenData[] = [];
 
   try {
     const moralisTokens = await moralisService.getGraduatingPulsePairs(100);
-    // Filter to $10K-$69K market cap range
+    // Moralis returns tokens sorted by bondingCurveProgress descending
+    // Filter out any that are already complete (100% bonded)
     tokens = moralisTokens
       .filter((t: any) => {
-        const mc = t.marketCap || 0;
-        return mc >= 10000 && mc < 69000;
+        const progress = t.bondingProgress || 0;
+        return progress < 100 && !t.complete;
       })
       .map(mapTokenData);
     console.log(`[PulseSync] Got ${tokens.length} graduating tokens from Moralis`);
@@ -299,6 +302,74 @@ async function syncGraduatedPairs(): Promise<number> {
   }
 
   return upserted;
+}
+
+// Update tokens that have graduated (bonding curve complete) from GRADUATING to GRADUATED
+// Uses Moralis bonding status API to check actual graduation, not fixed market cap
+async function updateGraduatedTokens(): Promise<number> {
+  try {
+    // Get all GRADUATING tokens
+    const graduatingTokens = await prisma.pulseToken.findMany({
+      where: { category: PulseCategory.GRADUATING },
+      select: { address: true, symbol: true },
+    });
+
+    if (graduatingTokens.length === 0) {
+      return 0;
+    }
+
+    // Check bonding status for each token (batch to avoid rate limits)
+    const graduatedAddresses: string[] = [];
+    const batchSize = 10;
+
+    for (let i = 0; i < graduatingTokens.length; i += batchSize) {
+      const batch = graduatingTokens.slice(i, i + batchSize);
+
+      const results = await Promise.allSettled(
+        batch.map(async (token) => {
+          const status = await moralisService.getBondingStatus(token.address);
+          return { address: token.address, symbol: token.symbol, status };
+        })
+      );
+
+      for (const result of results) {
+        if (result.status === "fulfilled" && result.value.status?.complete) {
+          graduatedAddresses.push(result.value.address);
+          console.log(`[PulseSync] ${result.value.symbol} has graduated (bonding complete)`);
+        }
+      }
+
+      // Small delay between batches to avoid rate limits
+      if (i + batchSize < graduatingTokens.length) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+    }
+
+    if (graduatedAddresses.length === 0) {
+      return 0;
+    }
+
+    // Update their category to GRADUATED
+    const updated = await prisma.pulseToken.updateMany({
+      where: {
+        address: { in: graduatedAddresses },
+        category: PulseCategory.GRADUATING,
+      },
+      data: {
+        category: PulseCategory.GRADUATED,
+        graduatedAt: new Date(),
+      },
+    });
+
+    if (updated.count > 0) {
+      console.log(`[PulseSync] Moved ${updated.count} tokens from GRADUATING to GRADUATED (bonding complete)`);
+    }
+
+    return updated.count;
+  } catch (err) {
+    console.error("[PulseSync] Error updating graduated tokens:", err);
+    return 0;
+  }
 }
 
 // Clean up stale tokens (older than 24 hours for NEW, 48 hours for others)
@@ -513,6 +584,9 @@ export async function syncPulseTokens(): Promise<{
       syncGraduatedPairs(),
       cleanupStaleTokens(),
     ]);
+
+    // Update tokens that graduated (bonding complete) - move from GRADUATING to GRADUATED
+    await updateGraduatedTokens();
 
     // Then sync swaps for tokens (initial + incremental)
     const { initial: swapsInitial, incremental: swapsIncremental } = await syncTokenSwaps();

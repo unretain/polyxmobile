@@ -132,6 +132,7 @@ pulseRoutes.get("/graduating", async (req, res) => {
 
     // Get from DB (enriched with Moralis data)
     // Sort by creation time descending - newest first
+    // Category filter handles graduation (sync checks actual bonding status from Moralis)
     const dbTokens = await prisma.pulseToken.findMany({
       where: {
         category: PulseCategory.GRADUATING,
@@ -149,10 +150,12 @@ pulseRoutes.get("/graduating", async (req, res) => {
     const seenAddresses = new Set<string>();
 
     // Add realtime tokens first (newest)
+    // Filter by bonding progress - only show tokens that haven't graduated yet
     for (const rt of realtimeTokens) {
       if (seenAddresses.has(rt.address)) continue;
-      const mc = rt.marketCap || 0;
-      if (mc < 10000 || mc >= 69000) continue; // Filter to $10K-$69K
+      // Skip if already graduated (bonding complete)
+      const progress = rt.bondingProgress || 0;
+      if (progress >= 100 || rt.complete) continue;
       // Filter out tokens older than 1 hour
       if (rt.createdAt && rt.createdAt < oneHourAgo) continue;
       seenAddresses.add(rt.address);
@@ -175,7 +178,7 @@ pulseRoutes.get("/graduating", async (req, res) => {
       });
     }
 
-    // Add DB tokens not in realtime (already filtered by query)
+    // Add DB tokens not in realtime (already filtered by category)
     for (const dbt of dbTokens) {
       if (seenAddresses.has(dbt.address)) continue;
       seenAddresses.add(dbt.address);
@@ -686,16 +689,19 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
     pumpPortalService.subscribeTokenTrades([address]);
 
     // Map timeframe to interval in milliseconds
-    // 1s = 1000ms (1 second candles, same logic as 1min just smaller interval)
+    // Each candle represents this amount of time
     const intervalMap: Record<string, number> = {
-      "1s": 1000,
-      "1min": 60000,
-      "5min": 300000,
-      "15min": 900000,
-      "30min": 1800000,
-      "1h": 3600000,
-      "4h": 14400000,
-      "1d": 86400000,
+      "1s": 1000,           // 1 second
+      "1min": 60000,        // 1 minute
+      "5min": 300000,       // 5 minutes
+      "15min": 900000,      // 15 minutes
+      "30min": 1800000,     // 30 minutes
+      "1h": 3600000,        // 1 hour
+      "4h": 14400000,       // 4 hours
+      "12h": 43200000,      // 12 hours
+      "1d": 86400000,       // 1 day (24 hours)
+      "1w": 604800000,      // 1 week (7 days)
+      "1M": 2592000000,     // 1 month (~30 days)
     };
     const intervalMs = intervalMap[timeframe] || 60000;
 
