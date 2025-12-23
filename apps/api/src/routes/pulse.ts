@@ -346,25 +346,75 @@ pulseRoutes.get("/sync/status", async (req, res) => {
   res.json(pulseSyncService.getStatus());
 });
 
-// POST /api/pulse/sync/reset - Clear all swap data and sync statuses
-// This forces a fresh re-sync of all token swaps from Moralis
+// POST /api/pulse/sync/reset - Clear all swap data and immediately re-sync ALL Pulse tokens
+// This forces a fresh re-sync of all token swaps from Moralis with ENTIRE history
 pulseRoutes.post("/sync/reset", async (req, res) => {
   try {
-    console.log("[Reset] Clearing all swap data...");
+    console.log("[Reset] === FULL RESET AND RESYNC STARTING ===");
+    const startTime = Date.now();
 
-    // Delete all token swaps
+    // Step 1: Delete all token swaps
     const deletedSwaps = await prisma.tokenSwap.deleteMany({});
-    console.log(`[Reset] Deleted ${deletedSwaps.count} swaps`);
+    console.log(`[Reset] Step 1: Deleted ${deletedSwaps.count} swaps`);
 
-    // Delete all sync statuses
+    // Step 2: Delete all sync statuses
     const deletedStatuses = await prisma.tokenSyncStatus.deleteMany({});
-    console.log(`[Reset] Deleted ${deletedStatuses.count} sync statuses`);
+    console.log(`[Reset] Step 2: Deleted ${deletedStatuses.count} sync statuses`);
+
+    // Step 3: Get ALL current Pulse tokens (new, graduating, graduated)
+    const allPulseTokens = await prisma.pulseToken.findMany({
+      select: { address: true, symbol: true },
+      orderBy: { marketCap: "desc" },
+    });
+    console.log(`[Reset] Step 3: Found ${allPulseTokens.length} Pulse tokens to sync`);
+
+    // Step 4: Sync ENTIRE swap history for each token from Moralis
+    // Do this in parallel batches to speed it up
+    let totalSynced = 0;
+    let totalSwaps = 0;
+    const batchSize = 5; // Sync 5 tokens at a time to avoid rate limits
+
+    for (let i = 0; i < allPulseTokens.length; i += batchSize) {
+      const batch = allPulseTokens.slice(i, i + batchSize);
+      console.log(`[Reset] Syncing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(allPulseTokens.length / batchSize)} (${batch.map(t => t.symbol).join(", ")})`);
+
+      const results = await Promise.allSettled(
+        batch.map(async (token) => {
+          try {
+            const result = await swapSyncService.syncHistoricalSwaps(token.address);
+            return { symbol: token.symbol, ...result };
+          } catch (err) {
+            console.error(`[Reset] Failed to sync ${token.symbol}:`, err);
+            return { symbol: token.symbol, synced: false, count: 0 };
+          }
+        })
+      );
+
+      for (const result of results) {
+        if (result.status === "fulfilled" && result.value.synced) {
+          totalSynced++;
+          totalSwaps += result.value.count;
+        }
+      }
+
+      // Small delay between batches to avoid hitting rate limits
+      if (i + batchSize < allPulseTokens.length) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+
+    const duration = Date.now() - startTime;
+    console.log(`[Reset] === COMPLETE: ${totalSynced}/${allPulseTokens.length} tokens synced, ${totalSwaps} total swaps in ${duration}ms ===`);
 
     res.json({
       success: true,
       deletedSwaps: deletedSwaps.count,
       deletedStatuses: deletedStatuses.count,
-      message: "All swap data cleared. Tokens will re-sync on next OHLCV request.",
+      tokensFound: allPulseTokens.length,
+      tokensSynced: totalSynced,
+      totalSwaps,
+      durationMs: duration,
+      message: `Reset complete. Synced ${totalSynced} tokens with ${totalSwaps} total swaps.`,
     });
   } catch (error) {
     console.error("Error resetting swap data:", error);
