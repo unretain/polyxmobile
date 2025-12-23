@@ -447,7 +447,9 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   // ============================================================================
   useEffect(() => {
     if (safeData.length === 0) {
-      prevTimeframeRef.current = timeframe;
+      // Data was cleared (e.g., timeframe switch) - reset all tracking
+      // so the NEXT data load is treated as a fresh dataset
+      prevTimeframeRef.current = undefined;
       prevDataLengthRef.current = 0;
       prevFirstTsRef.current = 0;
       return;
@@ -462,18 +464,20 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     // 1. Timeframe changed (1s -> 1m, etc.)
     // 2. Token changed (first timestamp changed by more than 1 day)
     // 3. First load (no previous data)
+    // 4. Data was cleared and re-populated (prevTimeframeRef.current is undefined)
     const timeframeChanged = timeframe !== prevTimeframeRef.current && prevTimeframeRef.current !== undefined;
     const tokenChanged = prevFirstTsRef.current > 0 && Math.abs(firstTs - prevFirstTsRef.current) > 86400000; // 1 day
     const isFirstLoad = prevLength === 0;
+    const wasCleared = prevTimeframeRef.current === undefined; // Data was cleared, treat as fresh
 
-    const isNewDataset = isFirstLoad || timeframeChanged || tokenChanged;
+    const isNewDataset = isFirstLoad || timeframeChanged || tokenChanged || wasCleared;
 
     if (isNewDataset) {
       // New token/timeframe - initialize to show last N candles
       const startIdx = Math.max(0, newLength - TARGET_VISIBLE_CANDLES);
       const endIdx = newLength - 1;
 
-      console.log(`[Chart3D] NEW DATASET (${newLength} candles, tf=${timeframe}): indices ${startIdx}-${endIdx}${timeframeChanged ? ' [TIMEFRAME CHANGE]' : ''}${tokenChanged ? ' [TOKEN CHANGE]' : ''}`);
+      console.log(`[Chart3D] NEW DATASET (${newLength} candles, tf=${timeframe}): indices ${startIdx}-${endIdx}${timeframeChanged ? ' [TIMEFRAME]' : ''}${tokenChanged ? ' [TOKEN]' : ''}${wasCleared ? ' [CLEARED]' : ''}${isFirstLoad ? ' [FIRST]' : ''}`);
 
       viewRangeRef.current = { startIdx, endIdx };
       setViewRange({ startIdx, endIdx });
