@@ -865,6 +865,7 @@ export default function TokenPage() {
               chartType={chartType}
               onPeriodChange={setChartPeriod}
               showPulseOption={fromPulse}
+              isLoading={chartLoading}
             />
           </div>
 
