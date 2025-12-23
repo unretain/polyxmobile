@@ -887,6 +887,7 @@ export default function TokenPage() {
                 showMarketCap={fromPulse}
                 marketCap={token?.marketCap}
                 price={token?.price}
+                timeframe={chartPeriod}
               />
             )}
           </div>
