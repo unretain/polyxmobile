@@ -43,8 +43,8 @@ interface IndexViewRange {
 }
 
 // Visible candle count target - how many candles to show at a time
-// How many candles fit in the viewport: CHART_WIDTH (100) / FIXED_SPACING (0.4) = 250
-const TARGET_VISIBLE_CANDLES = 250;
+// How many candles fit in the viewport: CHART_WIDTH (60) / FIXED_SPACING (0.4) = 150
+const TARGET_VISIBLE_CANDLES = 150;
 
 // Props for external toolbar rendering
 export interface DrawingToolbarRenderProps {
@@ -636,11 +636,11 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     return viewRange.endIdx >= safeData.length - 1;
   }, [viewRange.endIdx, safeData.length]);
 
-  // Chart layout constants - BIGGER grid
-  const CHART_WIDTH = 100; // Viewport width (what camera sees)
-  const PRICE_HEIGHT = 15;
-  const VOLUME_HEIGHT = 4;
-  const VOLUME_Z_OFFSET = 6;
+  // Chart layout constants
+  const CHART_WIDTH = 60; // Viewport width (what camera sees)
+  const PRICE_HEIGHT = 10;
+  const VOLUME_HEIGHT = 3;
+  const VOLUME_Z_OFFSET = 4;
 
   // FIXED candle size - like TradingView, candles never change size
   const FIXED_SPACING = 0.4;
@@ -748,7 +748,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
 
   // Camera position
   const cameraPosition = useMemo(() => {
-    return [CHART_WIDTH / 2, PRICE_HEIGHT * 0.8, 70] as [number, number, number];
+    return [CHART_WIDTH / 2, PRICE_HEIGHT * 0.8, 45] as [number, number, number];
   }, []);
 
   const targetPosition = useMemo(() => {
@@ -1263,15 +1263,17 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
                 </group>
               )}
 
-              {/* OrbitControls - rotation DISABLED, only zoom allowed. Use fly mode for free camera */}
+              {/* OrbitControls - disabled in fly mode, when drawing, or when shift is held for pan */}
               <OrbitControls
                 ref={orbitControlsRef}
-                enabled={!isFlyMode && !activeTool}
-                enablePan={false}
+                enabled={!isFlyMode && !activeTool && !isShiftHeld}
+                enablePan={true}
                 enableZoom={true}
-                enableRotate={false}
+                enableRotate={true}
                 minDistance={15}
                 maxDistance={100}
+                minPolarAngle={0.2}
+                maxPolarAngle={Math.PI / 2.2}
                 target={targetPosition}
               />
 
