@@ -176,8 +176,15 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error("Balance error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to get balance";
+    const errorStack = error instanceof Error ? error.stack : undefined;
+    console.error("Balance error stack:", errorStack);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to get balance" },
+      {
+        error: errorMessage,
+        // Include debug info in non-production
+        ...(process.env.NODE_ENV !== "production" && { stack: errorStack }),
+      },
       { status: 500 }
     );
   }
