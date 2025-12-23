@@ -381,26 +381,55 @@ pulseRoutes.get("/realtime/:address", async (req, res) => {
 });
 
 // GET /api/pulse/token/:address - Get enriched token data from multiple sources
+// PRIORITY: 1. Database (free), 2. In-memory caches (free), 3. External APIs (costly)
 pulseRoutes.get("/token/:address", async (req, res) => {
   try {
     const { address } = req.params;
+    let tokenData: any = null;
 
-    // First check PumpPortal cache for real-time token data
-    const realtimeTokens = pumpPortalService.getRecentNewTokens();
-    let tokenData: any = realtimeTokens.find((t: any) => t.address === address);
+    // 1. FIRST: Check database (free, no API call)
+    const dbToken = await prisma.pulseToken.findUnique({
+      where: { address },
+    });
+    if (dbToken) {
+      tokenData = {
+        address: dbToken.address,
+        symbol: dbToken.symbol,
+        name: dbToken.name,
+        logoUri: dbToken.logoUri,
+        description: dbToken.description,
+        price: dbToken.price,
+        priceChange24h: dbToken.priceChange24h,
+        volume24h: dbToken.volume24h,
+        liquidity: dbToken.liquidity,
+        marketCap: dbToken.marketCap,
+        txCount: dbToken.txCount,
+        twitter: dbToken.twitter,
+        telegram: dbToken.telegram,
+        website: dbToken.website,
+        createdAt: dbToken.tokenCreatedAt?.getTime() || dbToken.createdAt.getTime(),
+        source: "database",
+      };
+      console.log(`📦 Got token data from database for ${address}`);
+    }
+
+    // 2. Check PumpPortal in-memory cache (free, no API call)
+    if (!tokenData) {
+      const realtimeTokens = pumpPortalService.getRecentNewTokens();
+      tokenData = realtimeTokens.find((t: any) => t.address === address);
+    }
 
     if (!tokenData) {
-      // Check graduating tokens
       const graduatingTokens = pumpPortalService.getGraduatingTokens();
       tokenData = graduatingTokens.find((t: any) => t.address === address);
     }
 
     if (!tokenData) {
-      // Check migrated tokens
       const migratedTokens = pumpPortalService.getMigratedTokens();
       tokenData = migratedTokens.find((t: any) => t.address === address);
     }
 
+    // 3. External APIs (costly - only for tokens not in DB or cache)
     if (!tokenData) {
       // Try pump.fun API (for memecoins)
       tokenData = await pumpFunService.getCoin(address);
