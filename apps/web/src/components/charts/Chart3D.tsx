@@ -635,17 +635,17 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
     return viewRange.endIdx >= safeData.length - 1;
   }, [viewRange.endIdx, safeData.length]);
 
-  // Chart layout constants - FIXED size
-  const CHART_WIDTH = 60;
+  // Chart layout constants
+  const CHART_WIDTH = 60; // Viewport width (what camera sees)
   const PRICE_HEIGHT = 10;
   const VOLUME_HEIGHT = 3;
   const VOLUME_Z_OFFSET = 4;
 
-  // Candles scale to fill the fixed chart width
-  const candleCount = visibleData.length || 1;
-  const spacing = CHART_WIDTH / candleCount;
-  const candleWidth = spacing; // Fill the space, no gaps
-  const candleDepth = spacing;
+  // FIXED candle size - like TradingView, candles never change size
+  const FIXED_SPACING = 0.4;
+  const spacing = FIXED_SPACING;
+  const candleWidth = FIXED_SPACING * 0.8; // 80% of spacing for slight gap
+  const candleDepth = candleWidth;
 
   // Calculate price bounds from visible data (auto-adjusts Y-axis)
   // IMPORTANT: Uses IQR-based outlier filtering to prevent extreme stretching
