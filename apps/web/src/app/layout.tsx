@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, DM_Mono, Fragment_Mono } from "next/font/google";
 import { SessionProvider } from "@/components/providers/SessionProvider";
+import { ToastProvider } from "@/components/ui/Toast";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -52,7 +53,9 @@ export default function RootLayout({
         />
       </head>
       <body className={`${inter.variable} ${dmMono.variable} ${fragmentMono.variable} font-sans`}>
-        <SessionProvider>{children}</SessionProvider>
+        <SessionProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </SessionProvider>
       </body>
     </html>
   );

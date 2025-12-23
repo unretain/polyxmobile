@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Header } from "@/components/layout/Header";
 import { useThemeStore } from "@/stores/themeStore";
+import { useToast } from "@/components/ui/Toast";
 import {
   Loader2,
   History,
@@ -100,6 +101,7 @@ export default function PortfolioPage() {
   const { isDark } = useThemeStore();
   const { status } = useSession();
   const router = useRouter();
+  const { showToast } = useToast();
 
   const [pnlData, setPnlData] = useState<PnLResponse | null>(null);
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
@@ -1153,15 +1155,15 @@ export default function PortfolioPage() {
                               await navigator.clipboard.write([
                                 new ClipboardItem({ 'image/png': blob })
                               ]);
-                              alert('Copied to clipboard!');
+                              showToast('Copied to clipboard!', 'success');
                             } catch {
-                              alert('Copy failed. Try downloading instead.');
+                              showToast('Copy failed. Try downloading instead.', 'error');
                             }
                           }
                         }, 'image/png');
                       } catch (err) {
                         console.error('Failed to copy card:', err);
-                        alert('Failed to copy. Please try downloading instead.');
+                        showToast('Failed to copy. Try downloading instead.', 'error');
                       } finally {
                         setIsGeneratingCard(false);
                       }
@@ -1192,9 +1194,10 @@ export default function PortfolioPage() {
                         link.download = `polyx-pnl-${new Date().toISOString().split('T')[0]}.png`;
                         link.href = canvas.toDataURL('image/png');
                         link.click();
+                        showToast('Image downloaded!', 'success');
                       } catch (err) {
                         console.error('Failed to generate card:', err);
-                        alert('Failed to generate image. Please try again.');
+                        showToast('Failed to generate image. Please try again.', 'error');
                       } finally {
                         setIsGeneratingCard(false);
                       }
