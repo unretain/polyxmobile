@@ -123,15 +123,21 @@ pulseRoutes.get("/new-pairs", async (req, res) => {
 });
 
 // GET /api/pulse/graduating - Get coins about to graduate from pump.fun
-// "Final Stretch" = Market cap $15K-$69K (approaching graduation threshold)
+// "Final Stretch" = Market cap $10K-$69K (approaching graduation threshold)
 // Uses DB for enriched data + PumpPortal for real-time updates
+// Shows NEWEST tokens first, filters out anything > 30 minutes old
 pulseRoutes.get("/graduating", async (req, res) => {
   try {
+    const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000;
+
     // Get from DB (enriched with Moralis data)
-    // Sort by market cap descending - highest MC (closest to graduating) at top
+    // Sort by creation time descending - newest first
     const dbTokens = await prisma.pulseToken.findMany({
-      where: { category: PulseCategory.GRADUATING },
-      orderBy: { marketCap: "desc" }, // Highest market cap first (closest to $69k)
+      where: {
+        category: PulseCategory.GRADUATING,
+        tokenCreatedAt: { gte: new Date(thirtyMinutesAgo) },
+      },
+      orderBy: { tokenCreatedAt: "desc" }, // Newest first
     });
 
     // Get real-time from PumpPortal
@@ -142,11 +148,13 @@ pulseRoutes.get("/graduating", async (req, res) => {
     const mergedTokens: any[] = [];
     const seenAddresses = new Set<string>();
 
-    // Add realtime tokens first
+    // Add realtime tokens first (newest)
     for (const rt of realtimeTokens) {
       if (seenAddresses.has(rt.address)) continue;
       const mc = rt.marketCap || 0;
       if (mc < 10000 || mc >= 69000) continue; // Filter to $10K-$69K
+      // Filter out tokens older than 30 minutes
+      if (rt.createdAt && rt.createdAt < thirtyMinutesAgo) continue;
       seenAddresses.add(rt.address);
 
       const dbToken = dbTokenMap.get(rt.address);
@@ -167,7 +175,7 @@ pulseRoutes.get("/graduating", async (req, res) => {
       });
     }
 
-    // Add DB tokens not in realtime
+    // Add DB tokens not in realtime (already filtered by query)
     for (const dbt of dbTokens) {
       if (seenAddresses.has(dbt.address)) continue;
       seenAddresses.add(dbt.address);
@@ -189,8 +197,8 @@ pulseRoutes.get("/graduating", async (req, res) => {
       });
     }
 
-    // Sort by market cap descending - highest MC (closest to $69k graduation) at top
-    mergedTokens.sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0));
+    // Sort by creation time descending - NEWEST first
+    mergedTokens.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
     const response = {
       data: mergedTokens,
