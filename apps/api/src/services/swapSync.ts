@@ -264,8 +264,8 @@ class SwapSyncService {
     }
 
     // Per-trade mode: one candle per swap
-    // Each candle represents a single trade - open/high/low/close are ALL the same price
-    // This creates point candles that don't connect across gaps
+    // Each candle connects to the previous one (open = previous close)
+    // This creates a continuous visual chart like TradingView
     if (perTrade) {
       // First pass: collect all valid prices to calculate median for outlier detection
       const validPrices = swaps
@@ -282,6 +282,7 @@ class SwapSyncService {
       const priceThreshold = 10;
 
       const candles: OHLCV[] = [];
+      let prevClose = 0;
 
       for (const swap of swaps) {
         const price = swap.priceUsd;
@@ -293,16 +294,22 @@ class SwapSyncService {
           continue;
         }
 
-        // Each trade is its own isolated candle - NO connection to previous
-        // open = high = low = close = price of this trade
+        // Connect candles: open = previous close (or current price for first candle)
+        const open = prevClose > 0 ? prevClose : price;
+        const close = price;
+        const high = Math.max(open, close);
+        const low = Math.min(open, close);
+
         candles.push({
           timestamp,
-          open: price,
-          high: price,
-          low: price,
-          close: price,
+          open,
+          high,
+          low,
+          close,
           volume: swap.totalValueUsd,
         });
+
+        prevClose = close;
       }
 
       return candles.slice(-maxCandles);
