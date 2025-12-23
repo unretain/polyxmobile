@@ -1263,17 +1263,15 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
                 </group>
               )}
 
-              {/* OrbitControls - disabled in fly mode, when drawing, or when shift is held for pan */}
+              {/* OrbitControls - rotation DISABLED, only zoom allowed. Use fly mode for free camera */}
               <OrbitControls
                 ref={orbitControlsRef}
-                enabled={!isFlyMode && !activeTool && !isShiftHeld}
-                enablePan={true}
+                enabled={!isFlyMode && !activeTool}
+                enablePan={false}
                 enableZoom={true}
-                enableRotate={true}
+                enableRotate={false}
                 minDistance={15}
                 maxDistance={100}
-                minPolarAngle={0.2}
-                maxPolarAngle={Math.PI / 2.2}
                 target={targetPosition}
               />
 
