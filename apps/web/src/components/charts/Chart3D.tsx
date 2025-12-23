@@ -1251,7 +1251,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
               isDark={isDark}
               dataLength={safeData.length}
               visibleCount={visibleData.length}
-              startIdx={viewRange.startIdx}
+              startIdx={Math.max(0, Math.min(viewRange.startIdx, safeData.length - visibleData.length))}
             />
           </div>
         )}
