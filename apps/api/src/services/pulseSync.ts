@@ -386,13 +386,14 @@ async function syncTokenSwaps(): Promise<{ initial: number; incremental: number 
     }
 
     // 2. Incremental sync: Fetch new swaps for already-synced Pulse tokens
-    // Get all pulse tokens that ARE already synced (to get latest swaps)
+    // Get ALL pulse tokens that ARE already synced (to get latest swaps)
+    // LIVE MODE: Sync all tokens, not just top 20
     const syncedPulseTokens = await prisma.pulseToken.findMany({
       where: {
         address: { in: Array.from(syncedAddresses) },
       },
       orderBy: { marketCap: "desc" },
-      take: 20, // Update top 20 tokens per cycle
+      take: 50, // Update top 50 tokens per cycle for live data
     });
 
     let incrementalSynced = 0;
