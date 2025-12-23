@@ -555,6 +555,16 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
       return [];
     }
 
+    // Handle uninitialized view range (before data effect runs)
+    // This prevents showing only 1 candle at the start (index 0)
+    const isUninitialized = viewRange.startIdx === 0 && viewRange.endIdx === 0 && safeData.length > 1;
+    if (isUninitialized) {
+      // Show the most recent N candles until properly initialized
+      const startIdx = Math.max(0, safeData.length - TARGET_VISIBLE_CANDLES);
+      const endIdx = safeData.length - 1;
+      return safeData.slice(startIdx, endIdx + 1);
+    }
+
     // Calculate desired visible count from the view range
     const desiredCount = viewRange.endIdx - viewRange.startIdx + 1;
 
