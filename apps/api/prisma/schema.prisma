@@ -268,3 +268,48 @@ model CandleCache {
   @@unique([tokenAddress, timeframe, timestamp])
   @@index([tokenAddress, timeframe, timestamp(sort: Desc)])
 }
+
+// ==========================================
+// Permanent Swap Storage (not cache - permanent historical record)
+// ==========================================
+
+// All token swaps - permanent storage, synced from Moralis then only fetch new
+model TokenSwap {
+  id              String   @id @default(cuid())
+  tokenAddress    String   // Token mint address
+  txHash          String   // Transaction hash
+  timestamp       DateTime // Block timestamp
+  type            String   // "buy" or "sell"
+  walletAddress   String
+  tokenAmount     Float    // Amount of the token traded
+  solAmount       Float    // Amount of SOL
+  priceUsd        Float    // Token price in USD at trade time
+  totalValueUsd   Float    // Total trade value in USD
+
+  @@unique([tokenAddress, txHash])
+  @@index([tokenAddress, timestamp(sort: Desc)], map: "TokenSwap_addr_ts_desc")
+  @@index([tokenAddress, timestamp(sort: Asc)], map: "TokenSwap_addr_ts_asc")
+}
+
+// Track sync status per token - so we know what to fetch next
+model TokenSyncStatus {
+  id              String   @id @default(cuid())
+  tokenAddress    String   @unique
+
+  // Swap sync status
+  swapsSynced     Boolean  @default(false) // True once all historical swaps fetched
+  oldestSwapTime  DateTime? // Oldest swap we have
+  newestSwapTime  DateTime? // Newest swap we have
+  totalSwaps      Int       @default(0)
+  lastSwapSync    DateTime?
+
+  // Token metadata sync
+  metadataSynced  Boolean  @default(false)
+  lastMetadataSync DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tokenAddress])
+  @@index([swapsSynced])
+}

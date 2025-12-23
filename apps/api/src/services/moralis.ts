@@ -992,53 +992,16 @@ class MoralisService {
   }
 
   // Get graduated tokens in Pulse format
-  // Fetches individual token data for each to get accurate MC/volume
+  // NO ENRICHMENT - just maps list data to avoid rate limits
+  // Caller should use PumpPortal real-time data for accurate MC/volume
   async getGraduatedPulsePairs(limit: number = 50): Promise<ReturnType<typeof this.mapPumpFunTokenToPulse>[]> {
     const tokens = await this.getGraduatedTokens(limit);
 
-    // The graduated endpoint only returns basic info without MC/volume
-    // We need to fetch individual token data for accurate stats
-    console.log(`[Moralis] getGraduatedPulsePairs: Enriching ${tokens.length} graduated tokens with individual data...`);
-
-    const enrichedTokens = await Promise.all(
-      tokens.map(async (t, index) => {
-        const baseData = {
-          ...this.mapPumpFunTokenToPulse(t),
-          complete: true,
-        };
-
-        // Fetch individual token data for accurate MC/volume
-        try {
-          const tokenData = await this.getTokenData(t.tokenAddress);
-          if (tokenData && (tokenData.marketCap > 0 || tokenData.volume24h > 0)) {
-            console.log(`[Moralis] Enriched ${t.symbol}: MC=$${tokenData.marketCap?.toLocaleString() || 0}, Vol=$${tokenData.volume24h?.toLocaleString() || 0}`);
-            return {
-              ...baseData,
-              price: tokenData.price || baseData.price,
-              marketCap: tokenData.marketCap || baseData.marketCap,
-              volume24h: tokenData.volume24h || baseData.volume24h,
-              liquidity: tokenData.liquidity || baseData.liquidity,
-              priceChange24h: tokenData.priceChange24h || baseData.priceChange24h,
-              logoUri: tokenData.logoURI || baseData.logoUri,
-            };
-          }
-        } catch (err) {
-          // Log but continue with base data
-          if (index < 3) {
-            console.warn(`[Moralis] Failed to enrich ${t.symbol}:`, err);
-          }
-        }
-
-        return baseData;
-      })
-    );
-
-    // Log summary
-    const withMC = enrichedTokens.filter(t => t.marketCap > 0).length;
-    const withVol = enrichedTokens.filter(t => t.volume24h > 0).length;
-    console.log(`[Moralis] getGraduatedPulsePairs: ${withMC}/${enrichedTokens.length} have MC, ${withVol}/${enrichedTokens.length} have volume`);
-
-    return enrichedTokens;
+    // Map without enrichment - just use what the list endpoint provides
+    return tokens.map((t) => ({
+      ...this.mapPumpFunTokenToPulse(t),
+      complete: true,
+    }));
   }
 }
 
