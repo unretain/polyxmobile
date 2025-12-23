@@ -534,6 +534,8 @@ export default function PortfolioPage() {
                         // Get time range based on period
                         const now = new Date();
                         let periodStart: Date;
+                        let periodEnd: Date = now; // Default end is now
+
                         switch (period) {
                           case "1d":
                             periodStart = new Date(now);
@@ -550,12 +552,20 @@ export default function PortfolioPage() {
                             periodStart.setHours(0, 0, 0, 0);
                             break;
                           default:
-                            // For "all", use first trade date or 30 days ago
-                            periodStart = chartData.length > 0
-                              ? new Date(chartData[0].date)
-                              : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                            // For "all", use first trade date to last trade date (+ small buffer)
+                            if (chartData.length > 0) {
+                              periodStart = new Date(chartData[0].date);
+                              periodStart.setHours(0, 0, 0, 0);
+                              // End at last trade date + 1 day buffer (or now if last trade is recent)
+                              const lastTradeDate = new Date(chartData[chartData.length - 1].date);
+                              lastTradeDate.setDate(lastTradeDate.getDate() + 1);
+                              lastTradeDate.setHours(23, 59, 59, 999);
+                              periodEnd = lastTradeDate < now ? lastTradeDate : now;
+                            } else {
+                              periodStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                            }
                         }
-                        const timeRange = now.getTime() - periodStart.getTime();
+                        const timeRange = periodEnd.getTime() - periodStart.getTime();
 
                         // Build time-based data points with step chart logic
                         // Start at 0, then step to new value on each trade day, hold until next
@@ -577,8 +587,8 @@ export default function PortfolioPage() {
                           dataPoints.push({ time: tradeTime, cumPnl: cumulative, label: d.date });
                         });
 
-                        // End point at now with final value (horizontal line to present)
-                        dataPoints.push({ time: now.getTime(), cumPnl: cumulative, label: 'Now' });
+                        // End point at period end with final value (horizontal line to end)
+                        dataPoints.push({ time: periodEnd.getTime(), cumPnl: cumulative, label: 'End' });
 
                         // Scale Y values
                         const values = dataPoints.map(d => d.cumPnl);
@@ -634,6 +644,8 @@ export default function PortfolioPage() {
                       // Get time range based on period (same logic as SVG chart)
                       const now = new Date();
                       let periodStart: Date;
+                      let periodEnd: Date = now;
+
                       switch (period) {
                         case "1d":
                           periodStart = new Date(now);
@@ -650,11 +662,19 @@ export default function PortfolioPage() {
                           periodStart.setHours(0, 0, 0, 0);
                           break;
                         default:
-                          periodStart = chartData.length > 0
-                            ? new Date(chartData[0].date)
-                            : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                          // For "all", use first trade date to last trade date (+ small buffer)
+                          if (chartData.length > 0) {
+                            periodStart = new Date(chartData[0].date);
+                            periodStart.setHours(0, 0, 0, 0);
+                            const lastTradeDate = new Date(chartData[chartData.length - 1].date);
+                            lastTradeDate.setDate(lastTradeDate.getDate() + 1);
+                            lastTradeDate.setHours(23, 59, 59, 999);
+                            periodEnd = lastTradeDate < now ? lastTradeDate : now;
+                          } else {
+                            periodStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                          }
                       }
-                      const timeRange = now.getTime() - periodStart.getTime();
+                      const timeRange = periodEnd.getTime() - periodStart.getTime();
 
                       // Convert mouse X position to time
                       const hoverTime = periodStart.getTime() + chartHover.x * timeRange;
@@ -669,7 +689,7 @@ export default function PortfolioPage() {
                         cumulative += day.pnl;
                         steps.push({ time: tradeTime, cumPnl: cumulative });
                       });
-                      steps.push({ time: now.getTime(), cumPnl: cumulative });
+                      steps.push({ time: periodEnd.getTime(), cumPnl: cumulative });
 
                       // Find the PnL value at hoverTime (step chart - use value from last step before hoverTime)
                       let pnlAtHover = 0;
