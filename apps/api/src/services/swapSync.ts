@@ -265,6 +265,7 @@ class SwapSyncService {
 
     // Per-trade mode: one candle per swap
     // IMPORTANT: Filter outlier trades to prevent extreme chart stretching
+    // IMPORTANT: Don't connect candles across time gaps (creates fake horizontal lines)
     if (perTrade) {
       // First pass: collect all valid prices to calculate median
       const validPrices = swaps
@@ -282,10 +283,16 @@ class SwapSyncService {
       const priceThreshold = 10;
 
       let prevPrice = 0;
+      let prevTimestamp = 0;
       const candles: OHLCV[] = [];
+
+      // Max gap between trades before we stop connecting them (5 seconds)
+      // This prevents weird horizontal stretches across empty periods
+      const MAX_GAP_MS = 5000;
 
       for (const swap of swaps) {
         const price = swap.priceUsd;
+        const timestamp = swap.timestamp.getTime();
         if (price <= 0) continue;
 
         // Skip outlier prices (more than 10x from median)
@@ -293,13 +300,15 @@ class SwapSyncService {
           continue;
         }
 
-        const open = prevPrice > 0 ? prevPrice : price;
+        // Check if there's a time gap - if so, don't connect to previous candle
+        const hasGap = prevTimestamp > 0 && (timestamp - prevTimestamp) > MAX_GAP_MS;
+        const open = (prevPrice > 0 && !hasGap) ? prevPrice : price;
         const close = price;
         const high = Math.max(open, close);
         const low = Math.min(open, close);
 
         candles.push({
-          timestamp: swap.timestamp.getTime(),
+          timestamp,
           open,
           high,
           low,
@@ -308,6 +317,7 @@ class SwapSyncService {
         });
 
         prevPrice = price;
+        prevTimestamp = timestamp;
       }
 
       return candles.slice(-maxCandles);
