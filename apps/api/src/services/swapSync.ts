@@ -264,10 +264,10 @@ class SwapSyncService {
     }
 
     // Per-trade mode: one candle per swap
-    // IMPORTANT: Filter outlier trades to prevent extreme chart stretching
-    // IMPORTANT: Don't connect candles across time gaps (creates fake horizontal lines)
+    // Each candle represents a single trade - open/high/low/close are ALL the same price
+    // This creates point candles that don't connect across gaps
     if (perTrade) {
-      // First pass: collect all valid prices to calculate median
+      // First pass: collect all valid prices to calculate median for outlier detection
       const validPrices = swaps
         .map(s => s.priceUsd)
         .filter(p => p > 0 && isFinite(p));
@@ -279,16 +279,9 @@ class SwapSyncService {
       const medianPrice = validPrices[Math.floor(validPrices.length / 2)];
 
       // Filter out trades with prices more than 10x away from median
-      // These are likely bad data from manipulation or API errors
       const priceThreshold = 10;
 
-      let prevPrice = 0;
-      let prevTimestamp = 0;
       const candles: OHLCV[] = [];
-
-      // Max gap between trades before we stop connecting them (5 seconds)
-      // This prevents weird horizontal stretches across empty periods
-      const MAX_GAP_MS = 5000;
 
       for (const swap of swaps) {
         const price = swap.priceUsd;
@@ -300,24 +293,16 @@ class SwapSyncService {
           continue;
         }
 
-        // Check if there's a time gap - if so, don't connect to previous candle
-        const hasGap = prevTimestamp > 0 && (timestamp - prevTimestamp) > MAX_GAP_MS;
-        const open = (prevPrice > 0 && !hasGap) ? prevPrice : price;
-        const close = price;
-        const high = Math.max(open, close);
-        const low = Math.min(open, close);
-
+        // Each trade is its own isolated candle - NO connection to previous
+        // open = high = low = close = price of this trade
         candles.push({
           timestamp,
-          open,
-          high,
-          low,
-          close,
+          open: price,
+          high: price,
+          low: price,
+          close: price,
           volume: swap.totalValueUsd,
         });
-
-        prevPrice = price;
-        prevTimestamp = timestamp;
       }
 
       return candles.slice(-maxCandles);
