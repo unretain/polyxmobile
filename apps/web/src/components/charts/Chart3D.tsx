@@ -318,21 +318,24 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   // ============================================================================
-  // DATA CACHE - Stores all received data, handles empty arrays gracefully
-  // Also ensures data is sorted by timestamp (oldest first) for correct display
+  // DATA PROCESSING - Sort and validate incoming data
   // ============================================================================
-  const lastValidDataRef = useRef<OHLCV[]>([]);
+  // NOTE: We NO LONGER cache data across timeframe switches.
+  // The old cache (`lastValidDataRef`) caused cross-timeframe data contamination:
+  // - Switch 1m → 5m: page clears data, but chart showed cached 1m data
+  // - Switch 5m → 1m: page clears data, but chart showed cached 5m data
+  // This led to "different 1m chart" bugs when switching timeframes.
+  //
+  // Now: empty data = show loading spinner. No caching between timeframes.
+  // ============================================================================
 
   const safeData = useMemo(() => {
-    let result: OHLCV[];
-
-    if (data.length > 0) {
-      result = data;
-    } else if (lastValidDataRef.current.length > 0) {
-      result = lastValidDataRef.current;
-    } else {
+    // If no data, return empty (will show loading spinner)
+    if (data.length === 0) {
       return data;
     }
+
+    let result = data;
 
     // Ensure data is sorted by timestamp (oldest first)
     // This fixes the "latest candle at beginning" issue
@@ -345,11 +348,6 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
         console.log(`[Chart3D] Data was in reverse order, reversing...`);
         result = [...result].reverse();
       }
-    }
-
-    // Cache the valid data
-    if (data.length > 0) {
-      lastValidDataRef.current = result;
     }
 
     return result;
