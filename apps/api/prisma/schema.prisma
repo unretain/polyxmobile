@@ -75,6 +75,18 @@ model User {
   image         String?
   emailVerified DateTime?
 
+  // Email verification
+  verificationCode   String?
+  verificationExpiry DateTime?
+
+  // Two-factor authentication
+  twoFactorEnabled Boolean  @default(false)
+  twoFactorSecret  String?  // TOTP secret (encrypted)
+
+  // Solana wallet (generated on first sign-in)
+  walletAddress    String?   @unique  // Public key
+  walletEncrypted  String?   @db.Text // Encrypted private key
+
   // OAuth accounts
   accounts      Account[]
   sessions      Session[]
@@ -86,6 +98,7 @@ model User {
   updatedAt     DateTime  @updatedAt
 
   @@index([email])
+  @@index([walletAddress])
 }
 
 model Account {
@@ -250,6 +263,16 @@ model PulseToken {
 // ==========================================
 // API Cache Models (to reduce external API calls)
 // ==========================================
+
+// Cache SOL/token prices (shared with web)
+model PriceCache {
+  id        String   @id @default(cuid())
+  symbol    String   @unique  // e.g., "SOL", "BTC", "ETH"
+  priceUsd  Float
+  updatedAt DateTime @updatedAt
+
+  @@index([symbol])
+}
 
 // Cache OHLCV candles by token address (no Token record required)
 model CandleCache {
