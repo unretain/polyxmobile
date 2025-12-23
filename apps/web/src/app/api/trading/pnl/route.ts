@@ -28,12 +28,14 @@ async function getTokenStats(userId: string, tokenMint: string) {
     const isBuy = trade.inputMint === SOL_MINT;
 
     if (isBuy) {
-      const tokenAmount = Number(trade.amountOut) / 1e6;
+      // Token amounts are stored as raw UI values (e.g., 353079 = 353079 tokens)
+      // SOL amounts are in lamports (divide by 1e9)
+      const tokenAmount = Number(trade.amountOut);
       const solAmount = Number(trade.amountIn) / 1e9;
       totalBought += tokenAmount;
       totalSolSpent += solAmount;
     } else {
-      const tokenAmount = Number(trade.amountIn) / 1e6;
+      const tokenAmount = Number(trade.amountIn);
       const solAmount = Number(trade.amountOut) / 1e9;
       totalSold += tokenAmount;
       totalSolReceived += solAmount;
@@ -162,12 +164,13 @@ export async function GET(req: NextRequest) {
       const isBuy = trade.inputMint === SOL_MINT;
       const tokenMint = isBuy ? trade.outputMint : trade.inputMint;
 
+      // SOL in lamports (divide by 1e9), tokens are stored as UI values
       const solAmount = isBuy
         ? Number(trade.amountIn) / 1e9
         : Number(trade.amountOut) / 1e9;
       const tokenAmount = isBuy
-        ? Number(trade.amountOut) / 1e6
-        : Number(trade.amountIn) / 1e6;
+        ? Number(trade.amountOut)
+        : Number(trade.amountIn);
 
       if (!baselinePositions.has(tokenMint)) {
         baselinePositions.set(tokenMint, { avgBuyPrice: 0, totalBought: 0, totalBuyCost: 0 });
@@ -200,12 +203,13 @@ export async function GET(req: NextRequest) {
       const tokenSymbol = isBuy ? trade.outputSymbol : trade.inputSymbol;
       const tradeDate = trade.confirmedAt || trade.createdAt;
 
+      // SOL in lamports (divide by 1e9), tokens are stored as UI values
       const solAmount = isBuy
         ? Number(trade.amountIn) / 1e9
         : Number(trade.amountOut) / 1e9;
       const tokenAmount = isBuy
-        ? Number(trade.amountOut) / 1e6
-        : Number(trade.amountIn) / 1e6;
+        ? Number(trade.amountOut)
+        : Number(trade.amountIn);
 
       if (!allPositions.has(tokenMint)) {
         allPositions.set(tokenMint, {
@@ -292,13 +296,13 @@ export async function GET(req: NextRequest) {
       const tokenMint = isBuy ? trade.outputMint : trade.inputMint;
       const tokenSymbol = isBuy ? trade.outputSymbol : trade.inputSymbol;
 
-      // Parse amounts (assuming 9 decimals for SOL, varies for tokens)
+      // SOL in lamports (divide by 1e9), tokens are stored as UI values
       const solAmount = isBuy
         ? Number(trade.amountIn) / 1e9
         : Number(trade.amountOut) / 1e9;
       const tokenAmount = isBuy
-        ? Number(trade.amountOut) / 1e6 // Most tokens are 6 decimals
-        : Number(trade.amountIn) / 1e6;
+        ? Number(trade.amountOut)
+        : Number(trade.amountIn);
 
       daily.volume += solAmount;
 
