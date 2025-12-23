@@ -94,11 +94,12 @@ const MORALIS_CANDLE_CONFIG: Record<string, { interval: string; seconds: number 
   "1s": { interval: "1s", seconds: 0 },       // 1 second candles
   "1m": { interval: "1min", seconds: 0 },     // 1 minute candles
   "5m": { interval: "5min", seconds: 0 },     // 5 minute candles
-  "15m": { interval: "30min", seconds: 0 },   // 15 minute (uses 30min interval)
+  "15m": { interval: "15min", seconds: 0 },   // 15 minute candles
   "1h": { interval: "1h", seconds: 0 },       // 1 hour candles
   "4h": { interval: "4h", seconds: 0 },       // 4 hour candles
   "1d": { interval: "1d", seconds: 0 },       // 1 day candles
   "1w": { interval: "1w", seconds: 0 },       // 1 week candles
+  "1M": { interval: "1M", seconds: 0 },       // 1 month candles
 };
 
 // Get the appropriate config based on API source, chart type, and period
