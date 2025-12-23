@@ -610,8 +610,9 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
     pumpPortalService.subscribeTokenTrades([address]);
 
     // Map timeframe to interval in milliseconds
+    // 1s = 1000ms (1 second candles, same logic as 1min just smaller interval)
     const intervalMap: Record<string, number> = {
-      "1s": 0, // Per-trade
+      "1s": 1000,
       "1min": 60000,
       "5min": 300000,
       "15min": 900000,
@@ -621,13 +622,12 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
       "1d": 86400000,
     };
     const intervalMs = intervalMap[timeframe] || 60000;
-    const perTrade = timeframe === "1s";
 
     console.log(`📊 [OHLCV] Getting ${timeframe} candles from DB for ${address}`);
     const startTime = Date.now();
 
     // Get OHLCV from database (syncs from Moralis if not yet synced)
-    ohlcv = await swapSyncService.getOHLCV(address, intervalMs, perTrade);
+    ohlcv = await swapSyncService.getOHLCV(address, intervalMs);
     const elapsed = Date.now() - startTime;
     console.log(`📊 [OHLCV] Got ${ohlcv.length} candles from DB in ${elapsed}ms`);
 
