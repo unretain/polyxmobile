@@ -246,10 +246,10 @@ class SwapSyncService {
   }
 
   // Build OHLCV candles from stored swaps (NO API CALLS)
+  // intervalMs: 1000 for 1s, 60000 for 1min, etc.
   async getOHLCVFromDB(
     tokenAddress: string,
     intervalMs: number = 60000,
-    perTrade: boolean = false,
     maxCandles: number = 5000
   ): Promise<OHLCV[]> {
     // Get all swaps for this token from DB, ordered by timestamp ASC
@@ -263,59 +263,8 @@ class SwapSyncService {
       return [];
     }
 
-    // Per-trade mode: one candle per swap
-    // Each candle connects to the previous one (open = previous close)
-    // This creates a continuous visual chart like TradingView
-    if (perTrade) {
-      // First pass: collect all valid prices to calculate median for outlier detection
-      const validPrices = swaps
-        .map(s => s.priceUsd)
-        .filter(p => p > 0 && isFinite(p));
-
-      if (validPrices.length === 0) return [];
-
-      // Calculate median price for outlier detection
-      validPrices.sort((a, b) => a - b);
-      const medianPrice = validPrices[Math.floor(validPrices.length / 2)];
-
-      // Filter out trades with prices more than 10x away from median
-      const priceThreshold = 10;
-
-      const candles: OHLCV[] = [];
-      let prevClose = 0;
-
-      for (const swap of swaps) {
-        const price = swap.priceUsd;
-        const timestamp = swap.timestamp.getTime();
-        if (price <= 0) continue;
-
-        // Skip outlier prices (more than 10x from median)
-        if (price < medianPrice / priceThreshold || price > medianPrice * priceThreshold) {
-          continue;
-        }
-
-        // Connect candles: open = previous close (or current price for first candle)
-        const open = prevClose > 0 ? prevClose : price;
-        const close = price;
-        const high = Math.max(open, close);
-        const low = Math.min(open, close);
-
-        candles.push({
-          timestamp,
-          open,
-          high,
-          low,
-          close,
-          volume: swap.totalValueUsd,
-        });
-
-        prevClose = close;
-      }
-
-      return candles.slice(-maxCandles);
-    }
-
-    // Interval mode: group swaps by time
+    // ALL modes (including 1s) use interval-based aggregation
+    // perTrade flag is no longer used - 1s just uses 1000ms interval
     const candleMap = new Map<number, OHLCV>();
 
     for (const swap of swaps) {
@@ -350,10 +299,10 @@ class SwapSyncService {
 
   // Get OHLCV - checks DB first, syncs if needed, then returns from DB
   // LIVE MODE: Always fetch latest swaps on every request for real-time data
+  // intervalMs: 1000 for 1s, 60000 for 1min, etc.
   async getOHLCV(
     tokenAddress: string,
-    intervalMs: number = 60000,
-    perTrade: boolean = false
+    intervalMs: number = 60000
   ): Promise<OHLCV[]> {
     // Check if synced
     const status = await this.getSyncStatus(tokenAddress);
@@ -368,7 +317,7 @@ class SwapSyncService {
     }
 
     // Return from DB
-    return this.getOHLCVFromDB(tokenAddress, intervalMs, perTrade);
+    return this.getOHLCVFromDB(tokenAddress, intervalMs);
   }
 
   // Get swap count for a token from DB
