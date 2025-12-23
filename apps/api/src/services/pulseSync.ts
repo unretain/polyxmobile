@@ -349,46 +349,139 @@ async function cleanupStaleTokens(): Promise<number> {
 
 // Sync swaps for tokens that don't have swaps synced yet
 // This runs after token list sync to populate swap history
-async function syncTokenSwaps(): Promise<number> {
+async function syncTokenSwaps(): Promise<{ initial: number; incremental: number }> {
   try {
-    // Get all pulse tokens that don't have swaps synced
+    // Get all synced token addresses
+    const syncedStatuses = await prisma.tokenSyncStatus.findMany({
+      where: { swapsSynced: true },
+      select: { tokenAddress: true },
+    });
+    const syncedAddresses = new Set(syncedStatuses.map(s => s.tokenAddress));
+
+    // 1. Initial sync: Get pulse tokens that don't have swaps synced yet
     const unsyncedTokens = await prisma.pulseToken.findMany({
       where: {
         NOT: {
-          address: {
-            in: (await prisma.tokenSyncStatus.findMany({
-              where: { swapsSynced: true },
-              select: { tokenAddress: true },
-            })).map(s => s.tokenAddress),
-          },
+          address: { in: Array.from(syncedAddresses) },
         },
       },
       orderBy: { marketCap: "desc" }, // Prioritize higher MC tokens
       take: 5, // Sync 5 tokens per cycle to avoid rate limits
     });
 
-    if (unsyncedTokens.length === 0) {
-      return 0;
-    }
-
-    console.log(`[PulseSync] Syncing swaps for ${unsyncedTokens.length} tokens...`);
-
-    let synced = 0;
-    for (const token of unsyncedTokens) {
-      try {
-        const result = await swapSyncService.syncHistoricalSwaps(token.address);
-        if (result.synced) {
-          synced++;
-          console.log(`[PulseSync] Synced ${result.count} swaps for ${token.symbol}`);
+    let initialSynced = 0;
+    if (unsyncedTokens.length > 0) {
+      console.log(`[PulseSync] Initial sync for ${unsyncedTokens.length} unsynced tokens...`);
+      for (const token of unsyncedTokens) {
+        try {
+          const result = await swapSyncService.syncHistoricalSwaps(token.address);
+          if (result.synced) {
+            initialSynced++;
+            console.log(`[PulseSync] Initial sync: ${result.count} swaps for ${token.symbol}`);
+          }
+        } catch (err) {
+          console.error(`[PulseSync] Failed initial sync for ${token.symbol}:`, err);
         }
-      } catch (err) {
-        console.error(`[PulseSync] Failed to sync swaps for ${token.symbol}:`, err);
       }
     }
 
-    return synced;
+    // 2. Incremental sync: Fetch new swaps for already-synced Pulse tokens
+    // Get all pulse tokens that ARE already synced (to get latest swaps)
+    const syncedPulseTokens = await prisma.pulseToken.findMany({
+      where: {
+        address: { in: Array.from(syncedAddresses) },
+      },
+      orderBy: { marketCap: "desc" },
+      take: 20, // Update top 20 tokens per cycle
+    });
+
+    let incrementalSynced = 0;
+    if (syncedPulseTokens.length > 0) {
+      for (const token of syncedPulseTokens) {
+        try {
+          const count = await swapSyncService.syncNewSwaps(token.address);
+          if (count > 0) {
+            incrementalSynced += count;
+          }
+        } catch (err) {
+          // Silently ignore incremental sync errors
+        }
+      }
+      if (incrementalSynced > 0) {
+        console.log(`[PulseSync] Incremental sync: ${incrementalSynced} new swaps across ${syncedPulseTokens.length} tokens`);
+      }
+    }
+
+    return { initial: initialSynced, incremental: incrementalSynced };
   } catch (err) {
     console.error("[PulseSync] Swap sync error:", err);
+    return { initial: 0, incremental: 0 };
+  }
+}
+
+// Clean up swaps for tokens no longer on Pulse (data retention)
+// This runs periodically to free up storage
+let lastSwapCleanup = 0;
+const SWAP_CLEANUP_INTERVAL = 5 * 60 * 1000; // Every 5 minutes
+
+async function cleanupOrphanedSwaps(): Promise<number> {
+  // Only run every 5 minutes to avoid excessive DB queries
+  if (Date.now() - lastSwapCleanup < SWAP_CLEANUP_INTERVAL) {
+    return 0;
+  }
+  lastSwapCleanup = Date.now();
+
+  try {
+    // Get all current pulse token addresses
+    const pulseTokens = await prisma.pulseToken.findMany({
+      select: { address: true },
+    });
+    const pulseAddresses = new Set(pulseTokens.map(t => t.address));
+
+    // Get all token addresses that have synced swaps
+    const syncedTokens = await prisma.tokenSyncStatus.findMany({
+      where: { swapsSynced: true },
+      select: { tokenAddress: true },
+    });
+
+    // Find tokens that have swaps but are no longer on Pulse
+    const orphanedAddresses = syncedTokens
+      .map(s => s.tokenAddress)
+      .filter(addr => !pulseAddresses.has(addr));
+
+    if (orphanedAddresses.length === 0) {
+      return 0;
+    }
+
+    console.log(`[PulseSync] Found ${orphanedAddresses.length} orphaned tokens, cleaning up swaps...`);
+
+    // Delete swaps for orphaned tokens (batch to avoid timeout)
+    let totalDeleted = 0;
+    for (const address of orphanedAddresses.slice(0, 10)) { // Clean max 10 per cycle
+      try {
+        const deleted = await prisma.tokenSwap.deleteMany({
+          where: { tokenAddress: address },
+        });
+        totalDeleted += deleted.count;
+
+        // Also delete the sync status
+        await prisma.tokenSyncStatus.delete({
+          where: { tokenAddress: address },
+        }).catch(() => {}); // Ignore if not exists
+
+        console.log(`[PulseSync] Deleted ${deleted.count} swaps for orphaned token ${address.slice(0, 8)}...`);
+      } catch (err) {
+        console.error(`[PulseSync] Failed to clean swaps for ${address.slice(0, 8)}...:`, err);
+      }
+    }
+
+    if (totalDeleted > 0) {
+      console.log(`[PulseSync] Cleaned up ${totalDeleted} orphaned swaps`);
+    }
+
+    return totalDeleted;
+  } catch (err) {
+    console.error("[PulseSync] Orphan cleanup error:", err);
     return 0;
   }
 }
@@ -399,11 +492,13 @@ export async function syncPulseTokens(): Promise<{
   graduating: number;
   graduated: number;
   cleaned: number;
-  swapsSynced: number;
+  swapsInitial: number;
+  swapsIncremental: number;
+  swapsOrphaned: number;
 }> {
   if (isSyncing) {
     console.log("[PulseSync] Already syncing, skipping...");
-    return { new: 0, graduating: 0, graduated: 0, cleaned: 0, swapsSynced: 0 };
+    return { new: 0, graduating: 0, graduated: 0, cleaned: 0, swapsInitial: 0, swapsIncremental: 0, swapsOrphaned: 0 };
   }
 
   isSyncing = true;
@@ -418,19 +513,24 @@ export async function syncPulseTokens(): Promise<{
       cleanupStaleTokens(),
     ]);
 
-    // Then sync swaps for unsynced tokens (after token list is updated)
-    const swapsSynced = await syncTokenSwaps();
+    // Then sync swaps for tokens (initial + incremental)
+    const { initial: swapsInitial, incremental: swapsIncremental } = await syncTokenSwaps();
+
+    // Clean up orphaned swaps (for tokens no longer on Pulse)
+    const swapsOrphaned = await cleanupOrphanedSwaps();
 
     lastSyncTime = Date.now();
     const duration = lastSyncTime - startTime;
-    console.log(`[PulseSync] Completed in ${duration}ms - New: ${newCount}, Graduating: ${graduatingCount}, Graduated: ${graduatedCount}, Cleaned: ${cleanedCount}, SwapsSynced: ${swapsSynced}`);
+    console.log(`[PulseSync] Completed in ${duration}ms - New: ${newCount}, Graduating: ${graduatingCount}, Graduated: ${graduatedCount}, Cleaned: ${cleanedCount}, SwapsInit: ${swapsInitial}, SwapsIncr: ${swapsIncremental}, SwapsOrphan: ${swapsOrphaned}`);
 
     return {
       new: newCount,
       graduating: graduatingCount,
       graduated: graduatedCount,
       cleaned: cleanedCount,
-      swapsSynced,
+      swapsInitial,
+      swapsIncremental,
+      swapsOrphaned,
     };
   } catch (err) {
     console.error("[PulseSync] Sync error:", err);
