@@ -90,18 +90,24 @@ export function SwapWidget({
   const inputSymbol = isBuy ? "SOL" : outputSymbol;
   const inputDecimals = isBuy ? 9 : outputDecimals;
 
+  // Track if user has no wallet (400 response) - don't keep polling
+  const [noWallet, setNoWallet] = useState(false);
+
   const fetchBalance = useCallback(async () => {
-    if (status !== "authenticated") return;
+    if (status !== "authenticated" || noWallet) return;
     try {
       const res = await fetch("/api/trading/balance");
       if (res.ok) {
         const data = await res.json();
         setBalance(data);
+      } else if (res.status === 400) {
+        // User doesn't have a wallet yet - stop polling
+        setNoWallet(true);
       }
     } catch (err) {
       console.error("Failed to fetch balance:", err);
     }
-  }, [status]);
+  }, [status, noWallet]);
 
   const fetchTokenStats = useCallback(async () => {
     if (status !== "authenticated" || !defaultOutputMint) return;
