@@ -425,9 +425,6 @@ class PumpPortalService extends EventEmitter {
       }
     }
 
-    // pump.fun tokens have a fixed supply of 1 billion tokens
-    const totalSupply = 1_000_000_000;
-
     // Calculate market cap from PumpPortal's marketCapSol field
     // This is the accurate market cap provided by PumpPortal
     const marketCapSol = token.marketCapSol || 0;
@@ -440,8 +437,11 @@ class PumpPortalService extends EventEmitter {
       marketCapUsd = estimatedMarketCapSol * solPrice;
     }
 
-    // Price = Market Cap / Total Supply
-    const price = marketCapUsd / totalSupply;
+    // Price estimation: Use vTokensInBondingCurve if available, otherwise estimate
+    // Bonding curve starts with ~1B tokens, price = marketCap / tokensInCurve
+    // Note: This is an estimate for display; actual trade prices use trade amounts
+    const vTokens = (token as any).vTokensInBondingCurve || 1_000_000_000;
+    const price = marketCapUsd / vTokens;
 
     // Calculate liquidity from bonding curve SOL amount
     const liquiditySol = token.vSolInBondingCurve || 0;
@@ -595,20 +595,19 @@ class PumpPortalService extends EventEmitter {
     // Get real SOL price from Jupiter API
     const solPrice = solPriceService.getPriceSync();
 
-    // pump.fun tokens have a fixed supply of 1 billion tokens
-    const totalSupply = 1_000_000_000;
-
-    // Calculate market cap from PumpPortal's marketCapSol field
-    // This is the accurate market cap provided by PumpPortal for each trade
-    const marketCapSol = trade.marketCapSol || trade.vSolInBondingCurve || 0;
-    const marketCapUsd = marketCapSol * solPrice;
-
-    // Price = Market Cap / Total Supply
-    const priceUsd = marketCapUsd / totalSupply;
+    const solAmount = trade.solAmount || 0;
+    const tokenAmount = trade.tokenAmount || 0;
 
     // Volume in USD for this trade
-    const volumeUsd = (trade.solAmount || 0) * solPrice;
-    const tokenAmount = trade.tokenAmount || 0;
+    const volumeUsd = solAmount * solPrice;
+
+    // Calculate price directly from trade amounts (most accurate)
+    // Price = (SOL paid * SOL price) / tokens received
+    // This works regardless of token supply
+    let priceUsd = 0;
+    if (tokenAmount > 0 && solAmount > 0) {
+      priceUsd = (solAmount * solPrice) / tokenAmount;
+    }
 
     // Keep timestamp in milliseconds for consistency
     const timestamp = trade.timestamp || Date.now();
