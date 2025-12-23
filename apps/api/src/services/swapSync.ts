@@ -264,13 +264,34 @@ class SwapSyncService {
     }
 
     // Per-trade mode: one candle per swap
+    // IMPORTANT: Filter outlier trades to prevent extreme chart stretching
     if (perTrade) {
+      // First pass: collect all valid prices to calculate median
+      const validPrices = swaps
+        .map(s => s.priceUsd)
+        .filter(p => p > 0 && isFinite(p));
+
+      if (validPrices.length === 0) return [];
+
+      // Calculate median price for outlier detection
+      validPrices.sort((a, b) => a - b);
+      const medianPrice = validPrices[Math.floor(validPrices.length / 2)];
+
+      // Filter out trades with prices more than 10x away from median
+      // These are likely bad data from manipulation or API errors
+      const priceThreshold = 10;
+
       let prevPrice = 0;
       const candles: OHLCV[] = [];
 
       for (const swap of swaps) {
         const price = swap.priceUsd;
         if (price <= 0) continue;
+
+        // Skip outlier prices (more than 10x from median)
+        if (price < medianPrice / priceThreshold || price > medianPrice * priceThreshold) {
+          continue;
+        }
 
         const open = prevPrice > 0 ? prevPrice : price;
         const close = price;
