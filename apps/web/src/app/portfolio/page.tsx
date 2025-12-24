@@ -1206,43 +1206,37 @@ export default function PortfolioPage() {
                           const video = videoRef.current;
                           const videoDuration = video.duration;
 
-                          // Clone the video element to avoid AudioContext issues
-                          const videoClone = document.createElement('video');
-                          videoClone.src = video.src;
-                          videoClone.crossOrigin = 'anonymous';
-                          videoClone.muted = false;
-
-                          // Wait for clone to load
-                          await new Promise<void>((resolve) => {
-                            videoClone.onloadeddata = () => resolve();
-                            videoClone.load();
-                          });
-
-                          videoClone.currentTime = 0;
-                          await videoClone.play();
+                          // Reset video to start
+                          video.currentTime = 0;
+                          video.muted = false;
+                          await video.play();
 
                           const canvas = document.createElement('canvas');
                           canvas.width = 720;
                           canvas.height = 480;
                           const ctx = canvas.getContext('2d')!;
-                          ctx.drawImage(videoClone, 0, 0, 720, 480);
+                          ctx.drawImage(video, 0, 0, 720, 480);
 
-                          // Create audio context and capture audio from cloned video
-                          const audioCtx = new AudioContext();
-                          const source = audioCtx.createMediaElementSource(videoClone);
-                          const audioDest = audioCtx.createMediaStreamDestination();
-                          source.connect(audioDest);
-                          source.connect(audioCtx.destination); // Play audio
-
-                          // Combine canvas video with audio
                           const canvasStream = canvas.captureStream(30);
-                          const combinedStream = new MediaStream([
-                            ...canvasStream.getVideoTracks(),
-                            ...audioDest.stream.getAudioTracks()
-                          ]);
+
+                          // Try to get audio - use captureStream on video if available
+                          let combinedStream: MediaStream;
+                          try {
+                            const videoStream = (video as any).captureStream ? (video as any).captureStream() : null;
+                            if (videoStream && videoStream.getAudioTracks().length > 0) {
+                              combinedStream = new MediaStream([
+                                ...canvasStream.getVideoTracks(),
+                                ...videoStream.getAudioTracks()
+                              ]);
+                            } else {
+                              combinedStream = canvasStream;
+                            }
+                          } catch {
+                            combinedStream = canvasStream;
+                          }
 
                           const recorder = new MediaRecorder(combinedStream, {
-                            mimeType: 'video/webm;codecs=vp8,opus',
+                            mimeType: 'video/webm',
                             videoBitsPerSecond: 2500000
                           });
                           const chunks: Blob[] = [];
@@ -1253,11 +1247,11 @@ export default function PortfolioPage() {
 
                           let animId: number;
                           const render = () => {
-                            if (videoClone.paused || videoClone.ended) {
+                            if (video.paused || video.ended) {
                               if (recorder.state === 'recording') recorder.stop();
                               return;
                             }
-                            ctx.drawImage(videoClone, 0, 0, 720, 480);
+                            ctx.drawImage(video, 0, 0, 720, 480);
                             ctx.fillStyle = 'rgba(0,0,0,0.3)';
                             ctx.fillRect(0, 0, 720, 480);
                             ctx.font = 'bold 24px Arial';
@@ -1292,9 +1286,7 @@ export default function PortfolioPage() {
 
                           recorder.onstop = () => {
                             cancelAnimationFrame(animId);
-                            audioCtx.close();
-                            videoClone.pause();
-                            videoClone.remove();
+                            video.pause();
                             const blob = new Blob(chunks, { type: 'video/webm' });
                             if (blob.size < 1000) {
                               showToast('Recording failed - try again', 'error');
@@ -1308,8 +1300,7 @@ export default function PortfolioPage() {
                             setIsGeneratingCard(false);
                           };
 
-                          // Listen for video end to stop recording
-                          videoClone.onended = () => {
+                          video.onended = () => {
                             if (recorder.state === 'recording') recorder.stop();
                           };
 
