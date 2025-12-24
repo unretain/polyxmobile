@@ -1291,9 +1291,9 @@ export default function PortfolioPage() {
 
                           mediaRecorder.onstop = async () => {
                             cancelAnimationFrame(animationId);
-                            const blob = new Blob(chunks, { type: 'video/webm' });
+                            const webmBlob = new Blob(chunks, { type: 'video/webm' });
 
-                            if (blob.size < 1000) {
+                            if (webmBlob.size < 1000) {
                               showToast('Recording failed', 'error');
                               setIsGeneratingCard(false);
                               video.pause();
@@ -1301,15 +1301,40 @@ export default function PortfolioPage() {
                               return;
                             }
 
-                            // Download
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = `polyx-pnl-${Date.now()}.webm`;
-                            a.click();
-                            URL.revokeObjectURL(url);
+                            // Convert to MP4 on server for Discord compatibility
+                            showToast('Converting to MP4...', 'info');
+                            try {
+                              const formData = new FormData();
+                              formData.append('video', webmBlob, 'video.webm');
 
-                            showToast('Video downloaded!', 'success');
+                              const res = await fetch('/api/convert-video', {
+                                method: 'POST',
+                                body: formData,
+                              });
+
+                              if (res.ok) {
+                                const mp4Blob = await res.blob();
+                                const url = URL.createObjectURL(mp4Blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `polyx-pnl-${Date.now()}.mp4`;
+                                a.click();
+                                URL.revokeObjectURL(url);
+                                showToast('Video downloaded as MP4!', 'success');
+                              } else {
+                                throw new Error('Conversion failed');
+                              }
+                            } catch {
+                              // Fallback to WebM if conversion fails
+                              const url = URL.createObjectURL(webmBlob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = `polyx-pnl-${Date.now()}.webm`;
+                              a.click();
+                              URL.revokeObjectURL(url);
+                              showToast('Downloaded as WebM (MP4 conversion failed)', 'info');
+                            }
+
                             setIsGeneratingCard(false);
                             video.pause();
                             audioCtx.close();
