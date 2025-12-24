@@ -440,7 +440,7 @@ export function LandingPage() {
                   <div className="space-y-3">
                     {/* Polyx Twitter */}
                     <a
-                      href="https://x.com/polyx"
+                      href="https://x.com/tradeonpolyx"
                       target="_blank"
                       rel="noopener noreferrer"
                       className={`flex items-center gap-3 p-3 rounded-xl transition-colors ${isDark ? 'hover:bg-white/5' : 'hover:bg-black/5'}`}

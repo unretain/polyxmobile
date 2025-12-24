@@ -1208,46 +1208,54 @@ export default function PortfolioPage() {
                         setIsGeneratingCard(true);
                         try {
                           const video = videoRef.current;
-                          console.log('EXPORT: video src=' + video.src.slice(0,30) + ' w=' + video.videoWidth + ' h=' + video.videoHeight + ' ready=' + video.readyState + ' paused=' + video.paused + ' duration=' + video.duration);
+                          console.log('EXPORT: start');
 
-                          if (video.paused) await video.play();
-                          console.log('EXPORT: video playing');
+                          // Reset video to start and wait for frame to be ready
+                          video.currentTime = 0;
+                          video.muted = false;
+
+                          // Wait for seek to complete
+                          await new Promise<void>((resolve) => {
+                            const onSeeked = () => {
+                              video.removeEventListener('seeked', onSeeked);
+                              resolve();
+                            };
+                            video.addEventListener('seeked', onSeeked);
+                          });
+
+                          await video.play();
+
+                          // Wait for actual frame data - check canvas pixel
+                          const testCanvas = document.createElement('canvas');
+                          testCanvas.width = 16;
+                          testCanvas.height = 16;
+                          const testCtx = testCanvas.getContext('2d')!;
+
+                          await new Promise<void>((resolve) => {
+                            let attempts = 0;
+                            const checkFrame = () => {
+                              testCtx.drawImage(video, 0, 0, 16, 16);
+                              const px = testCtx.getImageData(8, 8, 1, 1).data;
+                              // Check if we have any non-black pixel
+                              if (px[0] + px[1] + px[2] > 10 || attempts > 60) {
+                                console.log('EXPORT: frame ready after ' + attempts + ' attempts, pixel=' + px[0] + ',' + px[1] + ',' + px[2]);
+                                resolve();
+                              } else {
+                                attempts++;
+                                requestAnimationFrame(checkFrame);
+                              }
+                            };
+                            checkFrame();
+                          });
+                          console.log('EXPORT: video ready w=' + video.videoWidth + ' h=' + video.videoHeight);
 
                           const canvas = document.createElement('canvas');
                           canvas.width = 720;
                           canvas.height = 480;
-                          const ctx = canvas.getContext('2d');
+                          const ctx = canvas.getContext('2d', { alpha: false });
                           if (!ctx) { console.log('EXPORT: NO CTX'); return; }
-                          console.log('EXPORT: canvas created');
 
-                          // Test draw
-                          ctx.drawImage(video, 0, 0, 720, 480);
-                          const p = ctx.getImageData(360, 240, 1, 1).data;
-                          console.log('EXPORT: test pixel r=' + p[0] + ' g=' + p[1] + ' b=' + p[2]);
-
-                          const canvasStream = canvas.captureStream(30);
-                          console.log('EXPORT: canvasStream tracks=' + canvasStream.getTracks().length);
-
-                          let stream: MediaStream = canvasStream;
-                          try {
-                            const vidStream = (video as any).captureStream?.();
-                            if (vidStream?.getAudioTracks()?.length) {
-                              stream = new MediaStream([...canvasStream.getVideoTracks(), ...vidStream.getAudioTracks()]);
-                              console.log('EXPORT: added audio tracks');
-                            }
-                          } catch (e) { console.log('EXPORT: audio error ' + e); }
-
-                          const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-                          console.log('EXPORT: recorder created state=' + recorder.state);
-
-                          const chunks: Blob[] = [];
-                          recorder.ondataavailable = (e) => {
-                            console.log('EXPORT: chunk size=' + e.data.size);
-                            if (e.data.size > 0) chunks.push(e.data);
-                          };
-                          recorder.onerror = (e) => console.log('EXPORT: recorder error ' + e);
-
-                          // Overlay text values
+                          // Overlay text values (pre-compute)
                           const pad = 32;
                           const periodLabel = selectedDayForShare
                             ? new Date(selectedDayForShare.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
@@ -1268,17 +1276,11 @@ export default function PortfolioPage() {
                             : `${trades} trades • ${winRate}% win rate`;
                           const dateStr = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
-                          let intervalId: ReturnType<typeof setInterval>;
-
+                          // Draw first frame immediately
                           const drawFrame = () => {
-                            // Draw video
                             ctx.drawImage(video, 0, 0, 720, 480);
-
-                            // Overlay
                             ctx.fillStyle = 'rgba(0,0,0,0.30)';
                             ctx.fillRect(0, 0, 720, 480);
-
-                            // Logo
                             ctx.font = 'bold 32px Arial';
                             ctx.textAlign = 'left';
                             ctx.textBaseline = 'top';
@@ -1288,8 +1290,6 @@ export default function PortfolioPage() {
                             ctx.fillText('x', pad + ctx.measureText('[poly').width, pad);
                             ctx.fillStyle = 'white';
                             ctx.fillText(']', pad + ctx.measureText('[polyx').width, pad);
-
-                            // Center text
                             ctx.textAlign = 'center';
                             ctx.textBaseline = 'middle';
                             ctx.font = '18px Arial';
@@ -1301,43 +1301,78 @@ export default function PortfolioPage() {
                             ctx.font = '18px Arial';
                             ctx.fillStyle = 'rgba(255,255,255,0.6)';
                             ctx.fillText(statsText, 360, 310);
-
-                            // Footer
                             ctx.textBaseline = 'bottom';
                             ctx.textAlign = 'left';
                             ctx.fillText(dateStr, pad, 480 - pad);
                             ctx.textAlign = 'right';
                             ctx.fillText('polyx.trade', 720 - pad, 480 - pad);
                           };
+                          drawFrame();
+
+                          // Test that we have actual video content
+                          const testPx = ctx.getImageData(360, 240, 1, 1).data;
+                          console.log('EXPORT: first frame pixel r=' + testPx[0] + ' g=' + testPx[1] + ' b=' + testPx[2]);
+
+                          // Setup streams
+                          const canvasStream = canvas.captureStream(30);
+                          let stream: MediaStream = canvasStream;
+                          try {
+                            const vidStream = (video as any).captureStream?.();
+                            if (vidStream?.getAudioTracks()?.length) {
+                              stream = new MediaStream([...canvasStream.getVideoTracks(), ...vidStream.getAudioTracks()]);
+                              console.log('EXPORT: audio added');
+                            }
+                          } catch (e) { /* no audio */ }
+
+                          const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus' });
+                          const chunks: Blob[] = [];
+                          const startTime = Date.now();
+
+                          recorder.ondataavailable = (e) => {
+                            if (e.data.size > 0) chunks.push(e.data);
+                          };
+
+                          let frameInterval: ReturnType<typeof setInterval>;
 
                           recorder.onstart = () => {
-                            console.log('EXPORT: recording started');
-                            intervalId = setInterval(drawFrame, 33);
+                            console.log('EXPORT: recording');
+                            drawFrame(); // Draw first frame immediately when recording starts
+                            frameInterval = setInterval(drawFrame, 33);
                           };
-                          recorder.onstop = () => {
-                            console.log('EXPORT: recording stopped chunks=' + chunks.length);
-                            clearInterval(intervalId);
-                            const blob = new Blob(chunks, { type: 'video/webm' });
-                            console.log('EXPORT: blob size=' + blob.size);
-                            if (blob.size > 1000) {
+
+                          recorder.onstop = async () => {
+                            clearInterval(frameInterval);
+                            const duration = Date.now() - startTime;
+                            console.log('EXPORT: stopped duration=' + duration + 'ms chunks=' + chunks.length);
+
+                            const rawBlob = new Blob(chunks, { type: 'video/webm' });
+                            console.log('EXPORT: raw blob size=' + rawBlob.size);
+
+                            // Fix duration metadata
+                            const fixedBlob = await fixWebmDuration(rawBlob, duration);
+                            console.log('EXPORT: fixed blob size=' + fixedBlob.size);
+
+                            if (fixedBlob.size > 1000) {
                               const a = document.createElement('a');
-                              a.href = URL.createObjectURL(blob);
+                              a.href = URL.createObjectURL(fixedBlob);
                               a.download = `polyx-pnl-${Date.now()}.webm`;
                               a.click();
                               showToast('Video downloaded!', 'success');
                             } else {
-                              showToast('Recording failed - blob too small', 'error');
+                              showToast('Recording failed', 'error');
                             }
                             setIsGeneratingCard(false);
                           };
 
-                          const videoDuration = video.duration || 10;
-                          console.log('EXPORT: starting recorder, duration=' + videoDuration);
+                          const videoDuration = Math.min(video.duration * 1000, 60000) || 10000;
+                          console.log('EXPORT: will record for ' + videoDuration + 'ms');
                           recorder.start();
+
                           setTimeout(() => {
-                            console.log('EXPORT: timeout fired, stopping');
-                            if (recorder.state === 'recording') recorder.stop();
-                          }, Math.min(videoDuration * 1000, 60000));
+                            if (recorder.state === 'recording') {
+                              recorder.stop();
+                            }
+                          }, videoDuration);
 
                         } catch (err) {
                           console.error('Recording failed:', err);
