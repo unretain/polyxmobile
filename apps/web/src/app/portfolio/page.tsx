@@ -1237,7 +1237,10 @@ export default function PortfolioPage() {
                             : 'video/webm;codecs=vp9,opus';
                           const isMP4 = false; // Always WebM for now
 
-                          const mediaRecorder = new MediaRecorder(canvasStream, { mimeType });
+                          const mediaRecorder = new MediaRecorder(canvasStream, {
+                            mimeType,
+                            videoBitsPerSecond: 2500000, // 2.5 Mbps for good quality under Discord limits
+                          });
 
                           const chunks: Blob[] = [];
                           let recordStartTime = 0;
@@ -1322,7 +1325,7 @@ export default function PortfolioPage() {
 
                           // Record for 5 seconds or video duration
                           const duration = Math.min(video.duration * 1000, 5000);
-                          mediaRecorder.start();
+                          mediaRecorder.start(100); // Request data every 100ms for proper chunking
 
                           setTimeout(() => {
                             mediaRecorder.stop();
