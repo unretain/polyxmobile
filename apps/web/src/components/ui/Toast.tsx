@@ -34,9 +34,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       const newToasts = [...prev, { id, message, type }];
 
       // Dynamic dismiss time based on toast count
-      // 1 toast = 3s, 2 = 2s, 3 = 1.5s, 4+ = 1s
+      // 1 toast = 3s, 2 = 2s, 3 = 1s, 4+ = 0.1s
       const count = newToasts.length;
-      const dismissTime = count <= 1 ? 3000 : count === 2 ? 2000 : count === 3 ? 1500 : 1000;
+      const dismissTime = count <= 1 ? 3000 : count === 2 ? 2000 : count === 3 ? 1000 : 100;
 
       setTimeout(() => {
         setToasts((current) => current.filter((t) => t.id !== id));
