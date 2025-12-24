@@ -1206,15 +1206,28 @@ export default function PortfolioPage() {
                           const video = videoRef.current;
                           const videoDuration = video.duration;
 
-                          // Reset video to start
+                          // Reset video to start and wait for it to be ready
                           video.currentTime = 0;
                           video.muted = false;
+
+                          // Wait for video to have data
+                          if (video.readyState < 2) {
+                            await new Promise<void>((resolve) => {
+                              video.oncanplay = () => resolve();
+                            });
+                          }
+
                           await video.play();
+
+                          // Wait for first frame to render
+                          await new Promise(r => setTimeout(r, 100));
 
                           const canvas = document.createElement('canvas');
                           canvas.width = 720;
                           canvas.height = 480;
                           const ctx = canvas.getContext('2d')!;
+
+                          // Test draw to verify video is ready
                           ctx.drawImage(video, 0, 0, 720, 480);
 
                           const canvasStream = canvas.captureStream(30);
