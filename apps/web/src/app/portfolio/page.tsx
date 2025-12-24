@@ -1204,23 +1204,57 @@ export default function PortfolioPage() {
                         setIsGeneratingCard(true);
                         try {
                           const video = videoRef.current;
+
+                          // Reset and wait for video to be ready
                           video.currentTime = 0;
+                          video.muted = true; // Mute to allow autoplay
+
+                          // Wait for video to be ready to play
+                          await new Promise<void>((resolve, reject) => {
+                            const onCanPlay = () => {
+                              video.removeEventListener('canplay', onCanPlay);
+                              resolve();
+                            };
+                            const onError = () => {
+                              video.removeEventListener('error', onError);
+                              reject(new Error('Video failed to load'));
+                            };
+                            if (video.readyState >= 3) {
+                              resolve();
+                            } else {
+                              video.addEventListener('canplay', onCanPlay);
+                              video.addEventListener('error', onError);
+                            }
+                          });
+
                           await video.play();
+
+                          // Wait a frame to ensure video is actually playing
+                          await new Promise(r => requestAnimationFrame(r));
 
                           const canvas = document.createElement('canvas');
                           canvas.width = 720;
                           canvas.height = 480;
                           const ctx = canvas.getContext('2d')!;
+
+                          // Draw first frame to canvas before starting stream
+                          ctx.drawImage(video, 0, 0, 720, 480);
+
                           const stream = canvas.captureStream(30);
                           const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
                           const chunks: Blob[] = [];
 
                           recorder.ondataavailable = (e) => {
+                            console.log('Got data chunk:', e.data.size);
                             if (e.data.size > 0) chunks.push(e.data);
                           };
 
+                          let animId: number;
                           const render = () => {
-                            if (video.paused || video.ended) return;
+                            if (video.paused || video.ended) {
+                              recorder.stop();
+                              return;
+                            }
                             ctx.drawImage(video, 0, 0, 720, 480);
                             ctx.fillStyle = 'rgba(0,0,0,0.3)';
                             ctx.fillRect(0, 0, 720, 480);
@@ -1249,23 +1283,38 @@ export default function PortfolioPage() {
                             ctx.fillText(new Date().toLocaleDateString(), 20, 460);
                             ctx.textAlign = 'right';
                             ctx.fillText('polyx.trade', 700, 460);
-                            requestAnimationFrame(render);
+                            animId = requestAnimationFrame(render);
                           };
 
-                          recorder.onstart = () => render();
+                          recorder.onstart = () => {
+                            console.log('Recording started');
+                            render();
+                          };
+
                           recorder.onstop = () => {
+                            console.log('Recording stopped, chunks:', chunks.length);
+                            cancelAnimationFrame(animId);
                             const blob = new Blob(chunks, { type: 'video/webm' });
-                            const a = document.createElement('a');
-                            a.href = URL.createObjectURL(blob);
-                            a.download = `polyx-pnl-${Date.now()}.webm`;
-                            a.click();
-                            showToast('Video downloaded!', 'success');
+                            console.log('Blob size:', blob.size);
+                            if (blob.size < 1000) {
+                              showToast('Recording failed - try again', 'error');
+                            } else {
+                              const a = document.createElement('a');
+                              a.href = URL.createObjectURL(blob);
+                              a.download = `polyx-pnl-${Date.now()}.webm`;
+                              a.click();
+                              showToast('Video downloaded!', 'success');
+                            }
                             setIsGeneratingCard(false);
                             video.pause();
                           };
 
                           recorder.start();
-                          setTimeout(() => recorder.stop(), 5000);
+                          setTimeout(() => {
+                            if (recorder.state === 'recording') {
+                              recorder.stop();
+                            }
+                          }, 5000);
                         } catch (err) {
                           console.error('Recording failed:', err);
                           showToast('Recording failed', 'error');
