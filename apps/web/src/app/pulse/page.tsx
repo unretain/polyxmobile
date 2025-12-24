@@ -4,7 +4,7 @@ import { useEffect, useCallback, useRef, useState, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Activity, Zap, RefreshCw, Copy, Search } from "lucide-react";
+import { Activity, RefreshCw, Copy, Search } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import { formatNumber, formatPercent, shortenAddress, cn } from "@/lib/utils";
 import { usePulseStore, type PulseToken } from "@/stores/pulseStore";
@@ -113,12 +113,6 @@ function TokenRow({ token, showProgress = false, isDark }: TokenRowProps) {
           title="Copy address"
         >
           <Copy className="h-3.5 w-3.5" />
-        </button>
-        <button
-          className="p-1.5 bg-[#FF6B4A]/20 hover:bg-[#FF6B4A]/30 text-[#FF6B4A] transition-colors"
-          title="Quick buy"
-        >
-          <Zap className="h-3.5 w-3.5" />
         </button>
       </div>
     </Link>
@@ -521,12 +515,6 @@ export default function PulsePage() {
                           )}>
                             {formatPercent(token.priceChange24h)}
                           </div>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); }}
-                            className="p-2 bg-[#FF6B4A]/20 hover:bg-[#FF6B4A]/30 text-[#FF6B4A] transition-colors"
-                          >
-                            <Zap className="h-4 w-4" />
-                          </button>
                         </button>
                       ))}
                     </>
@@ -581,12 +569,6 @@ export default function PulsePage() {
                       )}>
                         {formatPercent(token.priceChange24h)}
                       </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); }}
-                        className="p-2 bg-[#FF6B4A]/20 hover:bg-[#FF6B4A]/30 text-[#FF6B4A] transition-colors"
-                      >
-                        <Zap className="h-4 w-4" />
-                      </button>
                     </button>
                   ))}
                 </div>
@@ -645,12 +627,6 @@ export default function PulsePage() {
                             )}>
                               {formatPercent(caSearchResult.priceChange24h)}
                             </div>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); }}
-                              className="p-2 bg-[#FF6B4A]/20 hover:bg-[#FF6B4A]/30 text-[#FF6B4A] transition-colors"
-                            >
-                              <Zap className="h-4 w-4" />
-                            </button>
                           </button>
                         </>
                       )}
