@@ -1251,34 +1251,66 @@ export default function PortfolioPage() {
                               if (recorder.state === 'recording') recorder.stop();
                               return;
                             }
+                            // Draw video frame
                             ctx.drawImage(video, 0, 0, 720, 480);
-                            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+
+                            // Dark overlay
+                            ctx.fillStyle = 'rgba(0,0,0,0.35)';
                             ctx.fillRect(0, 0, 720, 480);
-                            ctx.font = 'bold 24px Arial';
-                            ctx.fillStyle = 'white';
+
+                            // Logo - bigger
+                            ctx.font = 'bold 36px Arial';
                             ctx.textAlign = 'left';
-                            ctx.fillText('[poly', 20, 40);
-                            ctx.fillStyle = '#FF6B4A';
-                            ctx.fillText('x', 20 + ctx.measureText('[poly').width, 40);
                             ctx.fillStyle = 'white';
-                            ctx.fillText(']', 20 + ctx.measureText('[polyx').width, 40);
+                            const logoX = 30;
+                            const logoY = 50;
+                            ctx.fillText('[poly', logoX, logoY);
+                            ctx.fillStyle = '#FF6B4A';
+                            ctx.fillText('x', logoX + ctx.measureText('[poly').width, logoY);
+                            ctx.fillStyle = 'white';
+                            ctx.fillText(']', logoX + ctx.measureText('[polyx').width, logoY);
+
+                            // Period label
+                            const periodLabel = selectedDayForShare
+                              ? new Date(selectedDayForShare.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+                              : viewMode === "calendar"
+                                ? `${monthNames[calendarMonth - 1]} ${calendarYear}`
+                                : period === "all" ? "All Time" : `Last ${period.toUpperCase()}`;
+                            ctx.font = '18px Arial';
+                            ctx.fillStyle = 'rgba(255,255,255,0.8)';
+                            ctx.textAlign = 'center';
+                            ctx.fillText(`${periodLabel} PnL`, 360, 180);
+
+                            // PnL amount - big and centered
                             const pnl = selectedDayForShare?.pnl ?? pnlData?.summary.totalRealizedPnl ?? 0;
                             const isPos = pnl >= 0;
                             const solPrice = balance?.sol.priceUsd || 0;
                             const val = currencyMode === "usd" ? pnl * solPrice : pnl;
-                            const txt = currencyMode === "usd"
-                              ? `${isPos ? '+' : '-'}$${Math.abs(val).toFixed(2)}`
+                            const pnlText = currencyMode === "usd"
+                              ? `${isPos ? '+' : '-'}$${Math.abs(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                               : `${isPos ? '+' : '-'}${Math.abs(pnl).toFixed(4)} SOL`;
-                            ctx.font = 'bold 48px Arial';
+                            ctx.font = 'bold 64px Arial';
                             ctx.fillStyle = isPos ? '#4ade80' : '#f87171';
-                            ctx.textAlign = 'center';
-                            ctx.fillText(txt, 360, 256);
-                            ctx.font = '14px Arial';
+                            ctx.fillText(pnlText, 360, 260);
+
+                            // Stats line - trades and win rate
+                            const trades = selectedDayForShare?.trades ?? pnlData?.summary.totalTrades ?? 0;
+                            const winRate = ((pnlData?.summary.winRate || 0) * 100).toFixed(0);
+                            const statsText = selectedDayForShare
+                              ? `${trades} trade${trades !== 1 ? 's' : ''}`
+                              : `${trades} trades • ${winRate}% win rate`;
+                            ctx.font = '16px Arial';
+                            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+                            ctx.fillText(statsText, 360, 300);
+
+                            // Footer - date and site
+                            ctx.font = '16px Arial';
                             ctx.fillStyle = 'rgba(255,255,255,0.6)';
                             ctx.textAlign = 'left';
-                            ctx.fillText(new Date().toLocaleDateString(), 20, 460);
+                            ctx.fillText(new Date().toLocaleDateString(), 30, 455);
                             ctx.textAlign = 'right';
-                            ctx.fillText('polyx.trade', 700, 460);
+                            ctx.fillText('polyx.trade', 690, 455);
+
                             animId = requestAnimationFrame(render);
                           };
 
