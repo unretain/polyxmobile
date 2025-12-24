@@ -1245,6 +1245,12 @@ export default function PortfolioPage() {
                             if (e.data.size > 0) chunks.push(e.data);
                           };
 
+                          // Canvas is 720x480 (4:3 aspect ratio matching preview)
+                          // Preview card has p-6 (24px padding) - scale to canvas
+                          const pad = 32; // ~24px scaled up
+                          const centerX = 360;
+                          const centerY = 240;
+
                           let animId: number;
                           const render = () => {
                             if (video.paused || video.ended) {
@@ -1254,34 +1260,40 @@ export default function PortfolioPage() {
                             // Draw video frame
                             ctx.drawImage(video, 0, 0, 720, 480);
 
-                            // Dark overlay
-                            ctx.fillStyle = 'rgba(0,0,0,0.35)';
+                            // Dark overlay (bg-black/30)
+                            ctx.fillStyle = 'rgba(0,0,0,0.30)';
                             ctx.fillRect(0, 0, 720, 480);
 
-                            // Logo - bigger
-                            ctx.font = 'bold 36px Arial';
+                            // === TOP: Logo ===
+                            // text-2xl = 24px, font-bold
+                            ctx.font = 'bold 32px Arial, sans-serif';
                             ctx.textAlign = 'left';
+                            ctx.textBaseline = 'top';
                             ctx.fillStyle = 'white';
-                            const logoX = 30;
-                            const logoY = 50;
-                            ctx.fillText('[poly', logoX, logoY);
+                            const logoY = pad;
+                            ctx.fillText('[poly', pad, logoY);
+                            const polyWidth = ctx.measureText('[poly').width;
                             ctx.fillStyle = '#FF6B4A';
-                            ctx.fillText('x', logoX + ctx.measureText('[poly').width, logoY);
+                            ctx.fillText('x', pad + polyWidth, logoY);
+                            const xWidth = ctx.measureText('x').width;
                             ctx.fillStyle = 'white';
-                            ctx.fillText(']', logoX + ctx.measureText('[polyx').width, logoY);
+                            ctx.fillText(']', pad + polyWidth + xWidth, logoY);
 
-                            // Period label
+                            // === CENTER: PnL Display ===
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+
+                            // Period label (text-sm = 14px, opacity-80)
                             const periodLabel = selectedDayForShare
-                              ? new Date(selectedDayForShare.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+                              ? new Date(selectedDayForShare.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
                               : viewMode === "calendar"
                                 ? `${monthNames[calendarMonth - 1]} ${calendarYear}`
                                 : period === "all" ? "All Time" : `Last ${period.toUpperCase()}`;
-                            ctx.font = '18px Arial';
+                            ctx.font = '18px Arial, sans-serif';
                             ctx.fillStyle = 'rgba(255,255,255,0.8)';
-                            ctx.textAlign = 'center';
-                            ctx.fillText(`${periodLabel} PnL`, 360, 180);
+                            ctx.fillText(`${periodLabel} PnL`, centerX, centerY - 50);
 
-                            // PnL amount - big and centered
+                            // PnL amount (text-5xl = 48px, font-bold, green-400 #4ade80 / red-400 #f87171)
                             const pnl = selectedDayForShare?.pnl ?? pnlData?.summary.totalRealizedPnl ?? 0;
                             const isPos = pnl >= 0;
                             const solPrice = balance?.sol.priceUsd || 0;
@@ -1289,27 +1301,30 @@ export default function PortfolioPage() {
                             const pnlText = currencyMode === "usd"
                               ? `${isPos ? '+' : '-'}$${Math.abs(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                               : `${isPos ? '+' : '-'}${Math.abs(pnl).toFixed(4)} SOL`;
-                            ctx.font = 'bold 64px Arial';
+                            ctx.font = 'bold 56px Arial, sans-serif';
                             ctx.fillStyle = isPos ? '#4ade80' : '#f87171';
-                            ctx.fillText(pnlText, 360, 260);
+                            ctx.fillText(pnlText, centerX, centerY + 10);
 
-                            // Stats line - trades and win rate
+                            // Stats line (text-sm = 14px, opacity-60)
                             const trades = selectedDayForShare?.trades ?? pnlData?.summary.totalTrades ?? 0;
                             const winRate = ((pnlData?.summary.winRate || 0) * 100).toFixed(0);
                             const statsText = selectedDayForShare
-                              ? `${trades} trade${trades !== 1 ? 's' : ''}`
+                              ? `${trades} trade${trades !== 1 ? 's' : ''} • ${(selectedDayForShare.volume || 0).toFixed(4)} SOL volume`
                               : `${trades} trades • ${winRate}% win rate`;
-                            ctx.font = '16px Arial';
+                            ctx.font = '18px Arial, sans-serif';
                             ctx.fillStyle = 'rgba(255,255,255,0.6)';
-                            ctx.fillText(statsText, 360, 300);
+                            ctx.fillText(statsText, centerX, centerY + 60);
 
-                            // Footer - date and site
-                            ctx.font = '16px Arial';
+                            // === BOTTOM: Footer ===
+                            // text-sm = 14px, opacity-60, flex justify-between
+                            ctx.font = '18px Arial, sans-serif';
                             ctx.fillStyle = 'rgba(255,255,255,0.6)';
+                            ctx.textBaseline = 'bottom';
+                            const footerY = 480 - pad;
                             ctx.textAlign = 'left';
-                            ctx.fillText(new Date().toLocaleDateString(), 30, 455);
+                            ctx.fillText(new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }), pad, footerY);
                             ctx.textAlign = 'right';
-                            ctx.fillText('polyx.trade', 690, 455);
+                            ctx.fillText('polyx.trade', 720 - pad, footerY);
 
                             animId = requestAnimationFrame(render);
                           };
