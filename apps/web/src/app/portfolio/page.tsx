@@ -1302,7 +1302,7 @@ export default function PortfolioPage() {
                               await ffmpeg.exec(['-i', 'input.webm', '-c:v', 'libx264', '-c:a', 'aac', '-movflags', '+faststart', 'output.mp4']);
 
                               const data = await ffmpeg.readFile('output.mp4');
-                              const mp4Blob = new Blob([data], { type: 'video/mp4' });
+                              const mp4Blob = new Blob([data as Uint8Array], { type: 'video/mp4' });
 
                               const link = document.createElement('a');
                               link.download = `polyx-pnl-${new Date().toISOString().split('T')[0]}.mp4`;
