@@ -1236,10 +1236,21 @@ export default function PortfolioPage() {
 
                           console.log('Video ready:', video.videoWidth, 'x', video.videoHeight);
 
+                          // Create offscreen canvas to avoid WebGL conflicts
                           const canvas = document.createElement('canvas');
                           canvas.width = 720;
                           canvas.height = 480;
-                          const ctx = canvas.getContext('2d')!;
+                          const ctx = canvas.getContext('2d', { alpha: false })!;
+
+                          // Test draw immediately
+                          ctx.drawImage(video, 0, 0, 720, 480);
+                          const testPixel = ctx.getImageData(360, 240, 1, 1).data;
+                          console.log('Test pixel RGB:', testPixel[0], testPixel[1], testPixel[2]);
+
+                          // If test pixel is all black/grey, video draw failed
+                          if (testPixel[0] === 0 && testPixel[1] === 0 && testPixel[2] === 0) {
+                            console.error('Video draw returned black - possible taint or CORS issue');
+                          }
 
                           const canvasStream = canvas.captureStream(30);
 
