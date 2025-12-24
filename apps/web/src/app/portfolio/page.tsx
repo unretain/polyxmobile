@@ -1230,13 +1230,12 @@ export default function PortfolioPage() {
                             canvasStream.addTrack(audioTrack);
                           }
 
-                          // Try MP4 first (Safari), fall back to WebM (Chrome/Firefox)
-                          const mimeType = MediaRecorder.isTypeSupported('video/mp4;codecs=avc1,mp4a.40.2')
-                            ? 'video/mp4;codecs=avc1,mp4a.40.2'
-                            : MediaRecorder.isTypeSupported('video/mp4')
-                              ? 'video/mp4'
-                              : 'video/webm;codecs=vp9,opus';
-                          const isMP4 = mimeType.startsWith('video/mp4');
+                          // Use WebM with VP8 (best Discord compatibility)
+                          // VP8 has wider support than VP9 for embeds
+                          const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+                            ? 'video/webm;codecs=vp8,opus'
+                            : 'video/webm;codecs=vp9,opus';
+                          const isMP4 = false; // Always WebM for now
 
                           const mediaRecorder = new MediaRecorder(canvasStream, { mimeType });
 
