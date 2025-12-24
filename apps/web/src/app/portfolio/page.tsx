@@ -1244,7 +1244,11 @@ export default function PortfolioPage() {
 
                           const chunks: Blob[] = [];
                           let recordStartTime = 0;
-                          mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+                          mediaRecorder.ondataavailable = (e) => {
+                            if (e.data && e.data.size > 0) {
+                              chunks.push(e.data);
+                            }
+                          };
 
                           // Render loop - draw video and overlay text
                           const renderFrame = () => {
@@ -1299,24 +1303,36 @@ export default function PortfolioPage() {
 
                           mediaRecorder.onstop = async () => {
                             const recordDuration = Date.now() - recordStartTime;
-                            let videoBlob = new Blob(chunks, { type: isMP4 ? 'video/mp4' : 'video/webm' });
-                            const extension = isMP4 ? 'mp4' : 'webm';
+                            let videoBlob = new Blob(chunks, { type: 'video/webm' });
+
+                            console.log('Recording complete:', {
+                              chunks: chunks.length,
+                              totalSize: videoBlob.size,
+                              duration: recordDuration
+                            });
+
+                            if (videoBlob.size === 0) {
+                              showToast('Recording failed - no video data captured', 'error');
+                              setIsGeneratingCard(false);
+                              video.pause();
+                              audioCtx.close();
+                              return;
+                            }
 
                             // Fix WebM duration metadata (required for Discord/social media)
-                            if (!isMP4) {
-                              try {
-                                videoBlob = await fixWebmDuration(videoBlob, recordDuration);
-                              } catch (err) {
-                                console.warn('Failed to fix WebM duration:', err);
-                              }
+                            try {
+                              videoBlob = await fixWebmDuration(videoBlob, recordDuration);
+                            } catch (err) {
+                              console.warn('Failed to fix WebM duration:', err);
+                              // Continue with unfixed blob - still might work
                             }
 
                             // Download video
                             const link = document.createElement('a');
-                            link.download = `polyx-pnl-${new Date().toISOString().split('T')[0]}.${extension}`;
+                            link.download = `polyx-pnl-${new Date().toISOString().split('T')[0]}.webm`;
                             link.href = URL.createObjectURL(videoBlob);
                             link.click();
-                            showToast(`Video downloaded as ${extension.toUpperCase()}!`, 'success');
+                            showToast('Video downloaded!', 'success');
 
                             setIsGeneratingCard(false);
                             video.pause();
@@ -1325,7 +1341,7 @@ export default function PortfolioPage() {
 
                           // Record for 5 seconds or video duration
                           const duration = Math.min(video.duration * 1000, 5000);
-                          mediaRecorder.start(100); // Request data every 100ms for proper chunking
+                          mediaRecorder.start(); // No timeslice - get all data at once for proper WebM structure
 
                           setTimeout(() => {
                             mediaRecorder.stop();
