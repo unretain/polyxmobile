@@ -30,12 +30,20 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const showToast = useCallback((message: string, type: ToastType = "info") => {
     const id = Date.now();
-    setToasts((prev) => [...prev, { id, message, type }]);
+    setToasts((prev) => {
+      const newToasts = [...prev, { id, message, type }];
 
-    // Auto-dismiss after 3 seconds
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 3000);
+      // Dynamic dismiss time based on toast count
+      // 1 toast = 3s, 2 = 2s, 3 = 1.5s, 4+ = 1s
+      const count = newToasts.length;
+      const dismissTime = count <= 1 ? 3000 : count === 2 ? 2000 : count === 3 ? 1500 : 1000;
+
+      setTimeout(() => {
+        setToasts((current) => current.filter((t) => t.id !== id));
+      }, dismissTime);
+
+      return newToasts;
+    });
   }, []);
 
   const dismissToast = useCallback((id: number) => {
