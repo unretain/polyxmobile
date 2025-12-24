@@ -1284,21 +1284,11 @@ export default function PortfolioPage() {
                           const centerX = 360;
                           const centerY = 240;
 
-                          let animId: number;
+                          let intervalId: ReturnType<typeof setInterval>;
                           const render = () => {
-                            if (video.paused || video.ended) {
-                              if (recorder.state === 'recording') recorder.stop();
-                              return;
-                            }
+                            // Don't stop on pause/ended - video is looping on screen
                             // Draw video frame
-                            try {
-                              ctx.drawImage(video, 0, 0, 720, 480);
-                            } catch (e) {
-                              console.error('drawImage failed:', e);
-                              // Fill with dark grey as fallback
-                              ctx.fillStyle = '#1a1a1a';
-                              ctx.fillRect(0, 0, 720, 480);
-                            }
+                            ctx.drawImage(video, 0, 0, 720, 480);
 
                             // Dark overlay (bg-black/30)
                             ctx.fillStyle = 'rgba(0,0,0,0.30)';
@@ -1366,14 +1356,15 @@ export default function PortfolioPage() {
                             ctx.textAlign = 'right';
                             ctx.fillText('polyx.trade', 720 - pad, footerY);
 
-                            animId = requestAnimationFrame(render);
                           };
 
-                          recorder.onstart = () => render();
+                          // Use setInterval for consistent frame rate (30fps = 33ms)
+                          recorder.onstart = () => {
+                            intervalId = setInterval(render, 33);
+                          };
 
                           recorder.onstop = () => {
-                            cancelAnimationFrame(animId);
-                            video.pause();
+                            clearInterval(intervalId);
                             const blob = new Blob(chunks, { type: 'video/webm' });
                             if (blob.size < 1000) {
                               showToast('Recording failed - try again', 'error');
@@ -1387,17 +1378,13 @@ export default function PortfolioPage() {
                             setIsGeneratingCard(false);
                           };
 
-                          video.onended = () => {
-                            if (recorder.state === 'recording') recorder.stop();
-                          };
-
                           recorder.start();
 
-                          // Max 60 seconds, or full video duration
-                          const maxDuration = Math.min(videoDuration * 1000, 60000);
+                          // Record for video duration (max 60 sec)
+                          const recordDuration = Math.min(videoDuration * 1000, 60000);
                           setTimeout(() => {
                             if (recorder.state === 'recording') recorder.stop();
-                          }, maxDuration + 500);
+                          }, recordDuration);
 
                         } catch (err) {
                           console.error('Recording failed:', err);
