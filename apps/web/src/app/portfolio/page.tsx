@@ -1229,9 +1229,15 @@ export default function PortfolioPage() {
                             canvasStream.addTrack(audioTrack);
                           }
 
-                          const mediaRecorder = new MediaRecorder(canvasStream, {
-                            mimeType: 'video/webm;codecs=vp9,opus'
-                          });
+                          // Try MP4 first (Safari), fall back to WebM (Chrome/Firefox)
+                          const mimeType = MediaRecorder.isTypeSupported('video/mp4;codecs=avc1,mp4a.40.2')
+                            ? 'video/mp4;codecs=avc1,mp4a.40.2'
+                            : MediaRecorder.isTypeSupported('video/mp4')
+                              ? 'video/mp4'
+                              : 'video/webm;codecs=vp9,opus';
+                          const isMP4 = mimeType.startsWith('video/mp4');
+
+                          const mediaRecorder = new MediaRecorder(canvasStream, { mimeType });
 
                           const chunks: Blob[] = [];
                           mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
@@ -1287,39 +1293,15 @@ export default function PortfolioPage() {
                           };
 
                           mediaRecorder.onstop = async () => {
-                            const webmBlob = new Blob(chunks, { type: 'video/webm' });
+                            const videoBlob = new Blob(chunks, { type: isMP4 ? 'video/mp4' : 'video/webm' });
+                            const extension = isMP4 ? 'mp4' : 'webm';
 
-                            // Convert WebM to MP4 via server-side API
-                            try {
-                              showToast('Converting to MP4...', 'info');
-
-                              const formData = new FormData();
-                              formData.append('video', webmBlob, 'input.webm');
-
-                              const response = await fetch('/api/convert-video', {
-                                method: 'POST',
-                                body: formData,
-                              });
-
-                              if (!response.ok) {
-                                throw new Error('Conversion failed');
-                              }
-
-                              const mp4Blob = await response.blob();
-                              const link = document.createElement('a');
-                              link.download = `polyx-pnl-${new Date().toISOString().split('T')[0]}.mp4`;
-                              link.href = URL.createObjectURL(mp4Blob);
-                              link.click();
-                              showToast('Video downloaded!', 'success');
-                            } catch (convErr) {
-                              console.error('MP4 conversion failed, downloading as WebM:', convErr);
-                              // Fallback to WebM - works on most platforms
-                              const link = document.createElement('a');
-                              link.download = `polyx-pnl-${new Date().toISOString().split('T')[0]}.webm`;
-                              link.href = URL.createObjectURL(webmBlob);
-                              link.click();
-                              showToast('Downloaded as WebM', 'success');
-                            }
+                            // Download video
+                            const link = document.createElement('a');
+                            link.download = `polyx-pnl-${new Date().toISOString().split('T')[0]}.${extension}`;
+                            link.href = URL.createObjectURL(videoBlob);
+                            link.click();
+                            showToast(`Video downloaded as ${extension.toUpperCase()}!`, 'success');
 
                             setIsGeneratingCard(false);
                             video.pause();
