@@ -23,6 +23,7 @@ import {
   Video,
   Image as ImageIcon,
 } from "lucide-react";
+import fixWebmDuration from "fix-webm-duration";
 
 
 interface DailyPnL {
@@ -1240,6 +1241,7 @@ export default function PortfolioPage() {
                           const mediaRecorder = new MediaRecorder(canvasStream, { mimeType });
 
                           const chunks: Blob[] = [];
+                          let recordStartTime = 0;
                           mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
 
                           // Render loop - draw video and overlay text
@@ -1289,12 +1291,23 @@ export default function PortfolioPage() {
                           };
 
                           mediaRecorder.onstart = () => {
+                            recordStartTime = Date.now();
                             renderFrame();
                           };
 
                           mediaRecorder.onstop = async () => {
-                            const videoBlob = new Blob(chunks, { type: isMP4 ? 'video/mp4' : 'video/webm' });
+                            const recordDuration = Date.now() - recordStartTime;
+                            let videoBlob = new Blob(chunks, { type: isMP4 ? 'video/mp4' : 'video/webm' });
                             const extension = isMP4 ? 'mp4' : 'webm';
+
+                            // Fix WebM duration metadata (required for Discord/social media)
+                            if (!isMP4) {
+                              try {
+                                videoBlob = await fixWebmDuration(videoBlob, recordDuration);
+                              } catch (err) {
+                                console.warn('Failed to fix WebM duration:', err);
+                              }
+                            }
 
                             // Download video
                             const link = document.createElement('a');
