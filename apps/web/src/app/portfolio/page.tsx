@@ -20,6 +20,8 @@ import {
   Upload,
   Download,
   Copy,
+  Video,
+  Image as ImageIcon,
 } from "lucide-react";
 
 
@@ -121,8 +123,11 @@ export default function PortfolioPage() {
   // Share card state
   const [showShareModal, setShowShareModal] = useState(false);
   const [customBgImage, setCustomBgImage] = useState<string | null>(null);
+  const [customBgVideo, setCustomBgVideo] = useState<string | null>(null);
+  const [bgType, setBgType] = useState<"default" | "image" | "video">("default");
   const [isGeneratingCard, setIsGeneratingCard] = useState(false);
   const shareCardRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   // Selected day for share card (null = show period summary)
   const [selectedDayForShare, setSelectedDayForShare] = useState<DailyPnL | null>(null);
@@ -1047,11 +1052,24 @@ export default function PortfolioPage() {
                   ref={shareCardRef}
                   className="relative w-full aspect-[4/3] rounded-xl overflow-hidden"
                   style={{
-                    background: customBgImage
+                    background: bgType === "image" && customBgImage
                       ? `url(${customBgImage}) center/cover`
+                      : bgType === "video" ? '#000'
                       : 'linear-gradient(135deg, #FF6B4A 0%, #FF8F6B 50%, #FFB088 100%)'
                   }}
                 >
+                  {/* Video background */}
+                  {bgType === "video" && customBgVideo && (
+                    <video
+                      ref={videoRef}
+                      src={customBgVideo}
+                      autoPlay
+                      loop
+                      muted={false}
+                      playsInline
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
+                  )}
                   {/* Overlay for readability */}
                   <div className="absolute inset-0 bg-black/30" />
 
@@ -1113,105 +1131,276 @@ export default function PortfolioPage() {
 
               {/* Actions */}
               <div className={`p-4 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                {/* Background Type Selector */}
+                <div className="flex items-center gap-2 mb-3">
+                  <span className={`text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Background:</span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setBgType("default")}
+                      className={`px-3 py-1.5 text-xs transition-colors ${
+                        bgType === "default"
+                          ? 'bg-[#FF6B4A] text-white'
+                          : isDark ? 'bg-white/5 text-white/60 hover:bg-white/10' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                    >
+                      Default
+                    </button>
+                    <label className={`px-3 py-1.5 text-xs cursor-pointer transition-colors flex items-center gap-1.5 ${
+                      bgType === "image"
+                        ? 'bg-[#FF6B4A] text-white'
+                        : isDark ? 'bg-white/5 text-white/60 hover:bg-white/10' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}>
+                      <ImageIcon className="h-3 w-3" />
+                      Image
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (ev) => {
+                              setCustomBgImage(ev.target?.result as string);
+                              setBgType("image");
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                    <label className={`px-3 py-1.5 text-xs cursor-pointer transition-colors flex items-center gap-1.5 ${
+                      bgType === "video"
+                        ? 'bg-[#FF6B4A] text-white'
+                        : isDark ? 'bg-white/5 text-white/60 hover:bg-white/10' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}>
+                      <Video className="h-3 w-3" />
+                      Video
+                      <input
+                        type="file"
+                        accept="video/mp4,video/webm,video/mov"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const url = URL.createObjectURL(file);
+                            setCustomBgVideo(url);
+                            setBgType("video");
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+
                 <div className="flex items-center gap-3">
-                  {/* Custom Background Upload */}
-                  <label className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg cursor-pointer transition-colors ${
-                    isDark ? 'bg-white/5 hover:bg-white/10 border border-white/10 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-900'
-                  }`}>
-                    <Upload className="h-4 w-4" />
-                    <span className="text-sm">{customBgImage ? 'Change BG' : 'Custom BG'}</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onload = (ev) => {
-                            setCustomBgImage(ev.target?.result as string);
+
+                  {bgType === "video" ? (
+                    /* Video Export - Record video with sound */
+                    <button
+                      onClick={async () => {
+                        if (!shareCardRef.current || !videoRef.current) return;
+                        setIsGeneratingCard(true);
+                        try {
+                          const video = videoRef.current;
+                          video.currentTime = 0;
+                          video.muted = false;
+                          await video.play();
+
+                          // Create canvas for compositing
+                          const canvas = document.createElement('canvas');
+                          canvas.width = 800;
+                          canvas.height = 600;
+                          const ctx = canvas.getContext('2d')!;
+
+                          // Get audio from video
+                          const audioCtx = new AudioContext();
+                          const source = audioCtx.createMediaElementSource(video);
+                          const dest = audioCtx.createMediaStreamDestination();
+                          source.connect(dest);
+                          source.connect(audioCtx.destination);
+
+                          // Capture canvas stream
+                          const canvasStream = canvas.captureStream(30);
+
+                          // Add audio track to canvas stream
+                          const audioTrack = dest.stream.getAudioTracks()[0];
+                          if (audioTrack) {
+                            canvasStream.addTrack(audioTrack);
+                          }
+
+                          const mediaRecorder = new MediaRecorder(canvasStream, {
+                            mimeType: 'video/webm;codecs=vp9,opus'
+                          });
+
+                          const chunks: Blob[] = [];
+                          mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+
+                          // Render loop - draw video and overlay text
+                          const renderFrame = () => {
+                            if (video.paused || video.ended) return;
+
+                            // Draw video
+                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                            // Draw overlay
+                            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                            // Draw logo
+                            ctx.font = 'bold 28px Inter, sans-serif';
+                            ctx.fillStyle = 'white';
+                            ctx.fillText('[poly', 24, 48);
+                            ctx.fillStyle = '#FF6B4A';
+                            ctx.fillText('x', 24 + ctx.measureText('[poly').width, 48);
+                            ctx.fillStyle = 'white';
+                            ctx.fillText(']', 24 + ctx.measureText('[polyx').width, 48);
+
+                            // Draw PnL in center
+                            const pnl = selectedDayForShare?.pnl ?? pnlData?.summary.totalRealizedPnl ?? 0;
+                            const isPositive = pnl >= 0;
+                            const solPrice = balance?.sol.priceUsd || 0;
+                            const displayVal = currencyMode === "usd" ? pnl * solPrice : pnl;
+                            const pnlText = currencyMode === "usd"
+                              ? `${isPositive ? '+' : '-'}$${Math.abs(displayVal).toFixed(2)}`
+                              : `${isPositive ? '+' : '-'}${Math.abs(pnl).toFixed(4)} SOL`;
+
+                            ctx.font = 'bold 56px Inter, sans-serif';
+                            ctx.fillStyle = isPositive ? '#4ade80' : '#f87171';
+                            ctx.textAlign = 'center';
+                            ctx.fillText(pnlText, canvas.width / 2, canvas.height / 2 + 20);
+                            ctx.textAlign = 'left';
+
+                            // Draw date and site
+                            ctx.font = '16px Inter, sans-serif';
+                            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                            ctx.fillText(new Date().toLocaleDateString(), 24, canvas.height - 24);
+                            ctx.textAlign = 'right';
+                            ctx.fillText('polyx.trade', canvas.width - 24, canvas.height - 24);
+                            ctx.textAlign = 'left';
+
+                            requestAnimationFrame(renderFrame);
                           };
-                          reader.readAsDataURL(file);
+
+                          mediaRecorder.onstart = () => {
+                            renderFrame();
+                          };
+
+                          mediaRecorder.onstop = async () => {
+                            const blob = new Blob(chunks, { type: 'video/webm' });
+                            const link = document.createElement('a');
+                            link.download = `polyx-pnl-${new Date().toISOString().split('T')[0]}.webm`;
+                            link.href = URL.createObjectURL(blob);
+                            link.click();
+                            showToast('Video downloaded!', 'success');
+                            setIsGeneratingCard(false);
+                            video.pause();
+                            audioCtx.close();
+                          };
+
+                          // Record for 5 seconds or video duration
+                          const duration = Math.min(video.duration * 1000, 5000);
+                          mediaRecorder.start();
+
+                          setTimeout(() => {
+                            mediaRecorder.stop();
+                          }, duration);
+
+                        } catch (err) {
+                          console.error('Failed to record video:', err);
+                          showToast('Video recording failed. Try a different browser.', 'error');
+                          setIsGeneratingCard(false);
                         }
                       }}
-                    />
-                  </label>
-
-                  {/* Copy Button */}
-                  <button
-                    onClick={async () => {
-                      if (!shareCardRef.current) return;
-                      setIsGeneratingCard(true);
-                      try {
-                        const html2canvas = (await import('html2canvas')).default;
-                        const canvas = await html2canvas(shareCardRef.current, {
-                          scale: 2,
-                          useCORS: true,
-                          backgroundColor: null,
-                        });
-                        canvas.toBlob(async (blob) => {
-                          if (blob) {
-                            try {
-                              await navigator.clipboard.write([
-                                new ClipboardItem({ 'image/png': blob })
-                              ]);
-                              showToast('Copied to clipboard!', 'success');
-                            } catch {
-                              showToast('Copy failed. Try downloading instead.', 'error');
-                            }
+                      disabled={isGeneratingCard}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#FF6B4A] hover:bg-[#ff5a35] text-white transition-colors disabled:opacity-50"
+                    >
+                      {isGeneratingCard ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Video className="h-4 w-4" />
+                      )}
+                      <span className="text-sm font-medium">Export Video</span>
+                    </button>
+                  ) : (
+                    /* Image Export - Copy and Download */
+                    <>
+                      {/* Copy Button */}
+                      <button
+                        onClick={async () => {
+                          if (!shareCardRef.current) return;
+                          setIsGeneratingCard(true);
+                          try {
+                            const html2canvas = (await import('html2canvas')).default;
+                            const canvas = await html2canvas(shareCardRef.current, {
+                              scale: 2,
+                              useCORS: true,
+                              backgroundColor: null,
+                            });
+                            canvas.toBlob(async (blob) => {
+                              if (blob) {
+                                try {
+                                  await navigator.clipboard.write([
+                                    new ClipboardItem({ 'image/png': blob })
+                                  ]);
+                                  showToast('Copied to clipboard!', 'success');
+                                } catch {
+                                  showToast('Copy failed. Try downloading instead.', 'error');
+                                }
+                              }
+                            }, 'image/png');
+                          } catch (err) {
+                            console.error('Failed to copy card:', err);
+                            showToast('Failed to copy. Try downloading instead.', 'error');
+                          } finally {
+                            setIsGeneratingCard(false);
                           }
-                        }, 'image/png');
-                      } catch (err) {
-                        console.error('Failed to copy card:', err);
-                        showToast('Failed to copy. Try downloading instead.', 'error');
-                      } finally {
-                        setIsGeneratingCard(false);
-                      }
-                    }}
-                    disabled={isGeneratingCard}
-                    className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50 ${
-                      isDark ? 'bg-white/5 hover:bg-white/10 border border-white/10 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-900'
-                    }`}
-                  >
-                    <Copy className="h-4 w-4" />
-                    <span className="text-sm font-medium">Copy</span>
-                  </button>
+                        }}
+                        disabled={isGeneratingCard}
+                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50 ${
+                          isDark ? 'bg-white/5 hover:bg-white/10 border border-white/10 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-900'
+                        }`}
+                      >
+                        <Copy className="h-4 w-4" />
+                        <span className="text-sm font-medium">Copy</span>
+                      </button>
 
-                  {/* Download Button */}
-                  <button
-                    onClick={async () => {
-                      if (!shareCardRef.current) return;
-                      setIsGeneratingCard(true);
-                      try {
-                        // Use html2canvas dynamically
-                        const html2canvas = (await import('html2canvas')).default;
-                        const canvas = await html2canvas(shareCardRef.current, {
-                          scale: 2,
-                          useCORS: true,
-                          backgroundColor: null,
-                        });
-                        const link = document.createElement('a');
-                        link.download = `polyx-pnl-${new Date().toISOString().split('T')[0]}.png`;
-                        link.href = canvas.toDataURL('image/png');
-                        link.click();
-                        showToast('Image downloaded!', 'success');
-                      } catch (err) {
-                        console.error('Failed to generate card:', err);
-                        showToast('Failed to generate image. Please try again.', 'error');
-                      } finally {
-                        setIsGeneratingCard(false);
-                      }
-                    }}
-                    disabled={isGeneratingCard}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#FF6B4A] hover:bg-[#ff5a35] text-white transition-colors disabled:opacity-50"
-                  >
-                    {isGeneratingCard ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Download className="h-4 w-4" />
-                    )}
-                    <span className="text-sm font-medium">Download</span>
-                  </button>
+                      {/* Download Button */}
+                      <button
+                        onClick={async () => {
+                          if (!shareCardRef.current) return;
+                          setIsGeneratingCard(true);
+                          try {
+                            const html2canvas = (await import('html2canvas')).default;
+                            const canvas = await html2canvas(shareCardRef.current, {
+                              scale: 2,
+                              useCORS: true,
+                              backgroundColor: null,
+                            });
+                            const link = document.createElement('a');
+                            link.download = `polyx-pnl-${new Date().toISOString().split('T')[0]}.png`;
+                            link.href = canvas.toDataURL('image/png');
+                            link.click();
+                            showToast('Image downloaded!', 'success');
+                          } catch (err) {
+                            console.error('Failed to generate card:', err);
+                            showToast('Failed to generate image. Please try again.', 'error');
+                          } finally {
+                            setIsGeneratingCard(false);
+                          }
+                        }}
+                        disabled={isGeneratingCard}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#FF6B4A] hover:bg-[#ff5a35] text-white transition-colors disabled:opacity-50"
+                      >
+                        {isGeneratingCard ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Download className="h-4 w-4" />
+                        )}
+                        <span className="text-sm font-medium">Download</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
