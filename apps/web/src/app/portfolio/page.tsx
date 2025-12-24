@@ -1289,38 +1289,36 @@ export default function PortfolioPage() {
                           mediaRecorder.onstop = async () => {
                             const webmBlob = new Blob(chunks, { type: 'video/webm' });
 
-                            // Convert WebM to MP4 using FFmpeg.wasm
+                            // Convert WebM to MP4 via server-side API
                             try {
                               showToast('Converting to MP4...', 'info');
-                              const { FFmpeg } = await import('@ffmpeg/ffmpeg');
-                              const { fetchFile } = await import('@ffmpeg/util');
 
-                              const ffmpeg = new FFmpeg();
-                              await ffmpeg.load();
+                              const formData = new FormData();
+                              formData.append('video', webmBlob, 'input.webm');
 
-                              await ffmpeg.writeFile('input.webm', await fetchFile(webmBlob));
-                              await ffmpeg.exec(['-i', 'input.webm', '-c:v', 'libx264', '-c:a', 'aac', '-movflags', '+faststart', 'output.mp4']);
+                              const response = await fetch('/api/convert-video', {
+                                method: 'POST',
+                                body: formData,
+                              });
 
-                              const data = await ffmpeg.readFile('output.mp4');
-                              // Convert FileData to ArrayBuffer for Blob (FFmpeg returns Uint8Array with ArrayBufferLike)
-                              const arrayBuffer = data instanceof Uint8Array
-                                ? data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer
-                                : new TextEncoder().encode(data).buffer;
-                              const mp4Blob = new Blob([arrayBuffer], { type: 'video/mp4' });
+                              if (!response.ok) {
+                                throw new Error('Conversion failed');
+                              }
 
+                              const mp4Blob = await response.blob();
                               const link = document.createElement('a');
                               link.download = `polyx-pnl-${new Date().toISOString().split('T')[0]}.mp4`;
                               link.href = URL.createObjectURL(mp4Blob);
                               link.click();
                               showToast('Video downloaded!', 'success');
                             } catch (convErr) {
-                              console.error('FFmpeg conversion failed, falling back to WebM:', convErr);
-                              // Fallback to WebM if FFmpeg fails
+                              console.error('MP4 conversion failed, downloading as WebM:', convErr);
+                              // Fallback to WebM - works on most platforms
                               const link = document.createElement('a');
                               link.download = `polyx-pnl-${new Date().toISOString().split('T')[0]}.webm`;
                               link.href = URL.createObjectURL(webmBlob);
                               link.click();
-                              showToast('Downloaded as WebM (MP4 conversion failed)', 'info');
+                              showToast('Downloaded as WebM', 'success');
                             }
 
                             setIsGeneratingCard(false);
