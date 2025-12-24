@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { Loader2, RefreshCw, RotateCcw, Pencil, X } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
+import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/utils";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -52,6 +53,40 @@ interface TokenStats {
   pnlPercent: number;
 }
 
+// Sound effects for trades
+const playTradeSound = (isBuy: boolean) => {
+  try {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    if (isBuy) {
+      // Buy sound: ascending ding (C5 -> E5 -> G5)
+      oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
+      oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1); // E5
+      oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.2); // G5
+      oscillator.type = 'sine';
+    } else {
+      // Sell sound: descending ding (G5 -> E5 -> C5)
+      oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime); // G5
+      oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1); // E5
+      oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime + 0.2); // C5
+      oscillator.type = 'sine';
+    }
+
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.3);
+  } catch (e) {
+    // Audio not supported or blocked - fail silently
+  }
+};
+
 export function SwapWidget({
   defaultOutputMint,
   outputSymbol = "TOKEN",
@@ -61,6 +96,7 @@ export function SwapWidget({
 }: SwapWidgetProps) {
   const { isDark } = useThemeStore();
   const { data: session, status } = useSession();
+  const { showToast } = useToast();
   const [inputAmount, setInputAmount] = useState("");
   const [slippage] = useState(3000); // 30% default slippage for memecoins
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
@@ -251,13 +287,25 @@ export function SwapWidget({
         throw new Error(data.error || "Swap failed");
       }
 
+      // Success! Play sound and show toast
+      playTradeSound(isBuy);
+      showToast(
+        isBuy
+          ? `Bought ${formatOutputAmount()} ${outputSymbol}`
+          : `Sold ${inputAmount} ${outputSymbol}`,
+        "success"
+      );
+
       setSuccess("Transaction successful!");
       setInputAmount("");
       setQuote(null);
       setTradingSource(null);
       fetchBalance();
+      fetchTokenStats();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Swap failed");
+      const errorMsg = err instanceof Error ? err.message : "Swap failed";
+      setError(errorMsg);
+      showToast(errorMsg, "error");
     } finally {
       setSwapping(false);
     }
