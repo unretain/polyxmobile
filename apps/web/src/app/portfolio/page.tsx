@@ -1205,72 +1205,51 @@ export default function PortfolioPage() {
                         try {
                           const video = videoRef.current;
                           video.currentTime = 0;
-                          video.muted = false;
+                          video.muted = true; // Mute to avoid audio issues
                           await video.play();
 
                           // Create canvas for compositing
                           const canvas = document.createElement('canvas');
-                          canvas.width = 800;
-                          canvas.height = 600;
+                          canvas.width = 720;
+                          canvas.height = 480;
                           const ctx = canvas.getContext('2d')!;
 
-                          // Get audio from video
-                          const audioCtx = new AudioContext();
-                          const source = audioCtx.createMediaElementSource(video);
-                          const dest = audioCtx.createMediaStreamDestination();
-                          source.connect(dest);
-                          source.connect(audioCtx.destination);
+                          // Capture canvas stream - video only, no audio
+                          const canvasStream = canvas.captureStream(24);
 
-                          // Capture canvas stream
-                          const canvasStream = canvas.captureStream(30);
-
-                          // Add audio track to canvas stream
-                          const audioTrack = dest.stream.getAudioTracks()[0];
-                          if (audioTrack) {
-                            canvasStream.addTrack(audioTrack);
-                          }
-
-                          // Use WebM with VP8 (best Discord compatibility)
-                          // VP8 has wider support than VP9 for embeds
-                          const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
-                            ? 'video/webm;codecs=vp8,opus'
-                            : 'video/webm;codecs=vp9,opus';
-                          const isMP4 = false; // Always WebM for now
-
+                          // Simple WebM recording
                           const mediaRecorder = new MediaRecorder(canvasStream, {
-                            mimeType,
-                            videoBitsPerSecond: 2500000, // 2.5 Mbps for good quality under Discord limits
+                            mimeType: 'video/webm',
+                            videoBitsPerSecond: 1500000,
                           });
 
                           const chunks: Blob[] = [];
-                          let recordStartTime = 0;
                           mediaRecorder.ondataavailable = (e) => {
-                            if (e.data && e.data.size > 0) {
-                              chunks.push(e.data);
-                            }
+                            if (e.data.size > 0) chunks.push(e.data);
                           };
 
-                          // Render loop - draw video and overlay text
+                          let animationId: number;
                           const renderFrame = () => {
                             if (video.paused || video.ended) return;
 
-                            // Draw video
+                            // Draw video frame
                             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-                            // Draw overlay
+                            // Semi-transparent overlay
                             ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
                             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                            // Draw logo
-                            ctx.font = 'bold 28px Inter, sans-serif';
+                            // Logo
+                            ctx.font = 'bold 24px Arial';
                             ctx.fillStyle = 'white';
-                            ctx.fillText('[poly', 24, 48);
+                            ctx.textAlign = 'left';
+                            ctx.fillText('[poly', 20, 40);
                             ctx.fillStyle = '#FF6B4A';
-                            ctx.fillText('x', 24 + ctx.measureText('[poly').width, 48);
+                            ctx.fillText('x', 20 + ctx.measureText('[poly').width, 40);
                             ctx.fillStyle = 'white';
-                            ctx.fillText(']', 24 + ctx.measureText('[polyx').width, 48);
+                            ctx.fillText(']', 20 + ctx.measureText('[polyx').width, 40);
 
-                            // Draw PnL in center
+                            // PnL
                             const pnl = selectedDayForShare?.pnl ?? pnlData?.summary.totalRealizedPnl ?? 0;
                             const isPositive = pnl >= 0;
                             const solPrice = balance?.sol.priceUsd || 0;
@@ -1279,77 +1258,55 @@ export default function PortfolioPage() {
                               ? `${isPositive ? '+' : '-'}$${Math.abs(displayVal).toFixed(2)}`
                               : `${isPositive ? '+' : '-'}${Math.abs(pnl).toFixed(4)} SOL`;
 
-                            ctx.font = 'bold 56px Inter, sans-serif';
+                            ctx.font = 'bold 48px Arial';
                             ctx.fillStyle = isPositive ? '#4ade80' : '#f87171';
                             ctx.textAlign = 'center';
-                            ctx.fillText(pnlText, canvas.width / 2, canvas.height / 2 + 20);
-                            ctx.textAlign = 'left';
+                            ctx.fillText(pnlText, canvas.width / 2, canvas.height / 2 + 16);
 
-                            // Draw date and site
-                            ctx.font = '16px Inter, sans-serif';
+                            // Footer
+                            ctx.font = '14px Arial';
                             ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-                            ctx.fillText(new Date().toLocaleDateString(), 24, canvas.height - 24);
-                            ctx.textAlign = 'right';
-                            ctx.fillText('polyx.trade', canvas.width - 24, canvas.height - 24);
                             ctx.textAlign = 'left';
+                            ctx.fillText(new Date().toLocaleDateString(), 20, canvas.height - 20);
+                            ctx.textAlign = 'right';
+                            ctx.fillText('polyx.trade', canvas.width - 20, canvas.height - 20);
 
-                            requestAnimationFrame(renderFrame);
+                            animationId = requestAnimationFrame(renderFrame);
                           };
 
-                          mediaRecorder.onstart = () => {
-                            recordStartTime = Date.now();
-                            renderFrame();
-                          };
+                          mediaRecorder.onstart = () => renderFrame();
 
                           mediaRecorder.onstop = async () => {
-                            const recordDuration = Date.now() - recordStartTime;
-                            let videoBlob = new Blob(chunks, { type: 'video/webm' });
+                            cancelAnimationFrame(animationId);
+                            const blob = new Blob(chunks, { type: 'video/webm' });
 
-                            console.log('Recording complete:', {
-                              chunks: chunks.length,
-                              totalSize: videoBlob.size,
-                              duration: recordDuration
-                            });
-
-                            if (videoBlob.size === 0) {
-                              showToast('Recording failed - no video data captured', 'error');
+                            if (blob.size < 1000) {
+                              showToast('Recording failed', 'error');
                               setIsGeneratingCard(false);
                               video.pause();
-                              audioCtx.close();
                               return;
                             }
 
-                            // Fix WebM duration metadata (required for Discord/social media)
-                            try {
-                              videoBlob = await fixWebmDuration(videoBlob, recordDuration);
-                            } catch (err) {
-                              console.warn('Failed to fix WebM duration:', err);
-                              // Continue with unfixed blob - still might work
-                            }
+                            // Download
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `polyx-pnl-${Date.now()}.webm`;
+                            a.click();
+                            URL.revokeObjectURL(url);
 
-                            // Download video
-                            const link = document.createElement('a');
-                            link.download = `polyx-pnl-${new Date().toISOString().split('T')[0]}.webm`;
-                            link.href = URL.createObjectURL(videoBlob);
-                            link.click();
                             showToast('Video downloaded!', 'success');
-
                             setIsGeneratingCard(false);
                             video.pause();
-                            audioCtx.close();
                           };
 
-                          // Record for 5 seconds or video duration
-                          const duration = Math.min(video.duration * 1000, 5000);
-                          mediaRecorder.start(); // No timeslice - get all data at once for proper WebM structure
-
-                          setTimeout(() => {
-                            mediaRecorder.stop();
-                          }, duration);
+                          // Record 5 seconds
+                          mediaRecorder.start();
+                          setTimeout(() => mediaRecorder.stop(), 5000);
 
                         } catch (err) {
-                          console.error('Failed to record video:', err);
-                          showToast('Video recording failed. Try a different browser.', 'error');
+                          console.error('Recording failed:', err);
+                          showToast('Video recording failed', 'error');
                           setIsGeneratingCard(false);
                         }
                       }}
