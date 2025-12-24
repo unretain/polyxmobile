@@ -1197,7 +1197,7 @@ export default function PortfolioPage() {
                 <div className="flex items-center gap-3">
 
                   {bgType === "video" ? (
-                    /* Video Export - Record video with sound */
+                    /* Video Export - Simple recording */
                     <button
                       onClick={async () => {
                         if (!shareCardRef.current || !videoRef.current) return;
@@ -1205,54 +1205,25 @@ export default function PortfolioPage() {
                         try {
                           const video = videoRef.current;
                           video.currentTime = 0;
-                          video.muted = false;
                           await video.play();
 
-                          // Create canvas for compositing
                           const canvas = document.createElement('canvas');
                           canvas.width = 720;
                           canvas.height = 480;
                           const ctx = canvas.getContext('2d')!;
-
-                          // Capture canvas stream
-                          const canvasStream = canvas.captureStream(24);
-
-                          // Capture audio from video element
-                          const audioCtx = new AudioContext();
-                          const source = audioCtx.createMediaElementSource(video);
-                          const dest = audioCtx.createMediaStreamDestination();
-                          source.connect(dest);
-                          source.connect(audioCtx.destination); // Also play through speakers
-
-                          // Combine video and audio tracks
-                          const combinedStream = new MediaStream([
-                            ...canvasStream.getVideoTracks(),
-                            ...dest.stream.getAudioTracks()
-                          ]);
-
-                          // Record with audio
-                          const mediaRecorder = new MediaRecorder(combinedStream, {
-                            mimeType: 'video/webm;codecs=vp8,opus',
-                            videoBitsPerSecond: 2000000,
-                          });
-
+                          const stream = canvas.captureStream(30);
+                          const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
                           const chunks: Blob[] = [];
-                          mediaRecorder.ondataavailable = (e) => {
+
+                          recorder.ondataavailable = (e) => {
                             if (e.data.size > 0) chunks.push(e.data);
                           };
 
-                          let animationId: number;
-                          const renderFrame = () => {
+                          const render = () => {
                             if (video.paused || video.ended) return;
-
-                            // Draw video frame
-                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-                            // Semi-transparent overlay
-                            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-                            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                            // Logo
+                            ctx.drawImage(video, 0, 0, 720, 480);
+                            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                            ctx.fillRect(0, 0, 720, 480);
                             ctx.font = 'bold 24px Arial';
                             ctx.fillStyle = 'white';
                             ctx.textAlign = 'left';
@@ -1261,92 +1232,43 @@ export default function PortfolioPage() {
                             ctx.fillText('x', 20 + ctx.measureText('[poly').width, 40);
                             ctx.fillStyle = 'white';
                             ctx.fillText(']', 20 + ctx.measureText('[polyx').width, 40);
-
-                            // PnL
                             const pnl = selectedDayForShare?.pnl ?? pnlData?.summary.totalRealizedPnl ?? 0;
-                            const isPositive = pnl >= 0;
+                            const isPos = pnl >= 0;
                             const solPrice = balance?.sol.priceUsd || 0;
-                            const displayVal = currencyMode === "usd" ? pnl * solPrice : pnl;
-                            const pnlText = currencyMode === "usd"
-                              ? `${isPositive ? '+' : '-'}$${Math.abs(displayVal).toFixed(2)}`
-                              : `${isPositive ? '+' : '-'}${Math.abs(pnl).toFixed(4)} SOL`;
-
+                            const val = currencyMode === "usd" ? pnl * solPrice : pnl;
+                            const txt = currencyMode === "usd"
+                              ? `${isPos ? '+' : '-'}$${Math.abs(val).toFixed(2)}`
+                              : `${isPos ? '+' : '-'}${Math.abs(pnl).toFixed(4)} SOL`;
                             ctx.font = 'bold 48px Arial';
-                            ctx.fillStyle = isPositive ? '#4ade80' : '#f87171';
+                            ctx.fillStyle = isPos ? '#4ade80' : '#f87171';
                             ctx.textAlign = 'center';
-                            ctx.fillText(pnlText, canvas.width / 2, canvas.height / 2 + 16);
-
-                            // Footer
+                            ctx.fillText(txt, 360, 256);
                             ctx.font = '14px Arial';
-                            ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                            ctx.fillStyle = 'rgba(255,255,255,0.6)';
                             ctx.textAlign = 'left';
-                            ctx.fillText(new Date().toLocaleDateString(), 20, canvas.height - 20);
+                            ctx.fillText(new Date().toLocaleDateString(), 20, 460);
                             ctx.textAlign = 'right';
-                            ctx.fillText('polyx.trade', canvas.width - 20, canvas.height - 20);
-
-                            animationId = requestAnimationFrame(renderFrame);
+                            ctx.fillText('polyx.trade', 700, 460);
+                            requestAnimationFrame(render);
                           };
 
-                          mediaRecorder.onstart = () => renderFrame();
-
-                          mediaRecorder.onstop = async () => {
-                            cancelAnimationFrame(animationId);
-                            const webmBlob = new Blob(chunks, { type: 'video/webm' });
-
-                            if (webmBlob.size < 1000) {
-                              showToast('Recording failed', 'error');
-                              setIsGeneratingCard(false);
-                              video.pause();
-                              audioCtx.close();
-                              return;
-                            }
-
-                            // Convert to MP4 on server for Discord compatibility
-                            showToast('Converting to MP4...', 'info');
-                            try {
-                              const formData = new FormData();
-                              formData.append('video', webmBlob, 'video.webm');
-
-                              const res = await fetch('/api/convert-video', {
-                                method: 'POST',
-                                body: formData,
-                              });
-
-                              if (res.ok) {
-                                const mp4Blob = await res.blob();
-                                const url = URL.createObjectURL(mp4Blob);
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = `polyx-pnl-${Date.now()}.mp4`;
-                                a.click();
-                                URL.revokeObjectURL(url);
-                                showToast('Video downloaded as MP4!', 'success');
-                              } else {
-                                throw new Error('Conversion failed');
-                              }
-                            } catch {
-                              // Fallback to WebM if conversion fails
-                              const url = URL.createObjectURL(webmBlob);
-                              const a = document.createElement('a');
-                              a.href = url;
-                              a.download = `polyx-pnl-${Date.now()}.webm`;
-                              a.click();
-                              URL.revokeObjectURL(url);
-                              showToast('Downloaded as WebM (MP4 conversion failed)', 'info');
-                            }
-
+                          recorder.onstart = () => render();
+                          recorder.onstop = () => {
+                            const blob = new Blob(chunks, { type: 'video/webm' });
+                            const a = document.createElement('a');
+                            a.href = URL.createObjectURL(blob);
+                            a.download = `polyx-pnl-${Date.now()}.webm`;
+                            a.click();
+                            showToast('Video downloaded!', 'success');
                             setIsGeneratingCard(false);
                             video.pause();
-                            audioCtx.close();
                           };
 
-                          // Record 5 seconds
-                          mediaRecorder.start();
-                          setTimeout(() => mediaRecorder.stop(), 5000);
-
+                          recorder.start();
+                          setTimeout(() => recorder.stop(), 5000);
                         } catch (err) {
                           console.error('Recording failed:', err);
-                          showToast('Video recording failed', 'error');
+                          showToast('Recording failed', 'error');
                           setIsGeneratingCard(false);
                         }
                       }}
