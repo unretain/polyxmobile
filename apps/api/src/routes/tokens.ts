@@ -309,7 +309,7 @@ tokenRoutes.get("/:address", async (req, res) => {
   try {
     const { address } = req.params;
 
-    // Try cache first (short 30s cache for fresh data)
+    // Try cache first (2 min cache to reduce Birdeye calls)
     const cacheKey = `tokens:${address}`;
     const cached = await cache.get(cacheKey);
     if (cached) {
@@ -357,8 +357,8 @@ tokenRoutes.get("/:address", async (req, res) => {
       return res.status(404).json({ error: "Token not found" });
     }
 
-    // Cache for 30 seconds (shorter for fresh market data)
-    await cache.set(cacheKey, JSON.stringify(token), 30);
+    // Cache for 2 minutes to reduce Birdeye API calls
+    await cache.set(cacheKey, JSON.stringify(token), 120);
 
     res.json(token);
   } catch (error) {
@@ -550,10 +550,12 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
       }
     }
 
-    // Cache for 15 seconds (shorter for real-time data), longer for weekly/monthly
-    // Don't cache PumpPortal data as it updates in real-time
+    // Cache OHLCV data - longer for historical, shorter for real-time
+    // Weekly/monthly: 5 min, daily/hourly: 2 min, minute data: 30 sec
     const isPumpPortalData = ohlcv?.length > 0 && ohlcv[0]?.timestamp > Date.now() - 300000;
-    const cacheDuration = (timeframe === "1w" || timeframe === "1M") ? 60 : (isPumpPortalData ? 2 : 15);
+    const cacheDuration = (timeframe === "1w" || timeframe === "1M") ? 300
+      : (timeframe === "1d" || timeframe === "4h" || timeframe === "1h") ? 120
+      : (isPumpPortalData ? 5 : 30);
     await cache.set(cacheKey, JSON.stringify(ohlcv), cacheDuration);
 
     res.json(ohlcv);
