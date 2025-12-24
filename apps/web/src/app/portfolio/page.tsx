@@ -1208,35 +1208,44 @@ export default function PortfolioPage() {
                         setIsGeneratingCard(true);
                         try {
                           const video = videoRef.current;
-                          const videoDuration = video.duration || 10;
+                          console.log('EXPORT: video src=' + video.src.slice(0,30) + ' w=' + video.videoWidth + ' h=' + video.videoHeight + ' ready=' + video.readyState + ' paused=' + video.paused + ' duration=' + video.duration);
 
-                          // Make sure video is playing
                           if (video.paused) await video.play();
+                          console.log('EXPORT: video playing');
 
-                          // Canvas setup
                           const canvas = document.createElement('canvas');
                           canvas.width = 720;
                           canvas.height = 480;
-                          const ctx = canvas.getContext('2d')!;
+                          const ctx = canvas.getContext('2d');
+                          if (!ctx) { console.log('EXPORT: NO CTX'); return; }
+                          console.log('EXPORT: canvas created');
 
-                          // Get streams
+                          // Test draw
+                          ctx.drawImage(video, 0, 0, 720, 480);
+                          const p = ctx.getImageData(360, 240, 1, 1).data;
+                          console.log('EXPORT: test pixel r=' + p[0] + ' g=' + p[1] + ' b=' + p[2]);
+
                           const canvasStream = canvas.captureStream(30);
-                          let stream: MediaStream = canvasStream;
+                          console.log('EXPORT: canvasStream tracks=' + canvasStream.getTracks().length);
 
-                          // Try to add audio
+                          let stream: MediaStream = canvasStream;
                           try {
                             const vidStream = (video as any).captureStream?.();
                             if (vidStream?.getAudioTracks()?.length) {
-                              stream = new MediaStream([
-                                ...canvasStream.getVideoTracks(),
-                                ...vidStream.getAudioTracks()
-                              ]);
+                              stream = new MediaStream([...canvasStream.getVideoTracks(), ...vidStream.getAudioTracks()]);
+                              console.log('EXPORT: added audio tracks');
                             }
-                          } catch {}
+                          } catch (e) { console.log('EXPORT: audio error ' + e); }
 
                           const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+                          console.log('EXPORT: recorder created state=' + recorder.state);
+
                           const chunks: Blob[] = [];
-                          recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+                          recorder.ondataavailable = (e) => {
+                            console.log('EXPORT: chunk size=' + e.data.size);
+                            if (e.data.size > 0) chunks.push(e.data);
+                          };
+                          recorder.onerror = (e) => console.log('EXPORT: recorder error ' + e);
 
                           // Overlay text values
                           const pad = 32;
@@ -1301,10 +1310,15 @@ export default function PortfolioPage() {
                             ctx.fillText('polyx.trade', 720 - pad, 480 - pad);
                           };
 
-                          recorder.onstart = () => { intervalId = setInterval(drawFrame, 33); };
+                          recorder.onstart = () => {
+                            console.log('EXPORT: recording started');
+                            intervalId = setInterval(drawFrame, 33);
+                          };
                           recorder.onstop = () => {
+                            console.log('EXPORT: recording stopped chunks=' + chunks.length);
                             clearInterval(intervalId);
                             const blob = new Blob(chunks, { type: 'video/webm' });
+                            console.log('EXPORT: blob size=' + blob.size);
                             if (blob.size > 1000) {
                               const a = document.createElement('a');
                               a.href = URL.createObjectURL(blob);
@@ -1312,13 +1326,18 @@ export default function PortfolioPage() {
                               a.click();
                               showToast('Video downloaded!', 'success');
                             } else {
-                              showToast('Recording failed', 'error');
+                              showToast('Recording failed - blob too small', 'error');
                             }
                             setIsGeneratingCard(false);
                           };
 
+                          const videoDuration = video.duration || 10;
+                          console.log('EXPORT: starting recorder, duration=' + videoDuration);
                           recorder.start();
-                          setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, Math.min(videoDuration * 1000, 60000));
+                          setTimeout(() => {
+                            console.log('EXPORT: timeout fired, stopping');
+                            if (recorder.state === 'recording') recorder.stop();
+                          }, Math.min(videoDuration * 1000, 60000));
 
                         } catch (err) {
                           console.error('Recording failed:', err);
