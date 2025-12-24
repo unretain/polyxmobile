@@ -1184,6 +1184,10 @@ export default function PortfolioPage() {
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
+                            // Revoke old blob URL to prevent memory leak
+                            if (customBgVideo) {
+                              URL.revokeObjectURL(customBgVideo);
+                            }
                             const url = URL.createObjectURL(file);
                             setCustomBgVideo(url);
                             setBgType("video");
@@ -1236,20 +1240,29 @@ export default function PortfolioPage() {
 
                           console.log('Video ready:', video.videoWidth, 'x', video.videoHeight);
 
-                          // Create offscreen canvas to avoid WebGL conflicts
+                          // Create canvas
                           const canvas = document.createElement('canvas');
                           canvas.width = 720;
                           canvas.height = 480;
                           const ctx = canvas.getContext('2d', { alpha: false })!;
 
-                          // Test draw immediately
-                          ctx.drawImage(video, 0, 0, 720, 480);
-                          const testPixel = ctx.getImageData(360, 240, 1, 1).data;
-                          console.log('Test pixel RGB:', testPixel[0], testPixel[1], testPixel[2]);
-
-                          // If test pixel is all black/grey, video draw failed
-                          if (testPixel[0] === 0 && testPixel[1] === 0 && testPixel[2] === 0) {
-                            console.error('Video draw returned black - possible taint or CORS issue');
+                          // Wait for video to actually render a frame (not black)
+                          let attempts = 0;
+                          let frameOk = false;
+                          while (attempts < 30 && !frameOk) {
+                            ctx.drawImage(video, 0, 0, 720, 480);
+                            const testPixel = ctx.getImageData(360, 240, 1, 1).data;
+                            const brightness = testPixel[0] + testPixel[1] + testPixel[2];
+                            console.log(`Attempt ${attempts}: pixel RGB ${testPixel[0]},${testPixel[1]},${testPixel[2]} brightness=${brightness}`);
+                            if (brightness > 30) {
+                              frameOk = true;
+                              break;
+                            }
+                            await new Promise(r => setTimeout(r, 100));
+                            attempts++;
+                          }
+                          if (!frameOk) {
+                            console.error('Video never rendered a visible frame');
                           }
 
                           const canvasStream = canvas.captureStream(30);
