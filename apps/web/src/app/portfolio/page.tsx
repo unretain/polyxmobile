@@ -1204,48 +1204,57 @@ export default function PortfolioPage() {
                         setIsGeneratingCard(true);
                         try {
                           const video = videoRef.current;
-                          const videoDuration = video.duration;
+                          const videoDuration = video.duration || 10;
 
-                          // Reset video to start and wait for it to be ready
-                          video.currentTime = 0;
-                          video.muted = false;
+                          console.log('Video state:', {
+                            readyState: video.readyState,
+                            paused: video.paused,
+                            videoWidth: video.videoWidth,
+                            videoHeight: video.videoHeight,
+                            currentTime: video.currentTime,
+                            src: video.src?.substring(0, 50)
+                          });
 
-                          // Wait for video to have data
-                          if (video.readyState < 2) {
+                          // Make sure video is playing and has dimensions
+                          if (video.paused) {
+                            await video.play();
+                          }
+
+                          // Wait until video has actual dimensions
+                          if (video.videoWidth === 0) {
                             await new Promise<void>((resolve) => {
-                              video.oncanplay = () => resolve();
+                              const check = () => {
+                                if (video.videoWidth > 0) {
+                                  resolve();
+                                } else {
+                                  requestAnimationFrame(check);
+                                }
+                              };
+                              check();
                             });
                           }
 
-                          await video.play();
-
-                          // Wait for first frame to render
-                          await new Promise(r => setTimeout(r, 100));
+                          console.log('Video ready:', video.videoWidth, 'x', video.videoHeight);
 
                           const canvas = document.createElement('canvas');
                           canvas.width = 720;
                           canvas.height = 480;
                           const ctx = canvas.getContext('2d')!;
 
-                          // Test draw to verify video is ready
-                          ctx.drawImage(video, 0, 0, 720, 480);
-
                           const canvasStream = canvas.captureStream(30);
 
-                          // Try to get audio - use captureStream on video if available
-                          let combinedStream: MediaStream;
+                          // Try to get audio from video
+                          let combinedStream: MediaStream = canvasStream;
                           try {
-                            const videoStream = (video as any).captureStream ? (video as any).captureStream() : null;
-                            if (videoStream && videoStream.getAudioTracks().length > 0) {
+                            const videoStream = (video as any).captureStream?.();
+                            if (videoStream?.getAudioTracks()?.length > 0) {
                               combinedStream = new MediaStream([
                                 ...canvasStream.getVideoTracks(),
                                 ...videoStream.getAudioTracks()
                               ]);
-                            } else {
-                              combinedStream = canvasStream;
                             }
                           } catch {
-                            combinedStream = canvasStream;
+                            // No audio, that's fine
                           }
 
                           const recorder = new MediaRecorder(combinedStream, {
@@ -1271,7 +1280,14 @@ export default function PortfolioPage() {
                               return;
                             }
                             // Draw video frame
-                            ctx.drawImage(video, 0, 0, 720, 480);
+                            try {
+                              ctx.drawImage(video, 0, 0, 720, 480);
+                            } catch (e) {
+                              console.error('drawImage failed:', e);
+                              // Fill with dark grey as fallback
+                              ctx.fillStyle = '#1a1a1a';
+                              ctx.fillRect(0, 0, 720, 480);
+                            }
 
                             // Dark overlay (bg-black/30)
                             ctx.fillStyle = 'rgba(0,0,0,0.30)';
