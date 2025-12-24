@@ -1205,7 +1205,7 @@ export default function PortfolioPage() {
                         try {
                           const video = videoRef.current;
                           video.currentTime = 0;
-                          video.muted = true; // Mute to avoid audio issues
+                          video.muted = false;
                           await video.play();
 
                           // Create canvas for compositing
@@ -1214,13 +1214,26 @@ export default function PortfolioPage() {
                           canvas.height = 480;
                           const ctx = canvas.getContext('2d')!;
 
-                          // Capture canvas stream - video only, no audio
+                          // Capture canvas stream
                           const canvasStream = canvas.captureStream(24);
 
-                          // Simple WebM recording
-                          const mediaRecorder = new MediaRecorder(canvasStream, {
-                            mimeType: 'video/webm',
-                            videoBitsPerSecond: 1500000,
+                          // Capture audio from video element
+                          const audioCtx = new AudioContext();
+                          const source = audioCtx.createMediaElementSource(video);
+                          const dest = audioCtx.createMediaStreamDestination();
+                          source.connect(dest);
+                          source.connect(audioCtx.destination); // Also play through speakers
+
+                          // Combine video and audio tracks
+                          const combinedStream = new MediaStream([
+                            ...canvasStream.getVideoTracks(),
+                            ...dest.stream.getAudioTracks()
+                          ]);
+
+                          // Record with audio
+                          const mediaRecorder = new MediaRecorder(combinedStream, {
+                            mimeType: 'video/webm;codecs=vp8,opus',
+                            videoBitsPerSecond: 2000000,
                           });
 
                           const chunks: Blob[] = [];
@@ -1284,6 +1297,7 @@ export default function PortfolioPage() {
                               showToast('Recording failed', 'error');
                               setIsGeneratingCard(false);
                               video.pause();
+                              audioCtx.close();
                               return;
                             }
 
@@ -1298,6 +1312,7 @@ export default function PortfolioPage() {
                             showToast('Video downloaded!', 'success');
                             setIsGeneratingCard(false);
                             video.pause();
+                            audioCtx.close();
                           };
 
                           // Record 5 seconds
