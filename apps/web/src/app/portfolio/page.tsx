@@ -1210,194 +1210,115 @@ export default function PortfolioPage() {
                           const video = videoRef.current;
                           const videoDuration = video.duration || 10;
 
-                          console.log('Video state:', {
-                            readyState: video.readyState,
-                            paused: video.paused,
-                            videoWidth: video.videoWidth,
-                            videoHeight: video.videoHeight,
-                            currentTime: video.currentTime,
-                            src: video.src?.substring(0, 50)
-                          });
+                          // Make sure video is playing
+                          if (video.paused) await video.play();
 
-                          // Make sure video is playing and has dimensions
-                          if (video.paused) {
-                            await video.play();
-                          }
-
-                          // Wait until video has actual dimensions
-                          if (video.videoWidth === 0) {
-                            await new Promise<void>((resolve) => {
-                              const check = () => {
-                                if (video.videoWidth > 0) {
-                                  resolve();
-                                } else {
-                                  requestAnimationFrame(check);
-                                }
-                              };
-                              check();
-                            });
-                          }
-
-                          console.log('Video ready:', video.videoWidth, 'x', video.videoHeight);
-
-                          // Create canvas
+                          // Canvas setup
                           const canvas = document.createElement('canvas');
                           canvas.width = 720;
                           canvas.height = 480;
-                          const ctx = canvas.getContext('2d', { alpha: false })!;
+                          const ctx = canvas.getContext('2d')!;
 
-                          // Wait for video to actually render a frame (not black)
-                          let attempts = 0;
-                          let frameOk = false;
-                          while (attempts < 30 && !frameOk) {
-                            ctx.drawImage(video, 0, 0, 720, 480);
-                            const testPixel = ctx.getImageData(360, 240, 1, 1).data;
-                            const brightness = testPixel[0] + testPixel[1] + testPixel[2];
-                            console.log(`Attempt ${attempts}: pixel RGB ${testPixel[0]},${testPixel[1]},${testPixel[2]} brightness=${brightness}`);
-                            if (brightness > 30) {
-                              frameOk = true;
-                              break;
-                            }
-                            await new Promise(r => setTimeout(r, 100));
-                            attempts++;
-                          }
-                          if (!frameOk) {
-                            console.error('Video never rendered a visible frame');
-                          }
-
+                          // Get streams
                           const canvasStream = canvas.captureStream(30);
+                          let stream: MediaStream = canvasStream;
 
-                          // Try to get audio from video
-                          let combinedStream: MediaStream = canvasStream;
+                          // Try to add audio
                           try {
-                            const videoStream = (video as any).captureStream?.();
-                            if (videoStream?.getAudioTracks()?.length > 0) {
-                              combinedStream = new MediaStream([
+                            const vidStream = (video as any).captureStream?.();
+                            if (vidStream?.getAudioTracks()?.length) {
+                              stream = new MediaStream([
                                 ...canvasStream.getVideoTracks(),
-                                ...videoStream.getAudioTracks()
+                                ...vidStream.getAudioTracks()
                               ]);
                             }
-                          } catch {
-                            // No audio, that's fine
-                          }
+                          } catch {}
 
-                          const recorder = new MediaRecorder(combinedStream, {
-                            mimeType: 'video/webm',
-                            videoBitsPerSecond: 2500000
-                          });
+                          const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
                           const chunks: Blob[] = [];
+                          recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
 
-                          recorder.ondataavailable = (e) => {
-                            if (e.data.size > 0) chunks.push(e.data);
-                          };
-
-                          // Canvas is 720x480 (4:3 aspect ratio matching preview)
-                          // Preview card has p-6 (24px padding) - scale to canvas
-                          const pad = 32; // ~24px scaled up
-                          const centerX = 360;
-                          const centerY = 240;
+                          // Overlay text values
+                          const pad = 32;
+                          const periodLabel = selectedDayForShare
+                            ? new Date(selectedDayForShare.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+                            : viewMode === "calendar"
+                              ? `${monthNames[calendarMonth - 1]} ${calendarYear}`
+                              : period === "all" ? "All Time" : `Last ${period.toUpperCase()}`;
+                          const pnl = selectedDayForShare?.pnl ?? pnlData?.summary.totalRealizedPnl ?? 0;
+                          const isPos = pnl >= 0;
+                          const solPrice = balance?.sol.priceUsd || 0;
+                          const val = currencyMode === "usd" ? pnl * solPrice : pnl;
+                          const pnlText = currencyMode === "usd"
+                            ? `${isPos ? '+' : '-'}$${Math.abs(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : `${isPos ? '+' : '-'}${Math.abs(pnl).toFixed(4)} SOL`;
+                          const trades = selectedDayForShare?.trades ?? pnlData?.summary.totalTrades ?? 0;
+                          const winRate = ((pnlData?.summary.winRate || 0) * 100).toFixed(0);
+                          const statsText = selectedDayForShare
+                            ? `${trades} trade${trades !== 1 ? 's' : ''} • ${(selectedDayForShare.volume || 0).toFixed(4)} SOL volume`
+                            : `${trades} trades • ${winRate}% win rate`;
+                          const dateStr = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
                           let intervalId: ReturnType<typeof setInterval>;
-                          const render = () => {
-                            // Don't stop on pause/ended - video is looping on screen
-                            // Draw video frame
+
+                          const drawFrame = () => {
+                            // Draw video
                             ctx.drawImage(video, 0, 0, 720, 480);
 
-                            // Dark overlay (bg-black/30)
+                            // Overlay
                             ctx.fillStyle = 'rgba(0,0,0,0.30)';
                             ctx.fillRect(0, 0, 720, 480);
 
-                            // === TOP: Logo ===
-                            // text-2xl = 24px, font-bold
-                            ctx.font = 'bold 32px Arial, sans-serif';
+                            // Logo
+                            ctx.font = 'bold 32px Arial';
                             ctx.textAlign = 'left';
                             ctx.textBaseline = 'top';
                             ctx.fillStyle = 'white';
-                            const logoY = pad;
-                            ctx.fillText('[poly', pad, logoY);
-                            const polyWidth = ctx.measureText('[poly').width;
+                            ctx.fillText('[poly', pad, pad);
                             ctx.fillStyle = '#FF6B4A';
-                            ctx.fillText('x', pad + polyWidth, logoY);
-                            const xWidth = ctx.measureText('x').width;
+                            ctx.fillText('x', pad + ctx.measureText('[poly').width, pad);
                             ctx.fillStyle = 'white';
-                            ctx.fillText(']', pad + polyWidth + xWidth, logoY);
+                            ctx.fillText(']', pad + ctx.measureText('[polyx').width, pad);
 
-                            // === CENTER: PnL Display ===
+                            // Center text
                             ctx.textAlign = 'center';
                             ctx.textBaseline = 'middle';
-
-                            // Period label (text-sm = 14px, opacity-80)
-                            const periodLabel = selectedDayForShare
-                              ? new Date(selectedDayForShare.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
-                              : viewMode === "calendar"
-                                ? `${monthNames[calendarMonth - 1]} ${calendarYear}`
-                                : period === "all" ? "All Time" : `Last ${period.toUpperCase()}`;
-                            ctx.font = '18px Arial, sans-serif';
+                            ctx.font = '18px Arial';
                             ctx.fillStyle = 'rgba(255,255,255,0.8)';
-                            ctx.fillText(`${periodLabel} PnL`, centerX, centerY - 50);
-
-                            // PnL amount (text-5xl = 48px, font-bold, green-400 #4ade80 / red-400 #f87171)
-                            const pnl = selectedDayForShare?.pnl ?? pnlData?.summary.totalRealizedPnl ?? 0;
-                            const isPos = pnl >= 0;
-                            const solPrice = balance?.sol.priceUsd || 0;
-                            const val = currencyMode === "usd" ? pnl * solPrice : pnl;
-                            const pnlText = currencyMode === "usd"
-                              ? `${isPos ? '+' : '-'}$${Math.abs(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                              : `${isPos ? '+' : '-'}${Math.abs(pnl).toFixed(4)} SOL`;
-                            ctx.font = 'bold 56px Arial, sans-serif';
+                            ctx.fillText(`${periodLabel} PnL`, 360, 190);
+                            ctx.font = 'bold 56px Arial';
                             ctx.fillStyle = isPos ? '#4ade80' : '#f87171';
-                            ctx.fillText(pnlText, centerX, centerY + 10);
-
-                            // Stats line (text-sm = 14px, opacity-60)
-                            const trades = selectedDayForShare?.trades ?? pnlData?.summary.totalTrades ?? 0;
-                            const winRate = ((pnlData?.summary.winRate || 0) * 100).toFixed(0);
-                            const statsText = selectedDayForShare
-                              ? `${trades} trade${trades !== 1 ? 's' : ''} • ${(selectedDayForShare.volume || 0).toFixed(4)} SOL volume`
-                              : `${trades} trades • ${winRate}% win rate`;
-                            ctx.font = '18px Arial, sans-serif';
+                            ctx.fillText(pnlText, 360, 250);
+                            ctx.font = '18px Arial';
                             ctx.fillStyle = 'rgba(255,255,255,0.6)';
-                            ctx.fillText(statsText, centerX, centerY + 60);
+                            ctx.fillText(statsText, 360, 310);
 
-                            // === BOTTOM: Footer ===
-                            // text-sm = 14px, opacity-60, flex justify-between
-                            ctx.font = '18px Arial, sans-serif';
-                            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+                            // Footer
                             ctx.textBaseline = 'bottom';
-                            const footerY = 480 - pad;
                             ctx.textAlign = 'left';
-                            ctx.fillText(new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }), pad, footerY);
+                            ctx.fillText(dateStr, pad, 480 - pad);
                             ctx.textAlign = 'right';
-                            ctx.fillText('polyx.trade', 720 - pad, footerY);
-
+                            ctx.fillText('polyx.trade', 720 - pad, 480 - pad);
                           };
 
-                          // Use setInterval for consistent frame rate (30fps = 33ms)
-                          recorder.onstart = () => {
-                            intervalId = setInterval(render, 33);
-                          };
-
+                          recorder.onstart = () => { intervalId = setInterval(drawFrame, 33); };
                           recorder.onstop = () => {
                             clearInterval(intervalId);
                             const blob = new Blob(chunks, { type: 'video/webm' });
-                            if (blob.size < 1000) {
-                              showToast('Recording failed - try again', 'error');
-                            } else {
+                            if (blob.size > 1000) {
                               const a = document.createElement('a');
                               a.href = URL.createObjectURL(blob);
                               a.download = `polyx-pnl-${Date.now()}.webm`;
                               a.click();
                               showToast('Video downloaded!', 'success');
+                            } else {
+                              showToast('Recording failed', 'error');
                             }
                             setIsGeneratingCard(false);
                           };
 
                           recorder.start();
-
-                          // Record for video duration (max 60 sec)
-                          const recordDuration = Math.min(videoDuration * 1000, 60000);
-                          setTimeout(() => {
-                            if (recorder.state === 'recording') recorder.stop();
-                          }, recordDuration);
+                          setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, Math.min(videoDuration * 1000, 60000));
 
                         } catch (err) {
                           console.error('Recording failed:', err);
