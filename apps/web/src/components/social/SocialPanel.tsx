@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   X,
   Users,
-  Plus,
   MessageCircle,
   Send,
   Mic,
@@ -22,6 +21,10 @@ import {
   Play,
   Ban,
   Check,
+  Bell,
+  BellOff,
+  Camera,
+  Pencil,
 } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import {
@@ -83,11 +86,8 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
   } = useLobbyStore();
 
   const [activeTab, setActiveTab] = useState<Tab>("friends");
-  const [lobbyName, setLobbyName] = useState("");
   const [messageInput, setMessageInput] = useState("");
-  const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showCreateForm, setShowCreateForm] = useState(false);
   const [kickingMember, setKickingMember] = useState<string | null>(null);
 
   // Profile state
@@ -106,6 +106,15 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
   const [requestError, setRequestError] = useState<string | null>(null);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [invitingFriend, setInvitingFriend] = useState<string | null>(null);
+
+  // Notifications state
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [toast, setToast] = useState<{ message: string; type: "info" | "success" | "error" } | null>(null);
+
+  // Profile editing state
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState("");
+  const [nameSaving, setNameSaving] = useState(false);
 
   // Voice chat hook
   const { isMuted, isDeafened, toggleMute, toggleDeafen } = useVoiceChat({
@@ -149,6 +158,14 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
 
     const handleInvite = (invite: LobbyInvite) => {
       addInvite(invite);
+      // Show toast notification if enabled
+      if (notificationsEnabled) {
+        setToast({
+          message: `${invite.invitedBy.name || invite.invitedBy.username} invited you to ${invite.lobbyName}`,
+          type: "info",
+        });
+        setTimeout(() => setToast(null), 5000);
+      }
     };
 
     // Chat events
@@ -351,28 +368,6 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
   }, [messages]);
 
   // Lobby handlers
-  const handleCreate = useCallback(() => {
-    if (!socket) return;
-    setIsCreating(true);
-    setError(null);
-
-    socket.emit(
-      "lobby:create",
-      { name: lobbyName || `${session?.user?.name || "User"}'s Lobby` },
-      (response: { success: boolean; lobby?: any; error?: string }) => {
-        setIsCreating(false);
-        if (response.success && response.lobby) {
-          setCurrentLobby(response.lobby);
-          setLobbyName("");
-          setShowCreateForm(false);
-          setActiveTab("lobby");
-        } else {
-          setError(response.error || "Failed to create lobby");
-        }
-      }
-    );
-  }, [socket, lobbyName, session?.user?.name, setCurrentLobby]);
-
   const handleJoinFriendLobby = useCallback(
     (lobbyId: string) => {
       if (!socket) return;
@@ -488,6 +483,90 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
     [socket, currentLobby]
   );
 
+  // Invite friend from Lobby tab - creates lobby if needed
+  const handleInviteFromLobbyTab = useCallback(
+    (odId: string) => {
+      if (!socket) return;
+      setInvitingFriend(odId);
+
+      // If already in a lobby, just invite
+      if (currentLobby) {
+        socket.emit(
+          "lobby:invite",
+          { friendSocketId: odId },
+          (response: { success: boolean; error?: string }) => {
+            setInvitingFriend(null);
+            if (!response.success) {
+              setError(response.error || "Failed to send invite");
+            } else {
+              setToast({ message: "Invite sent!", type: "success" });
+              setTimeout(() => setToast(null), 3000);
+            }
+          }
+        );
+        return;
+      }
+
+      // Create lobby first, then invite
+      socket.emit(
+        "lobby:create",
+        { name: `${session?.user?.name || "User"}'s Lobby` },
+        (response: { success: boolean; lobby?: any; error?: string }) => {
+          if (response.success && response.lobby) {
+            setCurrentLobby(response.lobby);
+            // Now invite the friend
+            socket.emit(
+              "lobby:invite",
+              { friendSocketId: odId },
+              (inviteResponse: { success: boolean; error?: string }) => {
+                setInvitingFriend(null);
+                if (!inviteResponse.success) {
+                  setError(inviteResponse.error || "Failed to send invite");
+                } else {
+                  setToast({ message: "Lobby created and invite sent!", type: "success" });
+                  setTimeout(() => setToast(null), 3000);
+                }
+              }
+            );
+          } else {
+            setInvitingFriend(null);
+            setError(response.error || "Failed to create lobby");
+          }
+        }
+      );
+    },
+    [socket, currentLobby, session?.user?.name, setCurrentLobby]
+  );
+
+  // Save display name
+  const handleSaveName = async () => {
+    if (!nameInput.trim()) return;
+
+    setNameSaving(true);
+    try {
+      const res = await fetch("/api/users/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: nameInput.trim() }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to save name");
+      }
+
+      setEditingName(false);
+      // Update session would require page refresh, but the name is saved
+      setToast({ message: "Name saved!", type: "success" });
+      setTimeout(() => setToast(null), 3000);
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : "Failed to save", type: "error" });
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setNameSaving(false);
+    }
+  };
+
   // Friend request handlers
   const handleSendFriendRequest = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -587,6 +666,26 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
 
   return (
     <>
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          className={`fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in slide-in-from-top duration-300 ${
+            toast.type === "success"
+              ? "bg-green-500 text-white"
+              : toast.type === "error"
+              ? "bg-red-500 text-white"
+              : "bg-[#FF6B4A] text-white"
+          }`}
+        >
+          {toast.type === "info" && <Bell className="h-4 w-4" />}
+          {toast.type === "success" && <Check className="h-4 w-4" />}
+          <span className="text-sm font-medium">{toast.message}</span>
+          <button onClick={() => setToast(null)} className="ml-2 hover:opacity-80">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* Backdrop */}
       <div
         className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm"
@@ -613,14 +712,30 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
             <Users className="h-5 w-5" />
             {currentLobby ? currentLobby.name : "Social"}
           </h2>
-          <button
-            onClick={onClose}
-            className={`p-2 rounded-lg transition-colors ${
-              isDark ? "hover:bg-white/10 text-white/60" : "hover:bg-gray-100 text-gray-600"
-            }`}
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Notification toggle */}
+            <button
+              onClick={() => setNotificationsEnabled(!notificationsEnabled)}
+              className={`p-2 rounded-lg transition-colors ${
+                notificationsEnabled
+                  ? "text-[#FF6B4A] hover:bg-[#FF6B4A]/10"
+                  : isDark
+                  ? "text-white/40 hover:bg-white/10"
+                  : "text-gray-400 hover:bg-gray-100"
+              }`}
+              title={notificationsEnabled ? "Notifications on" : "Notifications off"}
+            >
+              {notificationsEnabled ? <Bell className="h-5 w-5" /> : <BellOff className="h-5 w-5" />}
+            </button>
+            <button
+              onClick={onClose}
+              className={`p-2 rounded-lg transition-colors ${
+                isDark ? "hover:bg-white/10 text-white/60" : "hover:bg-gray-100 text-gray-600"
+              }`}
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {/* Pending Invites */}
@@ -972,7 +1087,7 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
             <div className="p-4 space-y-4 overflow-y-auto">
               {/* Profile Picture */}
               <div className="flex flex-col items-center py-4">
-                <div className="relative">
+                <div className="relative group">
                   {session?.user?.image ? (
                     <Image
                       src={session.user.image}
@@ -986,10 +1101,60 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
                       <User className="h-10 w-10 text-white" />
                     </div>
                   )}
+                  {/* Camera overlay for future upload */}
+                  <div className={`absolute inset-0 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer ${isDark ? "bg-black/50" : "bg-black/40"}`}>
+                    <Camera className="h-6 w-6 text-white" />
+                  </div>
                 </div>
-                <p className={`mt-3 font-medium ${isDark ? "text-white" : "text-gray-900"}`}>
-                  {session?.user?.name || "User"}
-                </p>
+
+                {/* Editable Name */}
+                <div className="mt-3 flex items-center gap-2">
+                  {editingName ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={nameInput}
+                        onChange={(e) => setNameInput(e.target.value)}
+                        placeholder="Display name"
+                        maxLength={50}
+                        className={`px-3 py-1 rounded-lg border text-sm font-medium ${
+                          isDark
+                            ? "bg-white/5 text-white border-white/10"
+                            : "bg-white text-gray-900 border-gray-200"
+                        }`}
+                        autoFocus
+                      />
+                      <button
+                        onClick={handleSaveName}
+                        disabled={!nameInput.trim() || nameSaving}
+                        className="p-1 rounded bg-[#FF6B4A] text-white hover:bg-[#FF8F6B] disabled:opacity-50"
+                      >
+                        {nameSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      </button>
+                      <button
+                        onClick={() => setEditingName(false)}
+                        className={`p-1 rounded ${isDark ? "hover:bg-white/10" : "hover:bg-gray-100"}`}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <p className={`font-medium ${isDark ? "text-white" : "text-gray-900"}`}>
+                        {session?.user?.name || "User"}
+                      </p>
+                      <button
+                        onClick={() => {
+                          setNameInput(session?.user?.name || "");
+                          setEditingName(true);
+                        }}
+                        className={`p-1 rounded transition-colors ${isDark ? "hover:bg-white/10 text-white/40" : "hover:bg-gray-100 text-gray-400"}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                    </>
+                  )}
+                </div>
                 <p className={`text-sm ${isDark ? "text-white/50" : "text-gray-500"}`}>
                   {session?.user?.email}
                 </p>
@@ -1256,109 +1421,132 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
               </div>
             </div>
           ) : (
-            // Lobby Tab (not in lobby)
+            // Lobby Tab (not in lobby) - Shows friends list with invite functionality
             <div className="p-4 space-y-4 overflow-y-auto">
               {error && (
                 <div className="p-3 rounded-lg bg-red-500/10 text-red-400 text-sm">{error}</div>
               )}
 
-              {/* Create Lobby */}
-              <div className={`p-4 rounded-lg ${isDark ? "bg-white/5" : "bg-gray-50"}`}>
-                {showCreateForm ? (
-                  <div className="space-y-3">
-                    <input
-                      type="text"
-                      value={lobbyName}
-                      onChange={(e) => setLobbyName(e.target.value)}
-                      placeholder="Lobby name (optional)"
-                      className={`w-full px-3 py-2 rounded-lg border text-sm ${
-                        isDark
-                          ? "bg-white/5 border-white/10 text-white placeholder:text-white/30"
-                          : "bg-white border-gray-200 text-gray-900 placeholder:text-gray-400"
-                      }`}
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleCreate}
-                        disabled={isCreating}
-                        className="flex-1 py-2 rounded-lg bg-[#FF6B4A] text-white text-sm font-medium hover:bg-[#FF8F6B] disabled:opacity-50"
-                      >
-                        {isCreating ? "Creating..." : "Create"}
-                      </button>
-                      <button
-                        onClick={() => setShowCreateForm(false)}
-                        className={`px-4 py-2 rounded-lg text-sm ${
-                          isDark ? "bg-white/10 text-white/60" : "bg-gray-200 text-gray-600"
-                        }`}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setShowCreateForm(true)}
-                    className={`w-full py-3 rounded-lg flex items-center justify-center gap-2 transition-colors ${
-                      isDark
-                        ? "bg-white/10 text-white hover:bg-white/20"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    }`}
-                  >
-                    <Plus className="h-5 w-5" />
-                    Create Lobby
-                  </button>
-                )}
+              {/* Status message */}
+              <div className={`text-center py-2 ${isDark ? "text-white/60" : "text-gray-500"}`}>
+                <p className="text-sm">
+                  {currentLobby
+                    ? "Invite friends to your lobby"
+                    : "Invite a friend to start a lobby"}
+                </p>
               </div>
 
-              <p className={`text-center text-sm ${isDark ? "text-white/40" : "text-gray-400"}`}>
-                Or join a friend&apos;s lobby from the Friends tab
-              </p>
-
-              {/* Friends in Lobbies */}
-              {onlineFriends.filter((f) => f.lobbyId).length > 0 && (
-                <div>
-                  <h3 className={`text-sm font-medium mb-3 ${isDark ? "text-white/80" : "text-gray-700"}`}>
-                    Friends in Lobbies
-                  </h3>
-                  <div className="space-y-2">
-                    {onlineFriends
-                      .filter((f) => f.lobbyId)
-                      .map((friend) => (
-                        <div
-                          key={friend.odId}
-                          className={`flex items-center gap-3 p-3 rounded-lg ${isDark ? "bg-white/5" : "bg-gray-50"}`}
-                        >
-                          {friend.image ? (
-                            <Image
-                              src={friend.image}
-                              alt={friend.name || "Friend"}
-                              width={40}
-                              height={40}
-                              className="w-10 h-10 rounded-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#FF6B4A] to-[#FF8F6B] flex items-center justify-center">
-                              <User className="h-5 w-5 text-white" />
-                            </div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <p className={`font-medium truncate ${isDark ? "text-white" : "text-gray-900"}`}>
-                              {friend.name || friend.username}
-                            </p>
-                            <p className={`text-xs text-green-400 truncate`}>{friend.lobbyName}</p>
-                          </div>
-                          <button
-                            onClick={() => handleJoinFriendLobby(friend.lobbyId!)}
-                            className="px-3 py-1.5 rounded-lg bg-[#FF6B4A] text-white text-xs font-medium hover:bg-[#FF8F6B] flex items-center gap-1"
-                          >
-                            <Play className="h-3 w-3" />
-                            Join
-                          </button>
-                        </div>
-                      ))}
+              {/* Friends List with Invite */}
+              <div>
+                <h3 className={`text-sm font-medium mb-3 flex items-center gap-2 ${isDark ? "text-white/80" : "text-gray-700"}`}>
+                  <Users className="h-4 w-4" />
+                  Friends ({friends.length})
+                </h3>
+                {loadingFriends ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className={`h-6 w-6 animate-spin ${isDark ? "text-white/40" : "text-gray-400"}`} />
                   </div>
-                </div>
-              )}
+                ) : friends.length === 0 ? (
+                  <div className={`text-center py-8 ${isDark ? "text-white/40" : "text-gray-400"}`}>
+                    <Users className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No friends yet</p>
+                    <p className="text-xs mt-1">Add friends in the Friends tab</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {/* Online friends first, then offline */}
+                    {friends
+                      .sort((a, b) => {
+                        const aOnline = isOnline(a.id);
+                        const bOnline = isOnline(b.id);
+                        if (aOnline && !bOnline) return -1;
+                        if (!aOnline && bOnline) return 1;
+                        return 0;
+                      })
+                      .map((friend) => {
+                        const online = isOnline(friend.id);
+                        const friendLobby = getFriendLobby(friend.id);
+                        const onlineFriend = onlineFriends.find((of) => of.userId === friend.id);
+
+                        return (
+                          <div
+                            key={friend.id}
+                            className={`flex items-center gap-3 p-3 rounded-lg ${isDark ? "bg-white/5" : "bg-gray-50"}`}
+                          >
+                            <div className="relative">
+                              {friend.image ? (
+                                <Image
+                                  src={friend.image}
+                                  alt={friend.name || "Friend"}
+                                  width={40}
+                                  height={40}
+                                  className="w-10 h-10 rounded-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#FF6B4A] to-[#FF8F6B] flex items-center justify-center">
+                                  <User className="h-5 w-5 text-white" />
+                                </div>
+                              )}
+                              {/* Online indicator */}
+                              <div
+                                className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 ${
+                                  isDark ? "border-[#0f0f0f]" : "border-white"
+                                } ${online ? "bg-green-500" : "bg-gray-400"}`}
+                              />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className={`font-medium truncate ${isDark ? "text-white" : "text-gray-900"}`}>
+                                {friend.name || friend.username || "Unknown"}
+                              </p>
+                              <p className={`text-xs truncate ${isDark ? "text-white/50" : "text-gray-500"}`}>
+                                {friendLobby ? (
+                                  <span className="text-green-400">In lobby: {friendLobby.lobbyName}</span>
+                                ) : online ? (
+                                  <span className="text-green-400">Online</span>
+                                ) : (
+                                  "Offline"
+                                )}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {/* Join friend's lobby button */}
+                              {friendLobby && (
+                                <button
+                                  onClick={() => handleJoinFriendLobby(friendLobby.lobbyId!)}
+                                  className="px-3 py-1.5 rounded-lg bg-[#FF6B4A] text-white text-xs font-medium hover:bg-[#FF8F6B] flex items-center gap-1"
+                                >
+                                  <Play className="h-3 w-3" />
+                                  Join
+                                </button>
+                              )}
+                              {/* Invite button - only show if online and not in a lobby with them already */}
+                              {online && !friendLobby && onlineFriend && (
+                                <button
+                                  onClick={() => handleInviteFromLobbyTab(onlineFriend.odId)}
+                                  disabled={invitingFriend === onlineFriend.odId}
+                                  className="px-3 py-1.5 rounded-lg bg-[#FF6B4A] text-white text-xs font-medium hover:bg-[#FF8F6B] flex items-center gap-1 disabled:opacity-50"
+                                >
+                                  {invitingFriend === onlineFriend.odId ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <UserPlus className="h-3 w-3" />
+                                  )}
+                                  Invite
+                                </button>
+                              )}
+                              {/* Offline indicator */}
+                              {!online && (
+                                <span className={`text-xs ${isDark ? "text-white/30" : "text-gray-400"}`}>
+                                  Offline
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
