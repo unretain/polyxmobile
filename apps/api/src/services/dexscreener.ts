@@ -237,6 +237,42 @@ class DexScreenerService {
       dexId: pair.dexId,
     };
   }
+
+  // Get token data in Birdeye-compatible format (for replacing Birdeye calls)
+  async getTokenData(tokenAddress: string): Promise<{
+    address: string;
+    symbol: string;
+    name: string;
+    decimals: number;
+    logoURI: string | null;
+    price: number;
+    priceChange24h: number;
+    volume24h: number;
+    liquidity: number;
+    marketCap: number;
+  } | null> {
+    try {
+      const pairs = await this.getTokenPairs(tokenAddress);
+      if (pairs.length === 0) return null;
+
+      const pair = pairs[0];
+      return {
+        address: pair.baseToken.address,
+        symbol: pair.baseToken.symbol,
+        name: pair.baseToken.name,
+        decimals: 6, // Default for Solana tokens
+        logoURI: pair.info?.imageUrl || null,
+        price: parseFloat(pair.priceUsd) || 0,
+        priceChange24h: pair.priceChange?.h24 || 0,
+        volume24h: pair.volume?.h24 || 0,
+        liquidity: pair.liquidity?.usd || 0,
+        marketCap: pair.marketCap || pair.fdv || 0,
+      };
+    } catch (error) {
+      console.error("Error fetching token data from DexScreener:", error);
+      return null;
+    }
+  }
 }
 
 export const dexScreenerService = new DexScreenerService();
