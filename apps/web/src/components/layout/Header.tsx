@@ -3,14 +3,13 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
-import { LogOut, User, Shield, Copy, Check, Key, ChevronDown, Sun, Moon, CreditCard, Wallet, Loader2, ExternalLink, ArrowUpRight, Mail, PieChart, Menu, X, UserCircle, Users } from "lucide-react";
+import { LogOut, User, Shield, Copy, Check, Key, ChevronDown, Sun, Moon, CreditCard, Wallet, Loader2, ExternalLink, ArrowUpRight, Mail, PieChart, Menu, X, Users } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 import { useAuthStore } from "@/stores/authStore";
 import { useThemeStore } from "@/stores/themeStore";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { shortenAddress } from "@/lib/wallet";
 import { AuthModal } from "@/components/auth/AuthModal";
-import { ProfilePanel } from "@/components/profile/ProfilePanel";
 import { SocialPanel } from "@/components/social/SocialPanel";
 
 // Extended session user type with our custom fields
@@ -65,7 +64,6 @@ export function Header() {
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [pendingRedirect, setPendingRedirect] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [showProfilePanel, setShowProfilePanel] = useState(false);
   const [showSocialPanel, setShowSocialPanel] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -444,15 +442,6 @@ export function Header() {
 
                       {/* Menu Items */}
                       <div className="py-1">
-                        <button
-                          onClick={() => { setShowDropdown(false); setShowProfilePanel(true); }}
-                          className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
-                            isDark ? 'text-white/70 hover:text-white hover:bg-white/5' : 'text-black/70 hover:text-black hover:bg-black/5'
-                          }`}
-                        >
-                          <UserCircle className="h-4 w-4" />
-                          Profile
-                        </button>
                         <Link
                           href="/portfolio"
                           onClick={() => setShowDropdown(false)}
@@ -629,15 +618,6 @@ export function Header() {
                     <span className={`text-xs ${isDark ? 'text-white/40' : 'text-black/40'}`}>{shortenAddress(walletAddress)}</span>
                   </button>
                 )}
-                <button
-                  onClick={() => { setMobileMenuOpen(false); setShowProfilePanel(true); }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors ${
-                    isDark ? 'text-white/70 hover:bg-white/5' : 'text-black/70 hover:bg-black/5'
-                  }`}
-                >
-                  <UserCircle className="h-4 w-4" />
-                  Profile
-                </button>
                 <button
                   onClick={() => { setMobileMenuOpen(false); setShowSocialPanel(true); }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors ${
@@ -896,12 +876,6 @@ export function Header() {
           </div>
         </div>
       )}
-
-      {/* Profile Panel */}
-      <ProfilePanel
-        isOpen={showProfilePanel}
-        onClose={() => setShowProfilePanel(false)}
-      />
 
       {/* Social Panel */}
       <SocialPanel
