@@ -1315,8 +1315,22 @@ export default function PortfolioPage() {
                             ctx.fillText('polyx.trade', outW - padX, outH - padY);
                           };
 
-                          // Setup canvas stream with 30fps auto-capture
-                          const canvasStream = canvas.captureStream(30);
+                          // Determine codec support first
+                          let mimeType = 'video/webm;codecs=vp9,opus';
+                          let isMP4 = false;
+                          if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2')) {
+                            mimeType = 'video/mp4;codecs=avc1.42E01E,mp4a.40.2';
+                            isMP4 = true;
+                          } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+                            mimeType = 'video/mp4';
+                            isMP4 = true;
+                          }
+                          console.log('EXPORT: using mimeType=' + mimeType + ' isMP4=' + isMP4);
+
+                          // For MP4: use captureStream(0) with manual requestFrame() - required for H.264
+                          // For WebM: captureStream(30) auto mode works fine
+                          const canvasStream = canvas.captureStream(isMP4 ? 0 : 30);
+                          const canvasVideoTrack = canvasStream.getVideoTracks()[0] as any;
 
                           let stream: MediaStream = canvasStream;
                           try {
@@ -1329,18 +1343,6 @@ export default function PortfolioPage() {
 
                           // Higher bitrate for better quality
                           const bitrate = Math.min(outW * outH * 10, 10000000); // ~10 bits per pixel, max 10Mbps
-
-                          // Prefer MP4 for best compatibility and quality
-                          let mimeType = 'video/webm;codecs=vp9,opus';
-                          let isMP4 = false;
-                          if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2')) {
-                            mimeType = 'video/mp4;codecs=avc1.42E01E,mp4a.40.2';
-                            isMP4 = true;
-                          } else if (MediaRecorder.isTypeSupported('video/mp4')) {
-                            mimeType = 'video/mp4';
-                            isMP4 = true;
-                          }
-                          console.log('EXPORT: using mimeType=' + mimeType + ' isMP4=' + isMP4);
 
                           const recorder = new MediaRecorder(stream, {
                             mimeType,
@@ -1356,15 +1358,19 @@ export default function PortfolioPage() {
                           let animationId: number;
                           let isRecording = true;
 
-                          // Simple frame loop - draw every animation frame
+                          // Frame loop - for MP4 we must manually call requestFrame after each draw
                           const frameLoop = () => {
                             if (!isRecording) return;
                             drawOverlay();
+                            // For MP4/H.264, explicitly signal new frame to encoder
+                            if (isMP4 && canvasVideoTrack.requestFrame) {
+                              canvasVideoTrack.requestFrame();
+                            }
                             animationId = requestAnimationFrame(frameLoop);
                           };
 
                           recorder.onstart = () => {
-                            console.log('EXPORT: recording bitrate=' + bitrate);
+                            console.log('EXPORT: recording bitrate=' + bitrate + ' manual=' + isMP4);
                             video.play();
                             frameLoop();
                           };
