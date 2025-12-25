@@ -3,13 +3,15 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
-import { LogOut, User, Shield, Copy, Check, Key, ChevronDown, Sun, Moon, CreditCard, Wallet, Loader2, ExternalLink, ArrowUpRight, Mail, PieChart, Menu, X } from "lucide-react";
+import { LogOut, User, Shield, Copy, Check, Key, ChevronDown, Sun, Moon, CreditCard, Wallet, Loader2, ExternalLink, ArrowUpRight, Mail, PieChart, Menu, X, UserCircle, Users } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 import { useAuthStore } from "@/stores/authStore";
 import { useThemeStore } from "@/stores/themeStore";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { shortenAddress } from "@/lib/wallet";
 import { AuthModal } from "@/components/auth/AuthModal";
+import { ProfilePanel } from "@/components/profile/ProfilePanel";
+import { LobbyPanel } from "@/components/lobby/LobbyPanel";
 
 // Extended session user type with our custom fields
 interface SessionUser {
@@ -63,6 +65,8 @@ export function Header() {
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [pendingRedirect, setPendingRedirect] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showProfilePanel, setShowProfilePanel] = useState(false);
+  const [showLobbyPanel, setShowLobbyPanel] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const currentUser = session?.user as SessionUser | undefined;
@@ -350,6 +354,21 @@ export function Header() {
               {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
 
+            {/* Lobby Button - only for logged in users */}
+            {currentUser && (
+              <button
+                onClick={() => setShowLobbyPanel(true)}
+                className={`hidden md:flex p-2.5 rounded-full border backdrop-blur-md transition-colors ${
+                  isDark
+                    ? 'bg-white/5 border-white/10 hover:bg-white/10 text-white/60 hover:text-white'
+                    : 'bg-black/5 border-black/10 hover:bg-black/10 text-black/60 hover:text-black'
+                }`}
+                title="Lobbies"
+              >
+                <Users className="h-4 w-4" />
+              </button>
+            )}
+
             {/* Desktop: Show wallet and user menu when logged in */}
             {currentUser ? (
               <>
@@ -391,9 +410,19 @@ export function Header() {
                         : 'bg-black/5 border-black/10 hover:bg-black/10'
                     }`}
                   >
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#FF6B4A] to-[#FF8F6B] flex items-center justify-center">
-                      <User className="h-4 w-4 text-white" />
-                    </div>
+                    {currentUser?.image ? (
+                      <Image
+                        src={currentUser.image}
+                        alt="Profile"
+                        width={28}
+                        height={28}
+                        className="w-7 h-7 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#FF6B4A] to-[#FF8F6B] flex items-center justify-center">
+                        <User className="h-4 w-4 text-white" />
+                      </div>
+                    )}
                     {twoFactorEnabled && (
                       <Shield className="h-3 w-3 text-green-500" />
                     )}
@@ -415,6 +444,15 @@ export function Header() {
 
                       {/* Menu Items */}
                       <div className="py-1">
+                        <button
+                          onClick={() => { setShowDropdown(false); setShowProfilePanel(true); }}
+                          className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${
+                            isDark ? 'text-white/70 hover:text-white hover:bg-white/5' : 'text-black/70 hover:text-black hover:bg-black/5'
+                          }`}
+                        >
+                          <UserCircle className="h-4 w-4" />
+                          Profile
+                        </button>
                         <Link
                           href="/portfolio"
                           onClick={() => setShowDropdown(false)}
@@ -591,6 +629,24 @@ export function Header() {
                     <span className={`text-xs ${isDark ? 'text-white/40' : 'text-black/40'}`}>{shortenAddress(walletAddress)}</span>
                   </button>
                 )}
+                <button
+                  onClick={() => { setMobileMenuOpen(false); setShowProfilePanel(true); }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors ${
+                    isDark ? 'text-white/70 hover:bg-white/5' : 'text-black/70 hover:bg-black/5'
+                  }`}
+                >
+                  <UserCircle className="h-4 w-4" />
+                  Profile
+                </button>
+                <button
+                  onClick={() => { setMobileMenuOpen(false); setShowLobbyPanel(true); }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors ${
+                    isDark ? 'text-white/70 hover:bg-white/5' : 'text-black/70 hover:bg-black/5'
+                  }`}
+                >
+                  <Users className="h-4 w-4" />
+                  Lobbies
+                </button>
                 <Link
                   href="/portfolio"
                   onClick={() => setMobileMenuOpen(false)}
@@ -840,6 +896,18 @@ export function Header() {
           </div>
         </div>
       )}
+
+      {/* Profile Panel */}
+      <ProfilePanel
+        isOpen={showProfilePanel}
+        onClose={() => setShowProfilePanel(false)}
+      />
+
+      {/* Lobby Panel */}
+      <LobbyPanel
+        isOpen={showLobbyPanel}
+        onClose={() => setShowLobbyPanel(false)}
+      />
 
       {/* Security Modal */}
       {showSecurityModal && (
