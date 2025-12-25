@@ -377,43 +377,43 @@ export async function GET(req: NextRequest) {
     // Find tokens missing from database
     const missingMints = tokenMints.filter(mint => !tokenMap.has(mint));
 
-    // Fetch missing token metadata via API service (which has Moralis key)
+    // Fetch missing token metadata from DexScreener (free, reliable)
     if (missingMints.length > 0) {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-
-      // Fetch from API service in parallel
-      const apiPromises = missingMints.map(async (mint) => {
+      const dexPromises = missingMints.map(async (mint) => {
         try {
           const res = await fetch(
-            `${API_URL}/api/pulse/token/${mint}`,
-            { signal: AbortSignal.timeout(10000) }
+            `https://api.dexscreener.com/latest/dex/tokens/${mint}`,
+            { signal: AbortSignal.timeout(5000) }
           );
 
           if (res.ok) {
             const data = await res.json();
+            const pair = data.pairs?.[0];
 
-            if (data.address) {
-              tokenMap.set(mint, {
+            if (pair?.baseToken) {
+              const tokenInfo = {
                 address: mint,
-                name: data.name || data.symbol || mint.slice(0, 8),
-                symbol: data.symbol || mint.slice(0, 6),
-                logoUri: data.logoUri || null,
-              });
+                name: pair.baseToken.name || pair.baseToken.symbol || mint.slice(0, 8),
+                symbol: pair.baseToken.symbol || mint.slice(0, 6),
+                logoUri: pair.info?.imageUrl || null,
+              };
+
+              tokenMap.set(mint, tokenInfo);
 
               // Cache in database (fire and forget)
               prisma.token.upsert({
                 where: { address: mint },
                 create: {
                   address: mint,
-                  name: data.name || data.symbol || mint.slice(0, 8),
-                  symbol: data.symbol || mint.slice(0, 6),
+                  name: tokenInfo.name,
+                  symbol: tokenInfo.symbol,
                   decimals: 6,
-                  logoUri: data.logoUri || null,
+                  logoUri: tokenInfo.logoUri,
                 },
                 update: {
-                  name: data.name || data.symbol,
-                  symbol: data.symbol,
-                  logoUri: data.logoUri || null,
+                  name: tokenInfo.name,
+                  symbol: tokenInfo.symbol,
+                  logoUri: tokenInfo.logoUri,
                 },
               }).catch(() => {});
             }
@@ -423,7 +423,7 @@ export async function GET(req: NextRequest) {
         }
       });
 
-      await Promise.allSettled(apiPromises);
+      await Promise.allSettled(dexPromises);
     }
 
     // Enrich positions with token metadata
