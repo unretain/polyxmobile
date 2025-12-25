@@ -17,7 +17,6 @@ import {
   TrendingUp,
   Share2,
   X,
-  Upload,
   Download,
   Copy,
   Video,
@@ -1210,53 +1209,45 @@ export default function PortfolioPage() {
                           const video = videoRef.current;
                           console.log('EXPORT: start');
 
-                          // Reset video to start and wait for frame to be ready
+                          // Use native video resolution for quality, then scale for output
+                          const videoW = video.videoWidth || 1920;
+                          const videoH = video.videoHeight || 1080;
+
+                          // Output at 1080p maintaining aspect ratio, or native if smaller
+                          const maxW = 1920;
+                          const maxH = 1080;
+                          const scale = Math.min(maxW / videoW, maxH / videoH, 1);
+                          const outW = Math.round(videoW * scale);
+                          const outH = Math.round(videoH * scale);
+
+                          console.log('EXPORT: video=' + videoW + 'x' + videoH + ' output=' + outW + 'x' + outH);
+
+                          // Reset video to start
                           video.currentTime = 0;
                           video.muted = false;
 
-                          // Wait for seek to complete
                           await new Promise<void>((resolve) => {
                             const onSeeked = () => {
                               video.removeEventListener('seeked', onSeeked);
                               resolve();
                             };
-                            video.addEventListener('seeked', onSeeked);
+                            if (video.currentTime === 0 && video.readyState >= 2) {
+                              resolve();
+                            } else {
+                              video.addEventListener('seeked', onSeeked);
+                            }
                           });
 
-                          await video.play();
-
-                          // Wait for actual frame data - check canvas pixel
-                          const testCanvas = document.createElement('canvas');
-                          testCanvas.width = 16;
-                          testCanvas.height = 16;
-                          const testCtx = testCanvas.getContext('2d')!;
-
-                          await new Promise<void>((resolve) => {
-                            let attempts = 0;
-                            const checkFrame = () => {
-                              testCtx.drawImage(video, 0, 0, 16, 16);
-                              const px = testCtx.getImageData(8, 8, 1, 1).data;
-                              // Check if we have any non-black pixel
-                              if (px[0] + px[1] + px[2] > 10 || attempts > 60) {
-                                console.log('EXPORT: frame ready after ' + attempts + ' attempts, pixel=' + px[0] + ',' + px[1] + ',' + px[2]);
-                                resolve();
-                              } else {
-                                attempts++;
-                                requestAnimationFrame(checkFrame);
-                              }
-                            };
-                            checkFrame();
-                          });
-                          console.log('EXPORT: video ready w=' + video.videoWidth + ' h=' + video.videoHeight);
-
+                          // Create high-quality canvas
                           const canvas = document.createElement('canvas');
-                          canvas.width = 720;
-                          canvas.height = 480;
-                          const ctx = canvas.getContext('2d', { alpha: false });
+                          canvas.width = outW;
+                          canvas.height = outH;
+                          const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
                           if (!ctx) { console.log('EXPORT: NO CTX'); return; }
 
-                          // Overlay text values (pre-compute)
-                          const pad = 32;
+                          // Pre-compute overlay text
+                          const padX = Math.round(outW * 0.044);
+                          const padY = Math.round(outH * 0.067);
                           const periodLabel = selectedDayForShare
                             ? new Date(selectedDayForShare.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
                             : viewMode === "calendar"
@@ -1276,55 +1267,77 @@ export default function PortfolioPage() {
                             : `${trades} trades • ${winRate}% win rate`;
                           const dateStr = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
-                          // Draw first frame immediately
-                          const drawFrame = () => {
-                            ctx.drawImage(video, 0, 0, 720, 480);
+                          // Scale fonts based on output size
+                          const fontScale = outH / 480;
+                          const logoSize = Math.round(32 * fontScale);
+                          const periodSize = Math.round(18 * fontScale);
+                          const pnlSize = Math.round(56 * fontScale);
+                          const statsSize = Math.round(18 * fontScale);
+
+                          // Draw frame function using requestVideoFrameCallback for sync
+                          const drawOverlay = () => {
+                            // Draw video frame
+                            ctx.drawImage(video, 0, 0, outW, outH);
+
+                            // Semi-transparent overlay
                             ctx.fillStyle = 'rgba(0,0,0,0.30)';
-                            ctx.fillRect(0, 0, 720, 480);
-                            ctx.font = 'bold 32px Arial';
+                            ctx.fillRect(0, 0, outW, outH);
+
+                            // Logo top-left
+                            ctx.font = `bold ${logoSize}px Arial`;
                             ctx.textAlign = 'left';
                             ctx.textBaseline = 'top';
                             ctx.fillStyle = 'white';
-                            ctx.fillText('[poly', pad, pad);
+                            ctx.fillText('[poly', padX, padY);
                             ctx.fillStyle = '#FF6B4A';
-                            ctx.fillText('x', pad + ctx.measureText('[poly').width, pad);
+                            ctx.fillText('x', padX + ctx.measureText('[poly').width, padY);
                             ctx.fillStyle = 'white';
-                            ctx.fillText(']', pad + ctx.measureText('[polyx').width, pad);
+                            ctx.fillText(']', padX + ctx.measureText('[polyx').width, padY);
+
+                            // Center text
                             ctx.textAlign = 'center';
                             ctx.textBaseline = 'middle';
-                            ctx.font = '18px Arial';
+                            ctx.font = `${periodSize}px Arial`;
                             ctx.fillStyle = 'rgba(255,255,255,0.8)';
-                            ctx.fillText(`${periodLabel} PnL`, 360, 190);
-                            ctx.font = 'bold 56px Arial';
+                            ctx.fillText(`${periodLabel} PnL`, outW / 2, outH * 0.4);
+                            ctx.font = `bold ${pnlSize}px Arial`;
                             ctx.fillStyle = isPos ? '#4ade80' : '#f87171';
-                            ctx.fillText(pnlText, 360, 250);
-                            ctx.font = '18px Arial';
+                            ctx.fillText(pnlText, outW / 2, outH * 0.52);
+                            ctx.font = `${statsSize}px Arial`;
                             ctx.fillStyle = 'rgba(255,255,255,0.6)';
-                            ctx.fillText(statsText, 360, 310);
+                            ctx.fillText(statsText, outW / 2, outH * 0.65);
+
+                            // Footer
                             ctx.textBaseline = 'bottom';
                             ctx.textAlign = 'left';
-                            ctx.fillText(dateStr, pad, 480 - pad);
+                            ctx.fillText(dateStr, padX, outH - padY);
                             ctx.textAlign = 'right';
-                            ctx.fillText('polyx.trade', 720 - pad, 480 - pad);
+                            ctx.fillText('polyx.trade', outW - padX, outH - padY);
                           };
-                          drawFrame();
 
-                          // Test that we have actual video content
-                          const testPx = ctx.getImageData(360, 240, 1, 1).data;
-                          console.log('EXPORT: first frame pixel r=' + testPx[0] + ' g=' + testPx[1] + ' b=' + testPx[2]);
+                          // Use requestVideoFrameCallback if available for perfect frame sync
+                          const hasRVFC = 'requestVideoFrameCallback' in video;
+                          console.log('EXPORT: requestVideoFrameCallback=' + hasRVFC);
 
-                          // Setup streams
-                          const canvasStream = canvas.captureStream(30);
+                          // Setup streams - higher bitrate for quality
+                          const canvasStream = canvas.captureStream(0); // 0 = manual frame capture
+                          const videoTrack = canvasStream.getVideoTracks()[0];
+
                           let stream: MediaStream = canvasStream;
                           try {
                             const vidStream = (video as any).captureStream?.();
                             if (vidStream?.getAudioTracks()?.length) {
-                              stream = new MediaStream([...canvasStream.getVideoTracks(), ...vidStream.getAudioTracks()]);
+                              stream = new MediaStream([videoTrack, ...vidStream.getAudioTracks()]);
                               console.log('EXPORT: audio added');
                             }
                           } catch (e) { /* no audio */ }
 
-                          const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus' });
+                          // Higher bitrate for better quality
+                          const bitrate = Math.min(outW * outH * 8, 8000000); // ~8 bits per pixel, max 8Mbps
+                          const recorder = new MediaRecorder(stream, {
+                            mimeType: 'video/webm;codecs=vp8,opus',
+                            videoBitsPerSecond: bitrate
+                          });
                           const chunks: Blob[] = [];
                           const startTime = Date.now();
 
@@ -1332,23 +1345,49 @@ export default function PortfolioPage() {
                             if (e.data.size > 0) chunks.push(e.data);
                           };
 
-                          let frameInterval: ReturnType<typeof setInterval>;
+                          let animationId: number;
+                          let rvfcId: number;
+                          let isRecording = true;
+
+                          // Frame loop using requestVideoFrameCallback or requestAnimationFrame
+                          const frameLoop = () => {
+                            if (!isRecording) return;
+
+                            drawOverlay();
+
+                            // Manually request new frame for captureStream(0)
+                            if ((videoTrack as any).requestFrame) {
+                              (videoTrack as any).requestFrame();
+                            }
+
+                            if (hasRVFC) {
+                              rvfcId = (video as any).requestVideoFrameCallback(frameLoop);
+                            } else {
+                              animationId = requestAnimationFrame(frameLoop);
+                            }
+                          };
 
                           recorder.onstart = () => {
-                            console.log('EXPORT: recording');
-                            drawFrame(); // Draw first frame immediately when recording starts
-                            frameInterval = setInterval(drawFrame, 33);
+                            console.log('EXPORT: recording bitrate=' + bitrate);
+                            video.play();
+                            frameLoop();
                           };
 
                           recorder.onstop = async () => {
-                            clearInterval(frameInterval);
+                            isRecording = false;
+                            if (hasRVFC && rvfcId) {
+                              (video as any).cancelVideoFrameCallback(rvfcId);
+                            } else if (animationId) {
+                              cancelAnimationFrame(animationId);
+                            }
+                            video.pause();
+
                             const duration = Date.now() - startTime;
                             console.log('EXPORT: stopped duration=' + duration + 'ms chunks=' + chunks.length);
 
                             const rawBlob = new Blob(chunks, { type: 'video/webm' });
                             console.log('EXPORT: raw blob size=' + rawBlob.size);
 
-                            // Fix duration metadata
                             const fixedBlob = await fixWebmDuration(rawBlob, duration);
                             console.log('EXPORT: fixed blob size=' + fixedBlob.size);
 
@@ -1366,7 +1405,7 @@ export default function PortfolioPage() {
 
                           const videoDuration = Math.min(video.duration * 1000, 60000) || 10000;
                           console.log('EXPORT: will record for ' + videoDuration + 'ms');
-                          recorder.start();
+                          recorder.start(100); // Collect data every 100ms for smoother chunks
 
                           setTimeout(() => {
                             if (recorder.state === 'recording') {
