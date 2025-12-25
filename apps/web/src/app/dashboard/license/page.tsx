@@ -13,14 +13,14 @@ interface SubscriptionStatus {
   status: string;
   hasSubscription: boolean;
   features: {
-    domains: number;
-    viewsPerMonth: number;
     watermark: boolean;
     whiteLabel?: boolean;
+    apiAccess?: boolean;
+    apiRateLimit?: number;
   };
   domains: { domain: string; isVerified: boolean }[];
-  usage: {
-    embedViews: number;
+  apiUsage?: {
+    used: number;
     limit: number;
     remaining: number;
     resetAt: string;
@@ -31,10 +31,6 @@ interface LicenseData {
   licenseKey: string;
   plan: string;
   domains: string[];
-  usage: {
-    embedViews: number;
-    limit: number;
-  };
 }
 
 export default function LicenseDashboard() {
@@ -192,8 +188,8 @@ export default function LicenseDashboard() {
     return null; // Will redirect
   }
 
-  const maxDomains = subscription?.features?.domains === -1 ? Infinity : (subscription?.features?.domains || 1);
-  const canAddDomain = domains.length < maxDomains;
+  // No domain limits anymore - users can add unlimited domains (managed by backend)
+  const canAddDomain = true;
 
   return (
     <div className={`min-h-screen ${isDark ? 'bg-[#0a0a0a] text-white' : 'bg-gray-50 text-gray-900'}`}>
@@ -253,21 +249,21 @@ export default function LicenseDashboard() {
                   </div>
                 </div>
                 <div className={`p-4 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-                  <div className={`text-xs mb-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Domains</div>
-                  <div className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {subscription.features.domains === -1 ? "Unlimited" : subscription.features.domains}
-                  </div>
-                </div>
-                <div className={`p-4 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-                  <div className={`text-xs mb-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Views/Month</div>
-                  <div className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {subscription.features.viewsPerMonth === -1 ? "Unlimited" : subscription.features.viewsPerMonth.toLocaleString()}
+                  <div className={`text-xs mb-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Embeds</div>
+                  <div className={`font-medium text-green-500`}>
+                    Unlimited
                   </div>
                 </div>
                 <div className={`p-4 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
                   <div className={`text-xs mb-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Watermark</div>
                   <div className={`font-medium ${subscription.features.watermark ? (isDark ? "text-white/60" : "text-gray-600") : "text-green-500"}`}>
                     {subscription.features.watermark ? "Yes" : "Removed"}
+                  </div>
+                </div>
+                <div className={`p-4 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
+                  <div className={`text-xs mb-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>API Access</div>
+                  <div className={`font-medium ${subscription.features.apiAccess ? "text-green-500" : isDark ? "text-white/60" : "text-gray-600"}`}>
+                    {subscription.features.apiAccess ? "Enabled" : "None"}
                   </div>
                 </div>
               </div>
@@ -291,13 +287,13 @@ export default function LicenseDashboard() {
               )}
             </div>
 
-            {/* Usage Statistics */}
-            {subscription.usage && (
+            {/* API Usage Statistics - Business tier only */}
+            {subscription.apiUsage && subscription.plan === "BUSINESS" && (
               <div className={`p-6 rounded-xl border ${isDark ? 'bg-white/5 border-white/10' : 'bg-white border-gray-200'}`}>
                 <div className="flex items-center justify-between mb-4">
                   <h2 className={`text-lg font-semibold flex items-center gap-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
                     <BarChart3 className="h-5 w-5 text-[#FF6B4A]" />
-                    Usage This Period
+                    API Usage This Period
                   </h2>
                   <button
                     onClick={loadSubscription}
@@ -311,24 +307,22 @@ export default function LicenseDashboard() {
                 {/* Usage Progress Bar */}
                 <div className="mb-4">
                   <div className="flex items-center justify-between text-sm mb-2">
-                    <span className={isDark ? 'text-white/60' : 'text-gray-600'}>Embed Views</span>
+                    <span className={isDark ? 'text-white/60' : 'text-gray-600'}>Compute Units (CU)</span>
                     <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {subscription.usage.embedViews.toLocaleString()} / {subscription.usage.limit === -1 ? "∞" : subscription.usage.limit.toLocaleString()}
+                      {subscription.apiUsage.used.toLocaleString()} / {subscription.apiUsage.limit.toLocaleString()}
                     </span>
                   </div>
                   <div className={`h-3 rounded-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-gray-200'}`}>
                     <div
                       className={`h-full transition-all ${
-                        subscription.usage.limit !== -1 && subscription.usage.embedViews / subscription.usage.limit > 0.9
+                        subscription.apiUsage.used / subscription.apiUsage.limit > 0.9
                           ? "bg-red-500"
-                          : subscription.usage.limit !== -1 && subscription.usage.embedViews / subscription.usage.limit > 0.7
+                          : subscription.apiUsage.used / subscription.apiUsage.limit > 0.7
                           ? "bg-yellow-500"
                           : "bg-[#FF6B4A]"
                       }`}
                       style={{
-                        width: subscription.usage.limit === -1
-                          ? "5%"
-                          : `${Math.min(100, (subscription.usage.embedViews / subscription.usage.limit) * 100)}%`
+                        width: `${Math.min(100, (subscription.apiUsage.used / subscription.apiUsage.limit) * 100)}%`
                       }}
                     />
                   </div>
@@ -337,26 +331,26 @@ export default function LicenseDashboard() {
                 <div className="grid grid-cols-3 gap-4">
                   <div className={`p-3 rounded-lg text-center ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
                     <div className={`text-xs mb-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Used</div>
-                    <div className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>{subscription.usage.embedViews.toLocaleString()}</div>
+                    <div className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>{subscription.apiUsage.used.toLocaleString()} CU</div>
                   </div>
                   <div className={`p-3 rounded-lg text-center ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
                     <div className={`text-xs mb-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Remaining</div>
                     <div className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {subscription.usage.remaining === -1 ? "∞" : subscription.usage.remaining.toLocaleString()}
+                      {subscription.apiUsage.remaining.toLocaleString()} CU
                     </div>
                   </div>
                   <div className={`p-3 rounded-lg text-center ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
                     <div className={`text-xs mb-1 ${isDark ? 'text-white/40' : 'text-gray-500'}`}>Resets</div>
                     <div className={`font-medium text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {new Date(subscription.usage.resetAt).toLocaleDateString()}
+                      {new Date(subscription.apiUsage.resetAt).toLocaleDateString()}
                     </div>
                   </div>
                 </div>
 
-                {subscription.usage.limit !== -1 && subscription.usage.embedViews / subscription.usage.limit > 0.8 && (
+                {subscription.apiUsage.used / subscription.apiUsage.limit > 0.8 && (
                   <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-sm text-yellow-400">
                     <AlertCircle className="inline h-4 w-4 mr-2" />
-                    You&apos;re approaching your view limit. Consider upgrading for more views.
+                    You&apos;re approaching your API limit. Contact support for higher limits.
                   </div>
                 )}
               </div>
@@ -478,7 +472,7 @@ export default function LicenseDashboard() {
                 )}
 
                 <div className={`mt-4 text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
-                  {domains.length} / {maxDomains === Infinity ? "∞" : maxDomains} domains used
+                  {domains.length} domain{domains.length !== 1 ? 's' : ''} registered
                 </div>
               </div>
             )}

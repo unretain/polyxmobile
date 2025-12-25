@@ -2,25 +2,24 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
-// Plan limits configuration
-const PLAN_LIMITS = {
+// Plan features configuration
+// Embeds are unlimited for all tiers (we serve cached data, no marginal cost)
+const PLAN_FEATURES = {
   FREE: {
-    domains: 1,
-    viewsPerMonth: 1000,
     watermark: true,
     whiteLabel: false,
+    apiAccess: false,
   },
   PRO: {
-    domains: 3,
-    viewsPerMonth: 50000,
     watermark: false,
     whiteLabel: false,
+    apiAccess: false,
   },
   BUSINESS: {
-    domains: -1, // unlimited
-    viewsPerMonth: -1, // unlimited
     watermark: false,
     whiteLabel: true,
+    apiAccess: true,
+    apiRateLimit: 5000, // 5000 CU per month
   },
 };
 
@@ -50,22 +49,13 @@ export async function GET() {
         plan: "FREE",
         status: "ACTIVE",
         hasSubscription: false,
-        features: PLAN_LIMITS.FREE,
+        features: PLAN_FEATURES.FREE,
         domains: [],
-        usage: {
-          embedViews: 0,
-          limit: PLAN_LIMITS.FREE.viewsPerMonth,
-          remaining: PLAN_LIMITS.FREE.viewsPerMonth,
-          resetAt: getNextMonthReset(),
-        },
       });
     }
 
     const plan = subscription.plan;
-    const features = PLAN_LIMITS[plan];
-    const viewsLimit = features.viewsPerMonth;
-    const viewsUsed = subscription.embedViews;
-    const viewsRemaining = viewsLimit === -1 ? -1 : Math.max(0, viewsLimit - viewsUsed);
+    const features = PLAN_FEATURES[plan];
 
     return NextResponse.json({
       plan,
@@ -77,12 +67,16 @@ export async function GET() {
         domain: d.domain,
         isVerified: d.isVerified,
       })),
-      usage: {
-        embedViews: viewsUsed,
-        limit: viewsLimit,
-        remaining: viewsRemaining,
-        resetAt: subscription.embedViewsResetAt?.toISOString() || getNextMonthReset(),
-      },
+      // API usage tracking for BUSINESS tier
+      // Note: Using embedViews field for API usage tracking until schema is updated
+      ...(plan === "BUSINESS" && {
+        apiUsage: {
+          used: subscription.embedViews || 0,
+          limit: 5000,
+          remaining: Math.max(0, 5000 - (subscription.embedViews || 0)),
+          resetAt: subscription.embedViewsResetAt?.toISOString() || getNextMonthReset(),
+        },
+      }),
     });
 
   } catch (error) {

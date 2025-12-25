@@ -30,17 +30,11 @@ export async function GET(req: NextRequest) {
       },
     });
 
-    console.log("[balance] User lookup by ID:", {
-      sessionUserId: session.user.id,
-      sessionEmail: session.user.email,
-      found: !!user,
-      hasWallet: !!user?.walletAddress,
-      userEmail: user?.email,
-    });
+    // SECURITY: Don't log sensitive user info
+    console.log("[balance] User lookup:", { found: !!user, hasWallet: !!user?.walletAddress });
 
     // If not found by ID, try by email (session might have stale ID)
     if (!user && session.user.email) {
-      console.log("[balance] Trying lookup by email:", session.user.email);
       user = await prisma.user.findUnique({
         where: { email: session.user.email },
         select: {
@@ -49,39 +43,22 @@ export async function GET(req: NextRequest) {
           email: true,
         },
       });
-      console.log("[balance] User lookup by email:", {
-        found: !!user,
-        hasWallet: !!user?.walletAddress,
-        userId: user?.id,
-      });
+      console.log("[balance] Fallback lookup:", { found: !!user, hasWallet: !!user?.walletAddress });
     }
 
     if (!user) {
-      // List all users for debugging
-      const allUsers = await prisma.user.findMany({
-        select: { id: true, email: true, walletAddress: true },
-        take: 10,
-      });
-      console.error("[balance] User not found. Session:", {
-        id: session.user.id,
-        email: session.user.email,
-      });
-      console.error("[balance] Available users:", allUsers.map(u => ({
-        id: u.id,
-        email: u.email,
-        wallet: u.walletAddress?.substring(0, 8) + "...",
-      })));
+      console.error("[balance] User not found for session:", session.user.id);
       return NextResponse.json(
-        { error: "User not found", debug: { sessionId: session.user.id, sessionEmail: session.user.email } },
+        { error: "User not found" },
         { status: 404 }
       );
     }
 
     const walletAddress = user.walletAddress;
     if (!walletAddress) {
-      console.error("[balance] User exists but has no wallet:", user.id, user.email);
+      console.error("[balance] User has no wallet:", user.id);
       return NextResponse.json(
-        { error: "No wallet found for user", debug: { userId: user.id, email: user.email } },
+        { error: "No wallet found for user" },
         { status: 400 }
       );
     }

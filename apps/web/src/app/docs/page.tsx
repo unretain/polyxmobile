@@ -271,19 +271,16 @@ export default function DocsPage() {
                 <ApiEndpoint
                   method="GET"
                   path="/api/subscription/status"
-                  description="Check subscription status for an email"
-                  params={[
-                    { name: "email", type: "string", required: true, description: "Email to check" }
-                  ]}
+                  description="Check subscription status (requires authentication)"
+                  params={[]}
                   response={`{
-  "email": "user@example.com",
   "plan": "PRO",
-  "status": "active",
+  "status": "ACTIVE",
   "hasSubscription": true,
   "features": {
-    "domains": 3,
-    "viewsPerMonth": 50000,
-    "watermark": false
+    "watermark": false,
+    "whiteLabel": false,
+    "apiAccess": false
   }
 }`}
                 />
@@ -322,6 +319,43 @@ export default function DocsPage() {
   }
 }`}
                 />
+
+                <div className="mt-8 p-4 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+                  <h3 className="text-lg font-semibold text-purple-400 mb-2">Business API</h3>
+                  <p className="text-white/60 text-sm mb-4">
+                    The following endpoint requires a Business plan subscription. Rate limited to 5,000 compute units (CU) per month.
+                  </p>
+                </div>
+
+                <ApiEndpoint
+                  method="GET"
+                  path="/api/v1/ohlcv/:address"
+                  description="Get OHLCV candlestick data for any Solana token (Business tier only)"
+                  params={[
+                    { name: "address", type: "string", required: true, description: "Solana token mint address" },
+                    { name: "timeframe", type: "string", required: false, description: "1m, 5m, 15m, 1h, 4h, 1d (default: 1h)" },
+                    { name: "limit", type: "number", required: false, description: "Number of candles (default: 100, max: 1000)" },
+                    { name: "from", type: "number", required: false, description: "Start timestamp (Unix seconds)" },
+                    { name: "to", type: "number", required: false, description: "End timestamp (Unix seconds)" }
+                  ]}
+                  response={`[
+  {
+    "timestamp": 1703462400000,
+    "open": 100.5,
+    "high": 102.3,
+    "low": 99.8,
+    "close": 101.2,
+    "volume": 1234567
+  },
+  ...
+]
+
+// Response Headers:
+// X-RateLimit-Limit: 5000
+// X-RateLimit-Remaining: 4990
+// X-RateLimit-Reset: 2024-02-01T00:00:00.000Z
+// X-Request-Cost: 10`}
+                />
               </div>
             </section>
           )}
@@ -340,9 +374,7 @@ export default function DocsPage() {
                   price="$0"
                   description="For personal projects"
                   features={[
-                    "1 domain",
-                    "1,000 views/month",
-                    "Basic chart features",
+                    "Unlimited embeds",
                     "Polyx watermark",
                     "Community support",
                   ]}
@@ -352,8 +384,7 @@ export default function DocsPage() {
                   price="$29"
                   description="For growing businesses"
                   features={[
-                    "3 domains",
-                    "50,000 views/month",
+                    "Unlimited embeds",
                     "No watermark",
                     "Custom themes",
                     "Priority support",
@@ -365,9 +396,9 @@ export default function DocsPage() {
                   price="$99"
                   description="For enterprises"
                   features={[
-                    "Unlimited domains",
-                    "Unlimited views",
+                    "Unlimited embeds",
                     "No watermark",
+                    "OHLCV API access",
                     "White-label option",
                     "Dedicated support",
                   ]}

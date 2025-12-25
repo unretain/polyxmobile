@@ -35,7 +35,9 @@ interface TokenStore {
   disconnectRealtime: () => void;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+// WebSocket URL for real-time updates (connects directly to Express)
+const WS_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+// API calls go through Next.js proxy routes (protects internal API key)
 
 export const useTokenStore = create<TokenStore>((set, get) => ({
   tokens: [],
@@ -49,7 +51,8 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
   fetchTokens: async () => {
     set({ isLoading: true, error: null });
     try {
-      const response = await fetch(`${API_URL}/api/tokens?limit=100`);
+      // Use Next.js proxy route (protects internal API key)
+      const response = await fetch(`/api/tokens?limit=100`);
       if (!response.ok) {
         throw new Error(`API error: ${response.status}`);
       }
@@ -68,7 +71,7 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
     const { socket } = get();
     if (socket?.connected) return;
 
-    const newSocket = io(API_URL, {
+    const newSocket = io(WS_URL, {
       transports: ["websocket"],
       reconnection: true,
       reconnectionAttempts: 5,

@@ -135,29 +135,46 @@ export async function GET() {
           features: "Enabled features",
         },
       },
+      {
+        method: "GET",
+        path: "/api/v1/ohlcv/:address",
+        description: "Get OHLCV candlestick data (Business tier only)",
+        authentication: "License key via x-api-key header or apiKey query param",
+        rateLimit: "5000 CU/month (10 CU per request)",
+        parameters: {
+          address: "Solana token mint address",
+          timeframe: "(optional) 1m, 5m, 15m, 1h, 4h, 1d (default: 1h)",
+          limit: "(optional) Number of candles, max 1000 (default: 100)",
+          from: "(optional) Start timestamp (Unix seconds)",
+          to: "(optional) End timestamp (Unix seconds)",
+        },
+        response: {
+          data: "Array of OHLCV candles",
+          headers: "X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset",
+        },
+      },
     ],
 
     // Pricing
     pricing: {
       FREE: {
         price: "$0/month",
-        domains: 1,
-        viewsPerMonth: 1000,
+        embeds: "Unlimited",
         watermark: true,
         support: "Community",
       },
       PRO: {
         price: "$29/month",
-        domains: 3,
-        viewsPerMonth: 50000,
+        embeds: "Unlimited",
         watermark: false,
         support: "Priority",
       },
       BUSINESS: {
         price: "$99/month",
-        domains: "Unlimited",
-        viewsPerMonth: "Unlimited",
+        embeds: "Unlimited",
         watermark: false,
+        apiAccess: true,
+        apiRateLimit: "5000 CU/month",
         whiteLabel: true,
         support: "Dedicated",
       },

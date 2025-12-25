@@ -29,13 +29,13 @@ export const stripe = new Proxy({} as Stripe, {
 export const STRIPE_PRODUCTS = {
   PRO: {
     name: "Polyx Pro",
-    description: "3 domains, 50,000 views/month, no watermark",
+    description: "Unlimited embeds, no watermark, priority support",
     priceId: process.env.STRIPE_PRICE_PRO || "",
     price: 2900, // $29.00 in cents
   },
   BUSINESS: {
     name: "Polyx Business",
-    description: "Unlimited domains and views, white-label option",
+    description: "Unlimited embeds, no watermark, OHLCV API access (5000 CU), white-label",
     priceId: process.env.STRIPE_PRICE_BUSINESS || "",
     price: 9900, // $99.00 in cents
   },

@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
         needsEmailVerification: true,
         userId: user.id,
         message: "Verification code sent to your email",
-        verificationCode, // Return code so frontend can display it for now
+        // SECURITY: Never return verification code in response - it's sent via email
       });
     }
 

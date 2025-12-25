@@ -1,11 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { config } from "@/lib/config";
+import { auth } from "@/lib/auth";
 
 const MORALIS_API_URL = "https://solana-gateway.moralis.io";
 
+// List of admin user IDs (should be in env/config in production)
+const ADMIN_USER_IDS = process.env.ADMIN_USER_IDS?.split(",") || [];
+
 export async function POST(req: NextRequest) {
   try {
+    // Authenticate and authorize admin
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+
+    // Check if user is an admin
+    if (!ADMIN_USER_IDS.includes(session.user.id)) {
+      console.warn(`[admin] Unauthorized admin access attempt by user: ${session.user.id}`);
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const { address } = await req.json();
 
     if (!address) {

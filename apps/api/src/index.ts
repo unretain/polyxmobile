@@ -9,6 +9,7 @@ import { pulseRoutes } from "./routes/pulse";
 import { ohlcvRoutes } from "./routes/ohlcv";
 import { setupWebSocket } from "./websocket";
 import { pulseSyncService } from "./services/pulseSync";
+import { requireInternalApiKey, rateLimit } from "./middleware/auth";
 
 dotenv.config();
 
@@ -25,12 +26,19 @@ const io = new Server(httpServer, {
 app.use(cors());
 app.use(express.json());
 
-// Health check
+// Health check (public, no auth required)
 app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Routes
+// Apply internal API key authentication to all /api routes
+// This protects Birdeye/Moralis API calls from unauthorized access
+app.use("/api", requireInternalApiKey);
+
+// Apply rate limiting as additional protection (100 requests per minute per IP)
+app.use("/api", rateLimit(100, 60000));
+
+// Routes (now protected by auth middleware)
 app.use("/api/tokens", tokenRoutes);
 app.use("/api/trending", trendingRoutes);
 app.use("/api/pulse", pulseRoutes);
