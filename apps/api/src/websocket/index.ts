@@ -52,11 +52,41 @@ const socketToLobby = new Map<string, string>(); // socketId -> lobbyId
 const socketToUser = new Map<string, { userId: string; username: string | null; name: string | null; image: string | null }>();
 
 function generateLobbyId(): string {
-  return Math.random().toString(36).substring(2, 10);
+  return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
 function generateMessageId(): string {
   return Math.random().toString(36).substring(2, 15);
+}
+
+// Helper to notify friends of lobby status change
+async function notifyFriendsOfLobbyUpdate(
+  io: Server,
+  userId: string,
+  socketId: string,
+  lobbyId: string | null,
+  lobbyName: string | null
+) {
+  try {
+    const friendships = await prisma.friendship.findMany({
+      where: { userId },
+      select: { friendId: true },
+    });
+    const friendIds = friendships.map((f) => f.friendId);
+
+    for (const [sid, userData] of socketToUser.entries()) {
+      if (friendIds.includes(userData.userId)) {
+        io.to(sid).emit("friends:lobbyUpdate", {
+          odId: socketId,
+          userId,
+          lobbyId,
+          lobbyName,
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Failed to notify friends of lobby update:", error);
+  }
 }
 let pumpPortalInitialized = false;
 let meteoraPollingCleanup: (() => void) | null = null;
@@ -179,7 +209,7 @@ export function setupWebSocket(io: Server) {
     // ==========================================
 
     // Authenticate user for lobby features
-    socket.on("lobby:auth", (data: { userId: string; username: string | null; name: string | null; image: string | null }) => {
+    socket.on("lobby:auth", async (data: { userId: string; username: string | null; name: string | null; image: string | null }) => {
       socketToUser.set(socket.id, {
         userId: data.userId,
         username: data.username,
@@ -187,6 +217,56 @@ export function setupWebSocket(io: Server) {
         image: data.image,
       });
       console.log(`🎮 User authenticated for lobbies: ${data.username || data.userId}`);
+
+      // Notify friends that this user is online
+      try {
+        const friendships = await prisma.friendship.findMany({
+          where: { userId: data.userId },
+          select: { friendId: true },
+        });
+        const friendIds = friendships.map((f) => f.friendId);
+
+        // Find which friends are online and notify them
+        for (const [socketId, userData] of socketToUser.entries()) {
+          if (friendIds.includes(userData.userId)) {
+            io.to(socketId).emit("friends:userOnline", {
+              odId: socket.id,
+              userId: data.userId,
+              username: data.username,
+              name: data.name,
+              image: data.image,
+              lobbyId: null,
+              lobbyName: null,
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Failed to notify friends of user online:", error);
+      }
+    });
+
+    // Get online friends
+    socket.on("friends:getOnline", async (data: { friendIds: string[] }) => {
+      const onlineFriends: any[] = [];
+
+      for (const [socketId, userData] of socketToUser.entries()) {
+        if (data.friendIds.includes(userData.userId)) {
+          const lobbyId = socketToLobby.get(socketId);
+          const lobby = lobbyId ? lobbies.get(lobbyId) : null;
+
+          onlineFriends.push({
+            odId: socketId,
+            userId: userData.userId,
+            username: userData.username,
+            name: userData.name,
+            image: userData.image,
+            lobbyId: lobby?.id || null,
+            lobbyName: lobby?.name || null,
+          });
+        }
+      }
+
+      socket.emit("friends:online", { friends: onlineFriends });
     });
 
     // Create a new lobby
@@ -230,6 +310,9 @@ export function setupWebSocket(io: Server) {
       socket.join(`lobby:${lobbyId}`);
 
       console.log(`🎮 Lobby created: ${lobbyId} by ${user.username || user.userId}`);
+
+      // Notify friends of lobby join
+      notifyFriendsOfLobbyUpdate(io, user.userId, socket.id, lobbyId, lobby.name);
 
       callback({
         success: true,
@@ -291,6 +374,9 @@ export function setupWebSocket(io: Server) {
         lobbyId: data.lobbyId,
       });
 
+      // Notify friends of lobby join
+      notifyFriendsOfLobbyUpdate(io, user.userId, socket.id, data.lobbyId, lobby.name);
+
       callback({
         success: true,
         lobby: {
@@ -324,6 +410,11 @@ export function setupWebSocket(io: Server) {
       socket.leave(`lobby:${lobbyId}`);
 
       console.log(`🎮 User left lobby ${lobbyId}`);
+
+      // Notify friends that user left lobby
+      if (member?.userId) {
+        notifyFriendsOfLobbyUpdate(io, member.userId, socket.id, null, null);
+      }
 
       // If lobby is empty, delete it
       if (lobby.members.size === 0) {
@@ -529,7 +620,9 @@ export function setupWebSocket(io: Server) {
     });
 
     // Handle disconnection
-    socket.on("disconnect", () => {
+    socket.on("disconnect", async () => {
+      const user = socketToUser.get(socket.id);
+
       // Clean up lobby membership
       const lobbyId = socketToLobby.get(socket.id);
       if (lobbyId) {
@@ -573,6 +666,28 @@ export function setupWebSocket(io: Server) {
           }
         }
         socketToLobby.delete(socket.id);
+      }
+
+      // Notify friends that user went offline
+      if (user) {
+        try {
+          const friendships = await prisma.friendship.findMany({
+            where: { userId: user.userId },
+            select: { friendId: true },
+          });
+          const friendIds = friendships.map((f) => f.friendId);
+
+          for (const [socketId, userData] of socketToUser.entries()) {
+            if (friendIds.includes(userData.userId)) {
+              io.to(socketId).emit("friends:userOffline", {
+                odId: socket.id,
+                userId: user.userId,
+              });
+            }
+          }
+        } catch (error) {
+          console.error("Failed to notify friends of user offline:", error);
+        }
       }
 
       socketToUser.delete(socket.id);
