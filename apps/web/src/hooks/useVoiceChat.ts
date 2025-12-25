@@ -35,10 +35,13 @@ export function useVoiceChat({
   const [isMuted, setIsMuted] = useState(false);
   const [isDeafened, setIsDeafened] = useState(false);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
+  const [localStreamReady, setLocalStreamReady] = useState(false);
+  const pendingMembersRef = useRef<LobbyMember[]>([]);
 
   // Get local audio stream
   const startLocalStream = useCallback(async () => {
     try {
+      console.log("[Voice] Requesting microphone access...");
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -48,9 +51,12 @@ export function useVoiceChat({
         video: false,
       });
       localStreamRef.current = stream;
+      setLocalStreamReady(true);
+      console.log("[Voice] Microphone access granted, stream ready");
       return stream;
     } catch (error) {
-      console.error("Failed to get audio stream:", error);
+      console.error("[Voice] Failed to get audio stream:", error);
+      setLocalStreamReady(false);
       return null;
     }
   }, []);
@@ -61,13 +67,23 @@ export function useVoiceChat({
       localStreamRef.current.getTracks().forEach((track) => track.stop());
       localStreamRef.current = null;
     }
+    setLocalStreamReady(false);
+    pendingMembersRef.current = [];
   }, []);
 
   // Create peer connection for a remote user
   const createPeerConnection = useCallback(
     (targetSocketId: string, isInitiator: boolean) => {
-      if (!socket || !localStreamRef.current) return null;
+      if (!socket) {
+        console.log("[Voice] No socket, cannot create peer connection");
+        return null;
+      }
+      if (!localStreamRef.current) {
+        console.log("[Voice] No local stream yet, cannot create peer connection");
+        return null;
+      }
 
+      console.log(`[Voice] Creating peer connection to ${targetSocketId}, initiator: ${isInitiator}`);
       const pc = new RTCPeerConnection(ICE_SERVERS);
 
       // Add local tracks
@@ -163,6 +179,13 @@ export function useVoiceChat({
 
     // Handle voice members list (when joining voice)
     const handleVoiceMembers = async ({ members }: { members: LobbyMember[] }) => {
+      console.log(`[Voice] Received voice members list: ${members.length} members`);
+      // Store pending members - we'll connect when stream is ready
+      if (!localStreamRef.current) {
+        console.log("[Voice] Stream not ready, queuing members for later connection");
+        pendingMembersRef.current = members;
+        return;
+      }
       // Create peer connections to all existing voice members
       for (const member of members) {
         createPeerConnection(member.odId, true); // We are the initiator
@@ -274,6 +297,17 @@ export function useVoiceChat({
       closeAllPeerConnections();
     };
   }, [inVoice, startLocalStream, stopLocalStream, closeAllPeerConnections]);
+
+  // Process pending members when stream becomes ready
+  useEffect(() => {
+    if (localStreamReady && pendingMembersRef.current.length > 0) {
+      console.log(`[Voice] Stream ready, connecting to ${pendingMembersRef.current.length} pending members`);
+      for (const member of pendingMembersRef.current) {
+        createPeerConnection(member.odId, true);
+      }
+      pendingMembersRef.current = [];
+    }
+  }, [localStreamReady, createPeerConnection]);
 
   // Toggle mute
   const toggleMute = useCallback(() => {
