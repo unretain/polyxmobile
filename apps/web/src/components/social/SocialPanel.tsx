@@ -282,6 +282,40 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       showToast(reason || "Lobby was closed", "info");
     };
 
+    // Handle incoming friend request (real-time)
+    const handleFriendRequestReceived = (data: { id: string; sender: any }) => {
+      setPendingRequests((prev) => {
+        // Prevent duplicates
+        if (prev.some((r) => r.id === data.id)) return prev;
+        return [...prev, { id: data.id, sender: data.sender }];
+      });
+      if (notificationsEnabled) {
+        showToast(`${data.sender.name || data.sender.username} sent you a friend request`, "info");
+      }
+    };
+
+    // Handle friend request accepted (we're now friends)
+    const handleNewFriend = (data: { friend: any; acceptedBy: any }) => {
+      // Refresh friends list to include the new friend
+      fetchFriends();
+      if (notificationsEnabled) {
+        showToast(`${data.acceptedBy.name || data.acceptedBy.username} accepted your friend request!`, "success");
+      }
+    };
+
+    // Handle being removed as a friend
+    const handleWasRemoved = (data: { removedBy: any }) => {
+      // Refresh friends list to remove them
+      fetchFriends();
+      // Also remove from online friends
+      const onlineFriend = useLobbyStore.getState().onlineFriends.find(
+        (f) => f.userId === data.removedBy.id
+      );
+      if (onlineFriend) {
+        removeOnlineFriend(onlineFriend.odId);
+      }
+    };
+
     socket.on("lobby:memberJoined", handleMemberJoined);
     socket.on("lobby:memberLeft", handleMemberLeft);
     socket.on("lobby:ownerChanged", handleOwnerChanged);
@@ -301,6 +335,9 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
     socket.on("friends:userOnline", handleFriendOnline);
     socket.on("friends:userOffline", handleFriendOffline);
     socket.on("friends:lobbyUpdate", handleFriendLobbyUpdate);
+    socket.on("friends:requestReceived", handleFriendRequestReceived);
+    socket.on("friends:newFriend", handleNewFriend);
+    socket.on("friends:wasRemoved", handleWasRemoved);
 
     return () => {
       socket.off("lobby:memberJoined", handleMemberJoined);
@@ -322,8 +359,11 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       socket.off("friends:userOnline", handleFriendOnline);
       socket.off("friends:userOffline", handleFriendOffline);
       socket.off("friends:lobbyUpdate", handleFriendLobbyUpdate);
+      socket.off("friends:requestReceived", handleFriendRequestReceived);
+      socket.off("friends:newFriend", handleNewFriend);
+      socket.off("friends:wasRemoved", handleWasRemoved);
     };
-  }, [socket, notificationsEnabled, addJoinRequest, setCurrentLobby, showToast]);
+  }, [socket, notificationsEnabled, addJoinRequest, setCurrentLobby, showToast, removeOnlineFriend]);
 
   // Fetch friends list and profile
   useEffect(() => {
@@ -677,6 +717,31 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
         throw new Error(data.error || "Failed to send request");
       }
 
+      // If we got a new friend (auto-accepted their pending request), refresh the list
+      if (data.friend) {
+        fetchFriends();
+        // Notify them via WebSocket that we're now friends
+        if (socket) {
+          socket.emit("friends:requestAccepted", {
+            senderId: data.friend.id,
+            friend: {
+              id: session?.user?.id,
+              username: (session?.user as any)?.username,
+              name: session?.user?.name,
+              image: session?.user?.image,
+            },
+          });
+        }
+      } else if (data.request) {
+        // Notify recipient via WebSocket
+        if (socket) {
+          socket.emit("friends:requestSent", {
+            receiverId: data.request.receiver.id,
+            request: { id: data.request.id },
+          });
+        }
+      }
+
       setRequestSuccess(data.message || "Friend request sent!");
       setSearchUsername("");
       setTimeout(() => setRequestSuccess(null), 3000);
@@ -689,6 +754,9 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
 
   const handleAcceptRequest = async (requestId: string) => {
     try {
+      // Find the request to get the sender info
+      const request = pendingRequests.find((r) => r.id === requestId);
+
       const res = await fetch(`/api/friends/request/${requestId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -698,6 +766,19 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       if (res.ok) {
         setPendingRequests(pendingRequests.filter((r) => r.id !== requestId));
         fetchFriends();
+
+        // Notify the sender via WebSocket that we accepted
+        if (socket && request?.sender) {
+          socket.emit("friends:requestAccepted", {
+            senderId: request.sender.id,
+            friend: {
+              id: session?.user?.id,
+              username: (session?.user as any)?.username,
+              name: session?.user?.name,
+              image: session?.user?.image,
+            },
+          });
+        }
       }
     } catch (error) {
       console.error("Failed to accept request:", error);
@@ -725,6 +806,11 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       const res = await fetch(`/api/friends/${friendId}`, { method: "DELETE" });
       if (res.ok) {
         setFriends(friends.filter((f) => f.id !== friendId));
+
+        // Notify them via WebSocket that they were removed
+        if (socket) {
+          socket.emit("friends:removed", { friendId });
+        }
       }
     } catch (error) {
       console.error("Failed to remove friend:", error);

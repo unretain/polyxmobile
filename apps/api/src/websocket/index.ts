@@ -364,6 +364,71 @@ export function setupWebSocket(io: Server) {
       socket.emit("friends:online", { friends: onlineFriends });
     });
 
+    // Notify a user they received a friend request
+    socket.on("friends:requestSent", (data: { receiverId: string; request: any }) => {
+      const sender = socketToUser.get(socket.id);
+      if (!sender) return;
+
+      // Find if receiver is online
+      for (const [socketId, userData] of socketToUser.entries()) {
+        if (userData.userId === data.receiverId) {
+          io.to(socketId).emit("friends:requestReceived", {
+            id: data.request.id,
+            sender: {
+              id: sender.userId,
+              username: sender.username,
+              name: sender.name,
+              image: sender.image,
+            },
+          });
+          break;
+        }
+      }
+    });
+
+    // Notify a user their friend request was accepted (they're now friends)
+    socket.on("friends:requestAccepted", (data: { senderId: string; friend: any }) => {
+      const accepter = socketToUser.get(socket.id);
+      if (!accepter) return;
+
+      // Find if original sender is online
+      for (const [socketId, userData] of socketToUser.entries()) {
+        if (userData.userId === data.senderId) {
+          io.to(socketId).emit("friends:newFriend", {
+            friend: data.friend,
+            acceptedBy: {
+              id: accepter.userId,
+              username: accepter.username,
+              name: accepter.name,
+              image: accepter.image,
+            },
+          });
+          break;
+        }
+      }
+    });
+
+    // Notify a user they were removed as a friend
+    socket.on("friends:removed", (data: { friendId: string }) => {
+      const remover = socketToUser.get(socket.id);
+      if (!remover) return;
+
+      // Find if the removed friend is online
+      for (const [socketId, userData] of socketToUser.entries()) {
+        if (userData.userId === data.friendId) {
+          io.to(socketId).emit("friends:wasRemoved", {
+            removedBy: {
+              id: remover.userId,
+              username: remover.username,
+              name: remover.name,
+              image: remover.image,
+            },
+          });
+          break;
+        }
+      }
+    });
+
     // Create a new lobby
     socket.on("lobby:create", (data: { name: string }, callback: (response: { success: boolean; lobby?: any; error?: string }) => void) => {
       // Rate limit lobby actions
