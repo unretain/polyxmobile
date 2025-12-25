@@ -187,9 +187,13 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
 
   setVoiceMembers: (members) => set({ voiceMembers: members }),
 
-  addVoiceMember: (member) => set((state) => ({
-    voiceMembers: [...state.voiceMembers, member],
-  })),
+  addVoiceMember: (member) => set((state) => {
+    // Prevent duplicates
+    if (state.voiceMembers.some((m) => m.odId === member.odId)) {
+      return state;
+    }
+    return { voiceMembers: [...state.voiceMembers, member] };
+  }),
 
   removeVoiceMember: (odId) => set((state) => ({
     voiceMembers: state.voiceMembers.filter((m) => m.odId !== odId),
