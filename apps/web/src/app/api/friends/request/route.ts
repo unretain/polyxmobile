@@ -104,21 +104,19 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if request already exists (in either direction)
+    // Check if request already exists (in either direction) - check ALL statuses due to unique constraint
     const existingRequest = await prisma.friendRequest.findFirst({
       where: {
         OR: [
           { senderId: session.user.id, receiverId: targetUser.id },
           { senderId: targetUser.id, receiverId: session.user.id },
         ],
-        status: "pending",
       },
     });
 
     if (existingRequest) {
-      // If they sent us a request, accept it instead
-      if (existingRequest.senderId === targetUser.id) {
-        // Accept their request
+      // If it's a pending request from them, accept it
+      if (existingRequest.senderId === targetUser.id && existingRequest.status === "pending") {
         await prisma.$transaction([
           prisma.friendRequest.update({
             where: { id: existingRequest.id },
@@ -144,10 +142,19 @@ export async function POST(request: Request) {
         });
       }
 
-      return NextResponse.json(
-        { error: "Friend request already sent" },
-        { status: 400 }
-      );
+      // If it's a pending request we already sent, tell them
+      if (existingRequest.senderId === session.user.id && existingRequest.status === "pending") {
+        return NextResponse.json(
+          { error: "Friend request already sent" },
+          { status: 400 }
+        );
+      }
+
+      // If it's an old accepted/rejected request, delete it so we can create a fresh one
+      // This handles the case where users unfriended and want to re-add
+      await prisma.friendRequest.delete({
+        where: { id: existingRequest.id },
+      });
     }
 
     // Create friend request
