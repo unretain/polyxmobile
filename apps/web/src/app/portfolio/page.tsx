@@ -1315,19 +1315,14 @@ export default function PortfolioPage() {
                             ctx.fillText('polyx.trade', outW - padX, outH - padY);
                           };
 
-                          // Use requestVideoFrameCallback if available for perfect frame sync
-                          const hasRVFC = 'requestVideoFrameCallback' in video;
-                          console.log('EXPORT: requestVideoFrameCallback=' + hasRVFC);
-
-                          // Setup streams - higher bitrate for quality
-                          const canvasStream = canvas.captureStream(0); // 0 = manual frame capture
-                          const videoTrack = canvasStream.getVideoTracks()[0];
+                          // Setup canvas stream with 30fps auto-capture
+                          const canvasStream = canvas.captureStream(30);
 
                           let stream: MediaStream = canvasStream;
                           try {
                             const vidStream = (video as any).captureStream?.();
                             if (vidStream?.getAudioTracks()?.length) {
-                              stream = new MediaStream([videoTrack, ...vidStream.getAudioTracks()]);
+                              stream = new MediaStream([...canvasStream.getVideoTracks(), ...vidStream.getAudioTracks()]);
                               console.log('EXPORT: audio added');
                             }
                           } catch (e) { /* no audio */ }
@@ -1335,14 +1330,10 @@ export default function PortfolioPage() {
                           // Higher bitrate for better quality
                           const bitrate = Math.min(outW * outH * 8, 8000000); // ~8 bits per pixel, max 8Mbps
 
-                          // Try MP4 first (better quality/compatibility), fall back to WebM
+                          // Try VP9 WebM for best quality (MP4 via MediaRecorder has issues)
                           let mimeType = 'video/webm;codecs=vp8,opus';
-                          if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1,mp4a.40.2')) {
-                            mimeType = 'video/mp4;codecs=avc1,mp4a.40.2';
-                          } else if (MediaRecorder.isTypeSupported('video/mp4')) {
-                            mimeType = 'video/mp4';
-                          } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
-                            mimeType = 'video/webm;codecs=vp9,opus'; // VP9 better quality than VP8
+                          if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
+                            mimeType = 'video/webm;codecs=vp9,opus';
                           }
                           console.log('EXPORT: using mimeType=' + mimeType);
 
@@ -1358,25 +1349,13 @@ export default function PortfolioPage() {
                           };
 
                           let animationId: number;
-                          let rvfcId: number;
                           let isRecording = true;
 
-                          // Frame loop using requestVideoFrameCallback or requestAnimationFrame
+                          // Simple frame loop - draw every animation frame
                           const frameLoop = () => {
                             if (!isRecording) return;
-
                             drawOverlay();
-
-                            // Manually request new frame for captureStream(0)
-                            if ((videoTrack as any).requestFrame) {
-                              (videoTrack as any).requestFrame();
-                            }
-
-                            if (hasRVFC) {
-                              rvfcId = (video as any).requestVideoFrameCallback(frameLoop);
-                            } else {
-                              animationId = requestAnimationFrame(frameLoop);
-                            }
+                            animationId = requestAnimationFrame(frameLoop);
                           };
 
                           recorder.onstart = () => {
@@ -1387,9 +1366,7 @@ export default function PortfolioPage() {
 
                           recorder.onstop = async () => {
                             isRecording = false;
-                            if (hasRVFC && rvfcId) {
-                              (video as any).cancelVideoFrameCallback(rvfcId);
-                            } else if (animationId) {
+                            if (animationId) {
                               cancelAnimationFrame(animationId);
                             }
                             video.pause();
@@ -1397,19 +1374,17 @@ export default function PortfolioPage() {
                             const duration = Date.now() - startTime;
                             console.log('EXPORT: stopped duration=' + duration + 'ms chunks=' + chunks.length);
 
-                            const isWebm = mimeType.includes('webm');
-                            const rawBlob = new Blob(chunks, { type: mimeType.split(';')[0] });
+                            const rawBlob = new Blob(chunks, { type: 'video/webm' });
                             console.log('EXPORT: raw blob size=' + rawBlob.size);
 
-                            // Only fix duration for WebM (MP4 handles it natively)
-                            const fixedBlob = isWebm ? await fixWebmDuration(rawBlob, duration) : rawBlob;
+                            // Fix WebM duration metadata
+                            const fixedBlob = await fixWebmDuration(rawBlob, duration);
                             console.log('EXPORT: final blob size=' + fixedBlob.size);
 
                             if (fixedBlob.size > 1000) {
-                              const ext = isWebm ? 'webm' : 'mp4';
                               const a = document.createElement('a');
                               a.href = URL.createObjectURL(fixedBlob);
-                              a.download = `polyx-pnl-${Date.now()}.${ext}`;
+                              a.download = `polyx-pnl-${Date.now()}.webm`;
                               a.click();
                               showToast('Video downloaded!', 'success');
                             } else {
