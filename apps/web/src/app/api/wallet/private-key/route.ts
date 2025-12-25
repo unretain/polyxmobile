@@ -12,11 +12,16 @@ export async function GET() {
     // Check encryption key is configured
     if (!config.authSecret) {
       console.error("[private-key] AUTH_SECRET not configured");
+      console.error("[private-key] AUTH_SECRET env:", !!process.env.AUTH_SECRET);
+      console.error("[private-key] NEXTAUTH_SECRET env:", !!process.env.NEXTAUTH_SECRET);
       return NextResponse.json(
         { error: "Server configuration error" },
         { status: 500 }
       );
     }
+
+    // Log that we have a secret (not the value!)
+    console.log("[private-key] Auth secret configured, length:", config.authSecret.length);
 
     const session = await auth();
 
