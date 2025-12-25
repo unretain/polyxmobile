@@ -1328,14 +1328,19 @@ export default function PortfolioPage() {
                           } catch (e) { /* no audio */ }
 
                           // Higher bitrate for better quality
-                          const bitrate = Math.min(outW * outH * 8, 8000000); // ~8 bits per pixel, max 8Mbps
+                          const bitrate = Math.min(outW * outH * 10, 10000000); // ~10 bits per pixel, max 10Mbps
 
-                          // Try VP9 WebM for best quality (MP4 via MediaRecorder has issues)
-                          let mimeType = 'video/webm;codecs=vp8,opus';
-                          if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
-                            mimeType = 'video/webm;codecs=vp9,opus';
+                          // Prefer MP4 for best compatibility and quality
+                          let mimeType = 'video/webm;codecs=vp9,opus';
+                          let isMP4 = false;
+                          if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1.42E01E,mp4a.40.2')) {
+                            mimeType = 'video/mp4;codecs=avc1.42E01E,mp4a.40.2';
+                            isMP4 = true;
+                          } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+                            mimeType = 'video/mp4';
+                            isMP4 = true;
                           }
-                          console.log('EXPORT: using mimeType=' + mimeType);
+                          console.log('EXPORT: using mimeType=' + mimeType + ' isMP4=' + isMP4);
 
                           const recorder = new MediaRecorder(stream, {
                             mimeType,
@@ -1374,17 +1379,18 @@ export default function PortfolioPage() {
                             const duration = Date.now() - startTime;
                             console.log('EXPORT: stopped duration=' + duration + 'ms chunks=' + chunks.length);
 
-                            const rawBlob = new Blob(chunks, { type: 'video/webm' });
+                            const rawBlob = new Blob(chunks, { type: isMP4 ? 'video/mp4' : 'video/webm' });
                             console.log('EXPORT: raw blob size=' + rawBlob.size);
 
-                            // Fix WebM duration metadata
-                            const fixedBlob = await fixWebmDuration(rawBlob, duration);
+                            // Fix WebM duration metadata (MP4 doesn't need this)
+                            const fixedBlob = isMP4 ? rawBlob : await fixWebmDuration(rawBlob, duration);
                             console.log('EXPORT: final blob size=' + fixedBlob.size);
 
                             if (fixedBlob.size > 1000) {
+                              const ext = isMP4 ? 'mp4' : 'webm';
                               const a = document.createElement('a');
                               a.href = URL.createObjectURL(fixedBlob);
-                              a.download = `polyx-pnl-${Date.now()}.webm`;
+                              a.download = `polyx-pnl-${Date.now()}.${ext}`;
                               a.click();
                               showToast('Video downloaded!', 'success');
                             } else {
