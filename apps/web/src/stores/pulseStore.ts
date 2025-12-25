@@ -65,7 +65,9 @@ interface PulseStore {
   addMigratedPair: (token: PulseToken) => void;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+// WebSocket URL for real-time updates (connects directly to Express)
+const WS_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+// API calls go through Next.js proxy routes (protects internal API key)
 
 const mapTokenData = (token: any): PulseToken => ({
   address: token.address,
@@ -133,7 +135,8 @@ export const usePulseStore = create<PulseStore>()(
 
   fetchNewPairs: async () => {
     try {
-      const response = await fetch(`${API_URL}/api/pulse/new-pairs?limit=50&source=all`);
+      // Use Next.js proxy route (protects internal API key)
+      const response = await fetch(`/api/pulse/new-pairs?limit=50&source=all`);
       if (!response.ok) throw new Error(`API error: ${response.status}`);
       const data = await response.json();
 
@@ -150,7 +153,8 @@ export const usePulseStore = create<PulseStore>()(
 
   fetchGraduatingPairs: async () => {
     try {
-      const response = await fetch(`${API_URL}/api/pulse/graduating`);
+      // Use Next.js proxy route (protects internal API key)
+      const response = await fetch(`/api/pulse/graduating`);
       if (!response.ok) throw new Error(`API error: ${response.status}`);
       const data = await response.json();
 
@@ -163,7 +167,8 @@ export const usePulseStore = create<PulseStore>()(
 
   fetchGraduatedPairs: async () => {
     try {
-      const response = await fetch(`${API_URL}/api/pulse/graduated`);
+      // Use Next.js proxy route (protects internal API key)
+      const response = await fetch(`/api/pulse/graduated`);
       if (!response.ok) throw new Error(`API error: ${response.status}`);
       const data = await response.json();
 
@@ -193,8 +198,8 @@ export const usePulseStore = create<PulseStore>()(
 
   fetchTokenOHLCV: async (address: string) => {
     try {
-      // Use dedicated pulse OHLCV endpoint with 1-minute candles (Moralis doesn't support 1s)
-      const response = await fetch(`${API_URL}/api/pulse/ohlcv/${address}?timeframe=1min`);
+      // Use Next.js proxy route with 1-minute candles (protects internal API key)
+      const response = await fetch(`/api/pulse/ohlcv/${address}?timeframe=1min`);
 
       if (!response.ok) {
         throw new Error(`API error: ${response.status}`);
@@ -240,7 +245,7 @@ export const usePulseStore = create<PulseStore>()(
     const { socket } = get();
     if (socket?.connected) return;
 
-    const newSocket = io(API_URL, {
+    const newSocket = io(WS_URL, {
       transports: ["websocket"],
       reconnection: true,
       reconnectionAttempts: 5,

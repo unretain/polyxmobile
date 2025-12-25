@@ -10,11 +10,11 @@ const ALWAYS_ALLOWED = new Set([
   "polyx.vercel.app",
 ]);
 
-// Plan view limits
-const PLAN_LIMITS = {
-  FREE: 1000,
-  PRO: 50000,
-  BUSINESS: 500000,
+// Plan features - embeds are unlimited for all tiers
+const PLAN_FEATURES = {
+  FREE: { watermark: true },
+  PRO: { watermark: false },
+  BUSINESS: { watermark: false },
 };
 
 // CORS headers for embed endpoints
@@ -87,7 +87,6 @@ export async function POST(req: NextRequest) {
       plan: "FREE" as const,
       status: "ACTIVE" as const,
       showWatermark: true,
-      maxViewsPerMonth: PLAN_LIMITS.FREE,
     };
 
     // Always allow our own domains with full access
@@ -97,7 +96,6 @@ export async function POST(req: NextRequest) {
         plan: "BUSINESS",
         status: "ACTIVE",
         showWatermark: false,
-        maxViewsPerMonth: PLAN_LIMITS.BUSINESS,
       }, { headers: getCorsHeaders(origin) });
     }
 
@@ -132,7 +130,6 @@ export async function POST(req: NextRequest) {
           plan,
           status: domainRecord.subscription.status,
           showWatermark: plan === "FREE",
-          maxViewsPerMonth: PLAN_LIMITS[plan],
         }, { headers: getCorsHeaders(origin) });
       }
     }

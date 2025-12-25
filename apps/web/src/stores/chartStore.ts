@@ -93,7 +93,7 @@ interface ChartStore {
   fetchOHLCV: (tokenAddress: string, period?: string, chartType?: ChartType) => Promise<void>;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+// API calls go through Next.js proxy routes (protects internal API key)
 const MIN_VISIBLE_COUNT = 20;
 
 export const useChartStore = create<ChartStore>((set, get) => ({
@@ -207,7 +207,8 @@ export const useChartStore = create<ChartStore>((set, get) => ({
       // For Pulse tokens, ALWAYS use PumpPortal - never Birdeye
       // Pulse tokens are new pump.fun tokens that only have PumpPortal data
       if (isPulseToken) {
-        const response = await fetch(`${API_URL}/api/pulse/ohlcv/${tokenAddress}`);
+        // Use Next.js proxy route (protects internal API key)
+        const response = await fetch(`/api/pulse/ohlcv/${tokenAddress}`);
         if (!response.ok) {
           throw new Error(`API error: ${response.status}`);
         }
@@ -215,11 +216,12 @@ export const useChartStore = create<ChartStore>((set, get) => ({
         data = result.data || [];
       } else {
         // Standard Birdeye OHLCV for main dashboard tokens
+        // Use Next.js proxy route (protects internal API key)
         const to = Math.floor(Date.now() / 1000);
         const from = config.seconds === 0 ? 0 : to - config.seconds;
 
         const response = await fetch(
-          `${API_URL}/api/tokens/${tokenAddress}/ohlcv?timeframe=${config.interval}&from=${from}&to=${to}&limit=1000`
+          `/api/tokens/${tokenAddress}/ohlcv?timeframe=${config.interval}&from=${from}&to=${to}&limit=1000`
         );
         if (!response.ok) {
           throw new Error(`API error: ${response.status}`);

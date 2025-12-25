@@ -35,6 +35,11 @@ const TRADING_SECRETS = [
   "SOLANA_RPC_URL",
 ] as const;
 
+// Required for internal API communication
+const INTERNAL_API_SECRETS = [
+  "INTERNAL_API_KEY",
+] as const;
+
 // Validate configuration
 export function validateConfig(): void {
   const missing: string[] = [];
@@ -82,6 +87,17 @@ export function validateConfig(): void {
   for (const secret of TRADING_SECRETS) {
     if (!process.env[secret]) {
       warnings.push(`${secret} not set - trading functionality disabled`);
+    }
+  }
+
+  // Check internal API secrets
+  for (const secret of INTERNAL_API_SECRETS) {
+    if (!process.env[secret]) {
+      if (isProduction) {
+        missing.push(secret);
+      } else {
+        warnings.push(`${secret} not set - internal API calls will fail`);
+      }
     }
   }
 
@@ -137,8 +153,31 @@ export const config = {
   moralisApiKey: process.env.MORALIS_API_KEY || "",
   solanaRpcUrl: process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com",
 
+  // Internal API key for server-to-server communication
+  internalApiKey: process.env.INTERNAL_API_KEY || "",
+
   // Features
   isStripeEnabled: !!process.env.STRIPE_SECRET_KEY,
   isEmailEnabled: !!process.env.RESEND_API_KEY,
   isTradingEnabled: !!process.env.MORALIS_API_KEY && !!process.env.SOLANA_RPC_URL,
 } as const;
+
+/**
+ * Make authenticated request to internal Express API
+ * Automatically includes the internal API key header
+ */
+export async function fetchInternalApi(
+  path: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  const url = `${config.apiUrl}${path}`;
+
+  const headers = new Headers(options.headers);
+  headers.set("x-internal-api-key", config.internalApiKey);
+  headers.set("accept", "application/json");
+
+  return fetch(url, {
+    ...options,
+    headers,
+  });
+}

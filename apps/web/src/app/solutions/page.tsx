@@ -403,7 +403,7 @@ function SolutionsPageContent() {
                 </div>
 
                 <ul className="space-y-3 mb-8">
-                  {["1 domain", "1,000 views/month", "Watermark included", "Community support"].map((feature, i) => (
+                  {["Unlimited embeds", "Watermark included", "Community support"].map((feature, i) => (
                     <li key={i} className="flex items-center gap-2 text-sm">
                       <Check className="w-4 h-4 text-green-400" />
                       <span className={isDark ? 'text-white/80' : 'text-gray-700'}>{feature}</span>
@@ -451,7 +451,7 @@ function SolutionsPageContent() {
                 </div>
 
                 <ul className="space-y-3 mb-8">
-                  {["3 domains", "50,000 views/month", "No watermark", "Priority support", "Custom themes"].map((feature, i) => (
+                  {["Unlimited embeds", "No watermark", "Priority support", "Custom themes"].map((feature, i) => (
                     <li key={i} className="flex items-center gap-2 text-sm">
                       <Check className="w-4 h-4 text-[#FF6B4A]" />
                       <span className={isDark ? 'text-white/80' : 'text-gray-700'}>{feature}</span>
@@ -508,7 +508,7 @@ function SolutionsPageContent() {
                 </div>
 
                 <ul className="space-y-3 mb-8">
-                  {["10 domains", "500,000 views/month", "No watermark", "White-label option", "Dedicated support", "Custom integrations"].map((feature, i) => (
+                  {["Unlimited embeds", "No watermark", "OHLCV API access", "White-label option", "Dedicated support"].map((feature, i) => (
                     <li key={i} className="flex items-center gap-2 text-sm">
                       <Check className="w-4 h-4 text-purple-400" />
                       <span className={isDark ? 'text-white/80' : 'text-gray-700'}>{feature}</span>
