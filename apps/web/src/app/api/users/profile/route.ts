@@ -42,8 +42,16 @@ export async function GET() {
   }
 }
 
-// PATCH /api/users/profile - Update current user's profile
+// PUT/PATCH /api/users/profile - Update current user's profile
+export async function PUT(request: Request) {
+  return updateProfile(request);
+}
+
 export async function PATCH(request: Request) {
+  return updateProfile(request);
+}
+
+async function updateProfile(request: Request) {
   try {
     const session = await auth();
 

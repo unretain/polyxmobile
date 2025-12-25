@@ -2,6 +2,49 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
+// GET /api/friends/request - Get pending incoming friend requests
+export async function GET() {
+  try {
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: "Authentication required" },
+        { status: 401 }
+      );
+    }
+
+    // Get incoming pending friend requests
+    const requests = await prisma.friendRequest.findMany({
+      where: {
+        receiverId: session.user.id,
+        status: "pending",
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            username: true,
+            name: true,
+            image: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    return NextResponse.json({ requests });
+  } catch (error) {
+    console.error("[friends/request] GET error:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch friend requests" },
+      { status: 500 }
+    );
+  }
+}
+
 // POST /api/friends/request - Send a friend request by username
 export async function POST(request: Request) {
   try {
