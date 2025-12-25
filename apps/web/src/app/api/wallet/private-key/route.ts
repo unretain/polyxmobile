@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { decryptPrivateKey } from "@/lib/wallet";
@@ -6,9 +6,18 @@ import { config } from "@/lib/config";
 
 // GET /api/wallet/private-key
 // Returns the user's private key (base58 encoded)
-// SECURITY: This requires authentication and should only be called from trusted UI
-export async function GET(req: NextRequest) {
+// SECURITY: This is a highly sensitive endpoint
+export async function GET() {
   try {
+    // Check encryption key is configured
+    if (!config.authSecret) {
+      console.error("[private-key] AUTH_SECRET not configured");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
     const session = await auth();
 
     if (!session?.user?.id) {
@@ -18,12 +27,14 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Get user with encrypted wallet
+    // Get user with encrypted wallet and 2FA status
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
       select: {
+        id: true,
         walletAddress: true,
         walletEncrypted: true,
+        twoFactorEnabled: true,
       },
     });
 
@@ -34,18 +45,38 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // SECURITY: Log access for audit trail
+    if (user.twoFactorEnabled) {
+      console.warn(`[private-key] 2FA user ${user.id} accessed private key`);
+    }
+
+    // Validate encrypted data format (should be iv:authTag:encrypted)
+    const parts = user.walletEncrypted.split(":");
+    if (parts.length !== 3) {
+      console.error(`[private-key] Invalid encrypted format for user ${user.id}: expected 3 parts, got ${parts.length}`);
+      return NextResponse.json(
+        { error: "Wallet data corrupted" },
+        { status: 500 }
+      );
+    }
+
     // Decrypt private key
     const privateKey = decryptPrivateKey(
       user.walletEncrypted,
       config.authSecret
     );
 
+    // Audit log (without logging the actual key)
+    console.log(`[private-key] User ${user.id} retrieved their private key`);
+
     return NextResponse.json({
       walletAddress: user.walletAddress,
       privateKey,
     });
   } catch (error) {
-    console.error("Error retrieving private key:", error);
+    // Log error type for debugging (not the full error which could contain key material)
+    const errorMsg = error instanceof Error ? error.message : "Unknown error";
+    console.error(`[private-key] Decryption failed: ${errorMsg}`);
     return NextResponse.json(
       { error: "Failed to retrieve private key" },
       { status: 500 }
