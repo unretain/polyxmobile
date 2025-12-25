@@ -65,6 +65,8 @@ async function updateProfile(request: Request) {
     const body = await request.json();
     const { username, name, bio } = body;
 
+    console.log("[profile] Update request:", { userId: session.user.id, username, name, bio });
+
     // Validate username if provided
     if (username !== undefined) {
       // Username must be 1-9 characters, letters only
@@ -109,6 +111,8 @@ async function updateProfile(request: Request) {
       updateData.bio = bio === "" ? null : bio;
     }
 
+    console.log("[profile] Updating with data:", updateData);
+
     const user = await prisma.user.update({
       where: { id: session.user.id },
       data: updateData,
@@ -123,6 +127,8 @@ async function updateProfile(request: Request) {
         createdAt: true,
       },
     });
+
+    console.log("[profile] Update result:", user);
 
     return NextResponse.json(user);
   } catch (error) {
