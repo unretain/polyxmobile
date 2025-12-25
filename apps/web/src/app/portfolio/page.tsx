@@ -1319,17 +1319,14 @@ export default function PortfolioPage() {
                           await video.play();
                           console.log('EXPORT: video playing');
 
-                          // 2. Start drawing to canvas BEFORE creating the stream
-                          let isRecording = true;
-                          const frameLoop = () => {
-                            if (!isRecording) return;
-                            drawOverlay();
-                            requestAnimationFrame(frameLoop);
-                          };
-                          frameLoop();
-
-                          // 3. Draw first frame and wait a bit for canvas to have content
+                          // 2. Draw first frame
                           drawOverlay();
+
+                          // 3. Use setInterval for consistent frame rate (requestAnimationFrame gets throttled)
+                          const frameInterval = setInterval(() => {
+                            drawOverlay();
+                          }, 1000 / 30); // 30 fps
+
                           await new Promise(r => setTimeout(r, 100));
 
                           // 4. Now create the stream from canvas that has content
@@ -1367,7 +1364,7 @@ export default function PortfolioPage() {
                           const startTime = Date.now();
 
                           recorder.onstop = async () => {
-                            isRecording = false;
+                            clearInterval(frameInterval);
                             video.pause();
 
                             const duration = Date.now() - startTime;
