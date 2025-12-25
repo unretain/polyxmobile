@@ -216,18 +216,20 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
 
     const handleFriendLobbyUpdate = ({
       odId,
-      odIdIndex,
+      userId,
       lobbyId,
       lobbyName,
     }: {
       odId: string;
-      odIdIndex?: string;
+      userId: string;
       lobbyId: string | null;
       lobbyName: string | null;
     }) => {
-      const friend = useLobbyStore.getState().onlineFriends.find((f) => f.odId === odId);
+      // Find by userId (more reliable than odId which can change on reconnect)
+      const friend = useLobbyStore.getState().onlineFriends.find((f) => f.userId === userId);
       if (friend) {
-        updateOnlineFriend({ ...friend, lobbyId, lobbyName });
+        // Update both odId (in case it changed) and lobby info
+        updateOnlineFriend({ ...friend, odId, lobbyId, lobbyName });
       }
     };
 
@@ -462,6 +464,13 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
   const handleRequestJoinLobby = useCallback(
     (lobbyId: string) => {
       if (!socket) return;
+
+      // Check if already in this lobby
+      if (currentLobby?.id === lobbyId) {
+        showToast("You're already in this lobby!", "info");
+        return;
+      }
+
       setError(null);
       setRequestingJoin(lobbyId);
 
@@ -478,7 +487,7 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
         }
       );
     },
-    [socket, showToast]
+    [socket, showToast, currentLobby?.id]
   );
 
   const handleLeave = useCallback(() => {
