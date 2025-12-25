@@ -100,6 +100,7 @@ interface ChatMessage {
 
 const lobbies = new Map<string, Lobby>();
 const socketToLobby = new Map<string, string>(); // socketId -> lobbyId
+const userIdToLobby = new Map<string, string>(); // userId -> lobbyId (for reconnection)
 const socketToUser = new Map<string, { userId: string; username: string | null; name: string | null; image: string | null }>();
 
 // Track pending join requests: lobbyId -> Map<requestingSocketId, requesterInfo>
@@ -295,6 +296,58 @@ export function setupWebSocket(io: Server) {
         });
         console.log(`🎮 User authenticated for lobbies: ${data.username || user.id}`);
 
+        // Check if user was in a lobby (reconnection scenario)
+        let currentLobbyData = null;
+        const existingLobbyId = userIdToLobby.get(user.id);
+        if (existingLobbyId) {
+          const lobby = lobbies.get(existingLobbyId);
+          if (lobby) {
+            // User was in a lobby - update their socket ID in the lobby
+            const oldMember = Array.from(lobby.members.values()).find(m => m.userId === user.id);
+            if (oldMember) {
+              // Remove old socket mapping and member entry
+              lobby.members.delete(oldMember.odId);
+              socketToLobby.delete(oldMember.odId);
+
+              // Add new member entry with new socket ID
+              const newMember: LobbyMember = {
+                ...oldMember,
+                odId: socket.id,
+                inVoice: false, // Reset voice state on reconnect
+              };
+              lobby.members.set(socket.id, newMember);
+              socketToLobby.set(socket.id, existingLobbyId);
+
+              // Update owner socket ID if this user is the owner
+              if (lobby.ownerId === user.id) {
+                lobby.ownerSocketId = socket.id;
+              }
+
+              // Join the lobby room
+              socket.join(`lobby:${existingLobbyId}`);
+
+              // Notify other members of the reconnection
+              socket.to(`lobby:${existingLobbyId}`).emit("lobby:memberReconnected", {
+                member: newMember,
+                oldOdId: oldMember.odId,
+              });
+
+              currentLobbyData = {
+                id: lobby.id,
+                name: lobby.name,
+                ownerId: lobby.ownerId,
+                members: Array.from(lobby.members.values()),
+                createdAt: lobby.createdAt,
+              };
+
+              console.log(`🎮 User ${data.username || user.id} reconnected to lobby ${lobby.name}`);
+            }
+          } else {
+            // Lobby no longer exists, clean up
+            userIdToLobby.delete(user.id);
+          }
+        }
+
         // Notify friends that this user is online
         const friendships = await prisma.friendship.findMany({
           where: { userId: user.id },
@@ -306,15 +359,15 @@ export function setupWebSocket(io: Server) {
         const onlineFriends: any[] = [];
         for (const [socketId, userData] of socketToUser.entries()) {
           if (friendIds.includes(userData.userId)) {
-            // Notify each friend that this user came online
+            // Notify each friend that this user came online (with lobby info if applicable)
             io.to(socketId).emit("friends:userOnline", {
               odId: socket.id,
               userId: user.id,
               username: data.username,
               name: user.name,
               image: user.image,
-              lobbyId: null,
-              lobbyName: null,
+              lobbyId: currentLobbyData?.id || null,
+              lobbyName: currentLobbyData?.name || null,
             });
 
             // Also collect online friends to send back to the authenticating user
@@ -332,8 +385,8 @@ export function setupWebSocket(io: Server) {
           }
         }
 
-        // Send auth success with online friends list (fixes timing issue)
-        socket.emit("lobby:authSuccess", { onlineFriends });
+        // Send auth success with online friends list and restored lobby (fixes timing issue)
+        socket.emit("lobby:authSuccess", { onlineFriends, currentLobby: currentLobbyData });
       } catch (error) {
         console.error("Failed to authenticate user for lobbies:", error);
         socket.emit("lobby:authError", { error: "Authentication failed" });
@@ -478,6 +531,7 @@ export function setupWebSocket(io: Server) {
 
       lobbies.set(lobbyId, lobby);
       socketToLobby.set(socket.id, lobbyId);
+      userIdToLobby.set(user.userId, lobbyId); // Track by userId for reconnection
       socket.join(`lobby:${lobbyId}`);
 
       console.log(`🎮 Lobby created: ${lobbyId} by ${user.username || user.userId}`);
@@ -541,6 +595,7 @@ export function setupWebSocket(io: Server) {
       };
       lobby.members.set(socket.id, member);
       socketToLobby.set(socket.id, data.lobbyId);
+      userIdToLobby.set(user.userId, data.lobbyId); // Track by userId for reconnection
       socket.join(`lobby:${data.lobbyId}`);
 
       console.log(`🎮 User ${user.username || user.userId} joined lobby ${data.lobbyId}`);
@@ -748,6 +803,9 @@ export function setupWebSocket(io: Server) {
       const member = lobby.members.get(socket.id);
       lobby.members.delete(socket.id);
       socketToLobby.delete(socket.id);
+      if (member?.userId) {
+        userIdToLobby.delete(member.userId); // Clear userId tracking
+      }
       socket.leave(`lobby:${lobbyId}`);
 
       console.log(`🎮 User left lobby ${lobbyId}`);
@@ -768,6 +826,9 @@ export function setupWebSocket(io: Server) {
         // Remove all remaining members from the lobby
         for (const [memberSocketId, memberData] of lobby.members) {
           socketToLobby.delete(memberSocketId);
+          if (memberData?.userId) {
+            userIdToLobby.delete(memberData.userId); // Clear userId tracking
+          }
           const memberSocket = io.sockets.sockets.get(memberSocketId);
           if (memberSocket) {
             memberSocket.leave(`lobby:${lobbyId}`);
@@ -835,6 +896,9 @@ export function setupWebSocket(io: Server) {
       // Remove member
       lobby.members.delete(data.targetSocketId);
       socketToLobby.delete(data.targetSocketId);
+      if (targetMember.userId) {
+        userIdToLobby.delete(targetMember.userId); // Clear userId tracking
+      }
 
       // Get the target socket and make them leave the room
       const targetSocket = io.sockets.sockets.get(data.targetSocketId);
@@ -1079,13 +1143,12 @@ export function setupWebSocket(io: Server) {
     socket.on("disconnect", async () => {
       const user = socketToUser.get(socket.id);
 
-      // Clean up lobby membership
+      // Clean up lobby membership - but DON'T clear userIdToLobby (allow reconnection)
       const lobbyId = socketToLobby.get(socket.id);
       if (lobbyId) {
         const lobby = lobbies.get(lobbyId);
         if (lobby) {
           const member = lobby.members.get(socket.id);
-          lobby.members.delete(socket.id);
 
           // Notify voice leave if in voice
           if (member?.inVoice) {
@@ -1096,7 +1159,14 @@ export function setupWebSocket(io: Server) {
           }
 
           // If owner disconnected, shut down the entire lobby and kick everyone
+          // (owners can't reconnect since others would be waiting)
           if (lobby.ownerSocketId === socket.id) {
+            // Clear the owner's mapping since lobby is shutting down
+            if (member?.userId) {
+              userIdToLobby.delete(member.userId);
+            }
+            lobby.members.delete(socket.id);
+
             // Notify all remaining members that lobby is shutting down
             io.to(`lobby:${lobbyId}`).emit("lobby:shutdown", {
               lobbyId,
@@ -1106,6 +1176,9 @@ export function setupWebSocket(io: Server) {
             // Remove all remaining members from the lobby
             for (const [memberSocketId, memberData] of lobby.members) {
               socketToLobby.delete(memberSocketId);
+              if (memberData?.userId) {
+                userIdToLobby.delete(memberData.userId); // Clear since lobby is gone
+              }
               const memberSocket = io.sockets.sockets.get(memberSocketId);
               if (memberSocket) {
                 memberSocket.leave(`lobby:${lobbyId}`);
@@ -1120,18 +1193,15 @@ export function setupWebSocket(io: Server) {
             lobbies.delete(lobbyId);
             pendingJoinRequests.delete(lobbyId);
             console.log(`🎮 Lobby ${lobbyId} shut down (host disconnected)`);
-          } else if (lobby.members.size === 0) {
-            // If lobby is empty, delete it
-            lobbies.delete(lobbyId);
-            pendingJoinRequests.delete(lobbyId);
-            console.log(`🎮 Lobby ${lobbyId} deleted (empty after disconnect)`);
           } else {
-            // Notify remaining members that someone left
-            io.to(`lobby:${lobbyId}`).emit("lobby:memberLeft", {
+            // Non-owner disconnected - DON'T remove them yet (allow reconnection)
+            // Just notify remaining members they went offline temporarily
+            io.to(`lobby:${lobbyId}`).emit("lobby:memberDisconnected", {
               odId: socket.id,
               userId: member?.userId,
               lobbyId,
             });
+            console.log(`🎮 User ${member?.username || member?.userId} disconnected from lobby ${lobbyId} (may reconnect)`);
           }
         }
         socketToLobby.delete(socket.id);

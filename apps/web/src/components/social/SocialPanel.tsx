@@ -58,7 +58,7 @@ type Tab = "profile" | "friends" | "lobby";
 
 export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
   const { isDark } = useThemeStore();
-  const { data: session } = useSession();
+  const { data: session, update: updateSession } = useSession();
   const { socket, isConnected, connect } = useSocketStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -156,6 +156,23 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       removeMember(odId);
     };
 
+    // Handle member reconnecting (update their socket ID)
+    const handleMemberReconnected = ({ member, oldOdId }: { member: LobbyMember; oldOdId: string }) => {
+      const lobby = useLobbyStore.getState().currentLobby;
+      if (lobby) {
+        // Remove old member entry and add new one with updated socket ID
+        const updatedMembers = lobby.members.filter(m => m.odId !== oldOdId);
+        updatedMembers.push(member);
+        setCurrentLobby({ ...lobby, members: updatedMembers });
+      }
+    };
+
+    // Handle member temporarily disconnecting (they may reconnect)
+    const handleMemberDisconnected = ({ odId }: { odId: string; userId: string; lobbyId: string }) => {
+      // For now just log - member stays in list until they reconnect or lobby shuts down
+      console.log(`[Lobby] Member ${odId} disconnected (may reconnect)`);
+    };
+
     const handleOwnerChanged = ({ newOwnerId }: { newOwnerId: string }) => {
       const lobby = useLobbyStore.getState().currentLobby;
       if (lobby) {
@@ -233,9 +250,15 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       }
     };
 
-    // Handle auth success - fixes timing issue with online friends
-    const handleAuthSuccess = ({ onlineFriends }: { onlineFriends: OnlineFriend[] }) => {
+    // Handle auth success - fixes timing issue with online friends and restores lobby on reconnect
+    const handleAuthSuccess = ({ onlineFriends, currentLobby }: { onlineFriends: OnlineFriend[]; currentLobby?: any }) => {
       setOnlineFriends(onlineFriends);
+      // Restore lobby state if user was in a lobby (reconnection)
+      if (currentLobby) {
+        setCurrentLobby(currentLobby);
+        setActiveTab("lobby");
+        showToast("Reconnected to lobby!", "success");
+      }
     };
 
     // Handle being kicked from lobby
@@ -320,6 +343,8 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
 
     socket.on("lobby:memberJoined", handleMemberJoined);
     socket.on("lobby:memberLeft", handleMemberLeft);
+    socket.on("lobby:memberReconnected", handleMemberReconnected);
+    socket.on("lobby:memberDisconnected", handleMemberDisconnected);
     socket.on("lobby:ownerChanged", handleOwnerChanged);
     socket.on("lobby:invite", handleInvite);
     socket.on("lobby:kicked", handleKicked);
@@ -344,6 +369,8 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
     return () => {
       socket.off("lobby:memberJoined", handleMemberJoined);
       socket.off("lobby:memberLeft", handleMemberLeft);
+      socket.off("lobby:memberReconnected", handleMemberReconnected);
+      socket.off("lobby:memberDisconnected", handleMemberDisconnected);
       socket.off("lobby:ownerChanged", handleOwnerChanged);
       socket.off("lobby:invite", handleInvite);
       socket.off("lobby:kicked", handleKicked);
@@ -412,6 +439,8 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
         throw new Error(data.error || "Failed to save username");
       }
 
+      // Update session to reflect the new username
+      await updateSession();
       setUsernameSuccess(true);
       setTimeout(() => setUsernameSuccess(false), 3000);
     } catch (err) {
@@ -696,6 +725,8 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
 
       setDisplayName(nameInput.trim()); // Update local display name
       setEditingName(false);
+      // Update session to reflect the new name
+      await updateSession();
       showToast("Name saved!", "success");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to save", "error");

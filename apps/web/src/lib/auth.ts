@@ -149,13 +149,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.provider = "google";
       }
 
-      // Fetch wallet address on sign-in, update, or if missing from token
+      // Fetch user data on sign-in, update, or if missing from token
+      // This ensures name/username changes are reflected in the session
       if (token.id && (trigger === "signIn" || trigger === "update" || !token.walletAddress)) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.id as string },
-          select: { walletAddress: true },
+          select: { walletAddress: true, name: true, username: true, image: true },
         });
-        token.walletAddress = dbUser?.walletAddress ?? undefined;
+        if (dbUser) {
+          token.walletAddress = dbUser.walletAddress ?? undefined;
+          token.name = dbUser.name ?? undefined;
+          token.username = dbUser.username ?? undefined;
+          token.picture = dbUser.image ?? undefined;
+        }
       }
 
       return token;
@@ -163,7 +169,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
+        session.user.name = token.name as string | undefined;
+        session.user.image = token.picture as string | undefined;
         (session.user as { walletAddress?: string }).walletAddress = token.walletAddress as string | undefined;
+        (session.user as { username?: string }).username = token.username as string | undefined;
       }
       return session;
     },
