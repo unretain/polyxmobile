@@ -23,8 +23,6 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 import fixWebmDuration from "fix-webm-duration";
-import { FFmpeg } from "@ffmpeg/ffmpeg";
-import { fetchFile, toBlobURL } from "@ffmpeg/util";
 
 
 interface DailyPnL {
@@ -1317,12 +1315,11 @@ export default function PortfolioPage() {
                             ctx.fillText('polyx.trade', outW - padX, outH - padY);
                           };
 
-                          // Record as WebM (Chrome MP4 canvas recording is broken - only captures audio)
-                          // Then convert to MP4 using ffmpeg.wasm for compatibility
+                          // VP9 WebM - highest quality, works reliably
                           const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
                             ? 'video/webm;codecs=vp9,opus'
                             : 'video/webm;codecs=vp8,opus';
-                          console.log('EXPORT: recording as ' + mimeType + ' (will convert to MP4)');
+                          console.log('EXPORT: using ' + mimeType);
 
                           const canvasStream = canvas.captureStream(30);
 
@@ -1335,8 +1332,7 @@ export default function PortfolioPage() {
                             }
                           } catch (e) { /* no audio */ }
 
-                          // Higher bitrate for better quality
-                          const bitrate = Math.min(outW * outH * 10, 10000000); // ~10 bits per pixel, max 10Mbps
+                          const bitrate = Math.min(outW * outH * 10, 10000000);
 
                           const recorder = new MediaRecorder(stream, {
                             mimeType,
@@ -1366,50 +1362,22 @@ export default function PortfolioPage() {
 
                           recorder.onstop = async () => {
                             isRecording = false;
-                            if (animationId) {
-                              cancelAnimationFrame(animationId);
-                            }
+                            if (animationId) cancelAnimationFrame(animationId);
                             video.pause();
 
                             const duration = Date.now() - startTime;
-                            console.log('EXPORT: stopped duration=' + duration + 'ms chunks=' + chunks.length);
+                            console.log('EXPORT: stopped chunks=' + chunks.length);
 
                             const rawBlob = new Blob(chunks, { type: 'video/webm' });
-                            console.log('EXPORT: webm blob size=' + rawBlob.size);
+                            console.log('EXPORT: blob size=' + rawBlob.size);
 
-                            // Fix WebM duration metadata
-                            const webmBlob = await fixWebmDuration(rawBlob, duration);
+                            const fixedBlob = await fixWebmDuration(rawBlob, duration);
 
-                            // Convert WebM to MP4 using ffmpeg.wasm
-                            try {
-                              console.log('EXPORT: converting to MP4...');
-                              const ffmpeg = new FFmpeg();
-                              await ffmpeg.load({
-                                coreURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js', 'text/javascript'),
-                                wasmURL: await toBlobURL('https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm', 'application/wasm'),
-                              });
-
-                              await ffmpeg.writeFile('input.webm', await fetchFile(webmBlob));
-                              await ffmpeg.exec(['-i', 'input.webm', '-c:v', 'libx264', '-preset', 'fast', '-crf', '18', '-c:a', 'aac', '-b:a', '192k', 'output.mp4']);
-                              const data = await ffmpeg.readFile('output.mp4');
-                              // @ts-ignore - ffmpeg FileData type issue
-                              const mp4Blob = new Blob([data], { type: 'video/mp4' });
-                              console.log('EXPORT: mp4 blob size=' + mp4Blob.size);
-
-                              const a = document.createElement('a');
-                              a.href = URL.createObjectURL(mp4Blob);
-                              a.download = `polyx-pnl-${Date.now()}.mp4`;
-                              a.click();
-                              showToast('Video downloaded!', 'success');
-                            } catch (ffmpegErr) {
-                              console.error('EXPORT: ffmpeg failed, downloading webm instead', ffmpegErr);
-                              // Fallback to WebM if ffmpeg fails
-                              const a = document.createElement('a');
-                              a.href = URL.createObjectURL(webmBlob);
-                              a.download = `polyx-pnl-${Date.now()}.webm`;
-                              a.click();
-                              showToast('Video downloaded (WebM)', 'success');
-                            }
+                            const a = document.createElement('a');
+                            a.href = URL.createObjectURL(fixedBlob);
+                            a.download = `polyx-pnl-${Date.now()}.webm`;
+                            a.click();
+                            showToast('Video downloaded!', 'success');
                             setIsGeneratingCard(false);
                           };
 
