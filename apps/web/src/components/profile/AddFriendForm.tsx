@@ -63,9 +63,9 @@ export function AddFriendForm() {
           <input
             type="text"
             value={username}
-            onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+            onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z]/g, ""))}
             placeholder="Enter username..."
-            maxLength={20}
+            maxLength={9}
             className={`w-full pl-10 pr-3 py-2 rounded-lg border outline-none focus:border-[#FF6B4A]/50 text-sm ${
               isDark
                 ? "bg-white/5 text-white border-white/10 placeholder:text-white/30"
