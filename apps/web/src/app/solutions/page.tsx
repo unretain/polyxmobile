@@ -23,7 +23,7 @@ const Chart3D = dynamic(
   }
 );
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+// API calls go through Next.js proxy routes (protects internal API key)
 const SITE_URL = typeof window !== 'undefined' ? window.location.origin : 'https://polyx.xyz';
 
 // Demo token addresses
@@ -267,16 +267,16 @@ function SolutionsPageContent() {
   useEffect(() => {
     setIsLoading(true);
 
-    // Fetch price
-    fetch(`${API_URL}/api/tokens/${selectedToken.address}`)
+    // Fetch price (uses Next.js proxy route)
+    fetch(`/api/tokens/${selectedToken.address}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.price) setTokenPrice(data.price);
       })
       .catch(() => setTokenPrice(selectedToken.symbol === "SOL" ? 235 : 3018));
 
-    // Fetch OHLCV with the selected timeframe
-    fetch(`${API_URL}/api/tokens/${selectedToken.address}/ohlcv?timeframe=${embedTimeframe}&limit=100`)
+    // Fetch OHLCV with the selected timeframe (uses Next.js proxy route)
+    fetch(`/api/tokens/${selectedToken.address}/ohlcv?timeframe=${embedTimeframe}&limit=100`)
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {

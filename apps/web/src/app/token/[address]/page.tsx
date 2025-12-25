@@ -26,7 +26,9 @@ import { BarChart3, LineChart } from "lucide-react";
 import { SwapWidget } from "@/components/trading";
 import { io, Socket } from "socket.io-client";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+// WebSocket URL for real-time updates (connects directly to Express for WebSocket only)
+const WS_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+// API calls go through Next.js proxy routes (protects internal API key)
 const PUMP_FUN_SUPPLY = 1_000_000_000;
 
 // Token logo overrides - use local images for specific tokens
@@ -400,8 +402,8 @@ export default function TokenPage() {
   useEffect(() => {
     if (!address || !fromPulse) return;
 
-    // Connect to WebSocket
-    const socket = io(API_URL, {
+    // Connect to WebSocket (WebSocket connects directly to Express)
+    const socket = io(WS_URL, {
       transports: ["websocket"],
       reconnection: true,
       reconnectionAttempts: 5,
@@ -540,7 +542,7 @@ export default function TokenPage() {
 
     setDashboardTokenLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/tokens/${address}`);
+      const response = await fetch(`/api/tokens/${address}`);
       if (response.ok) {
         const data = await response.json();
         // Map Birdeye token data to PulseTokenData format
@@ -573,7 +575,7 @@ export default function TokenPage() {
 
     if (!isPolling) setPulseTokenLoading(true);
     try {
-      const response = await fetch(`${API_URL}/api/pulse/token/${address}`);
+      const response = await fetch(`/api/pulse/token/${address}`);
       if (response.ok) {
         const data = await response.json();
         setPulseToken(data);
@@ -618,7 +620,7 @@ export default function TokenPage() {
 
     const fetchSupply = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/tokens/${address}/supply`);
+        const response = await fetch(`/api/tokens/${address}/supply`);
         if (response.ok) {
           const data = await response.json();
           setSupplyData(data);
@@ -648,7 +650,7 @@ export default function TokenPage() {
         if (fromPulse) {
           // PULSE TOKENS: Backend fetches ALL swaps from DB, no time filtering needed
           response = await fetch(
-            `${API_URL}/api/pulse/ohlcv/${address}?timeframe=${config.interval}`
+            `/api/pulse/ohlcv/${address}?timeframe=${config.interval}`
           );
 
           if (!response.ok) {
@@ -663,7 +665,7 @@ export default function TokenPage() {
           const now = Math.floor(Date.now() / 1000);
           const fromDate = now - config.seconds;
           response = await fetch(
-            `${API_URL}/api/tokens/${address}/ohlcv?timeframe=${config.interval}&from=${fromDate}&to=${now}&limit=500`
+            `/api/tokens/${address}/ohlcv?timeframe=${config.interval}&from=${fromDate}&to=${now}&limit=500`
           );
 
           if (!response.ok) {
@@ -718,7 +720,7 @@ export default function TokenPage() {
 
     const fetchTrades = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/pulse/trades/${address}?limit=50`);
+        const response = await fetch(`/api/pulse/trades/${address}?limit=50`);
         if (response.ok) {
           const data = await response.json();
           setTrades(data.trades || []);
@@ -745,7 +747,7 @@ export default function TokenPage() {
 
     const fetchHolders = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/pulse/holders/${address}`);
+        const response = await fetch(`/api/pulse/holders/${address}`);
         if (response.ok) {
           const data = await response.json();
           setHolderStats(data.stats || null);

@@ -195,7 +195,7 @@ export default function PulsePage() {
   const [caSearchResult, setCaSearchResult] = useState<PulseToken | null>(null);
   const [caSearchError, setCaSearchError] = useState<string | null>(null);
 
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+  // API calls go through Next.js proxy routes (protects internal API key)
 
   // Load search history from localStorage on mount
   useEffect(() => {
@@ -236,7 +236,7 @@ export default function PulsePage() {
     setCaSearchResult(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/pulse/token/${address}`);
+      const response = await fetch(`/api/pulse/token/${address}`);
       if (response.ok) {
         const data = await response.json();
         setCaSearchResult(data);
@@ -250,7 +250,7 @@ export default function PulsePage() {
     } finally {
       setIsSearchingCA(false);
     }
-  }, [API_URL]);
+  }, []);
 
   // Handle keyboard shortcut (Esc to close)
   useEffect(() => {
