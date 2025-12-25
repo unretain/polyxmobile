@@ -1029,6 +1029,7 @@ export function setupWebSocket(io: Server) {
       }
 
       // Send invite to friend
+      console.log(`📨 Sending lobby invite to socket ${data.friendSocketId} for lobby ${lobby.name}`);
       io.to(data.friendSocketId).emit("lobby:invite", {
         lobbyId,
         lobbyName: lobby.name,
