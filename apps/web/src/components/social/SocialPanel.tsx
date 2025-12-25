@@ -33,11 +33,13 @@ import {
   ChatMessage,
   LobbyInvite,
   OnlineFriend,
+  JoinRequest,
 } from "@/stores/lobbyStore";
 import { useSocketStore } from "@/stores/socketStore";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
 import { useVoiceChat } from "@/hooks/useVoiceChat";
+import { useToast } from "@/components/ui/Toast";
 
 interface SocialPanelProps {
   isOpen: boolean;
@@ -75,6 +77,9 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
     setTyping,
     addInvite,
     removeInvite,
+    pendingJoinRequests,
+    addJoinRequest,
+    removeJoinRequest,
     setInVoice,
     setVoiceMembers,
     addVoiceMember,
@@ -106,15 +111,17 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
   const [requestError, setRequestError] = useState<string | null>(null);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [invitingFriend, setInvitingFriend] = useState<string | null>(null);
+  const [requestingJoin, setRequestingJoin] = useState<string | null>(null); // lobbyId we're requesting to join
 
   // Notifications state
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [toast, setToast] = useState<{ message: string; type: "info" | "success" | "error" } | null>(null);
+  const { showToast } = useToast();
 
   // Profile editing state
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState("");
   const [nameSaving, setNameSaving] = useState(false);
+  const [displayName, setDisplayName] = useState<string | null>(null); // Local name override
 
   // Voice chat hook
   const { isMuted, isDeafened, toggleMute, toggleDeafen } = useVoiceChat({
@@ -160,11 +167,7 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       addInvite(invite);
       // Show toast notification if enabled
       if (notificationsEnabled) {
-        setToast({
-          message: `${invite.invitedBy.name || invite.invitedBy.username} invited you to ${invite.lobbyName}`,
-          type: "info",
-        });
-        setTimeout(() => setToast(null), 5000);
+        showToast(`${invite.invitedBy.name || invite.invitedBy.username} invited you to ${invite.lobbyName}`, "info");
       }
     };
 
@@ -239,12 +242,48 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       setError(`You were kicked from ${lobbyName}`);
     };
 
+    // Handle incoming join request (for lobby owner)
+    const handleJoinRequest = ({ requester }: { lobbyId: string; requester: JoinRequest }) => {
+      addJoinRequest(requester);
+      if (notificationsEnabled) {
+        showToast(`${requester.name || requester.username} wants to join your lobby`, "info");
+      }
+    };
+
+    // Handle join request accepted (we can now join)
+    const handleJoinAccepted = ({ lobbyId }: { lobbyId: string; lobbyName: string }) => {
+      setRequestingJoin(null);
+      // Now actually join the lobby
+      socket.emit(
+        "lobby:join",
+        { lobbyId },
+        (response: { success: boolean; lobby?: any; error?: string }) => {
+          if (response.success && response.lobby) {
+            setCurrentLobby(response.lobby);
+            setActiveTab("lobby");
+            showToast("Joined lobby!", "success");
+          } else {
+            setError(response.error || "Failed to join lobby");
+          }
+        }
+      );
+    };
+
+    // Handle join request denied
+    const handleJoinDenied = ({ lobbyName }: { lobbyId: string; lobbyName: string }) => {
+      setRequestingJoin(null);
+      showToast(`Your request to join ${lobbyName} was denied`, "error");
+    };
+
     socket.on("lobby:memberJoined", handleMemberJoined);
     socket.on("lobby:memberLeft", handleMemberLeft);
     socket.on("lobby:ownerChanged", handleOwnerChanged);
     socket.on("lobby:invite", handleInvite);
     socket.on("lobby:kicked", handleKicked);
     socket.on("lobby:authSuccess", handleAuthSuccess);
+    socket.on("lobby:joinRequest", handleJoinRequest);
+    socket.on("lobby:joinAccepted", handleJoinAccepted);
+    socket.on("lobby:joinDenied", handleJoinDenied);
     socket.on("chat:message", handleChatMessage);
     socket.on("chat:typing", handleTyping);
     socket.on("voice:userJoined", handleVoiceUserJoined);
@@ -262,6 +301,9 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       socket.off("lobby:invite", handleInvite);
       socket.off("lobby:kicked", handleKicked);
       socket.off("lobby:authSuccess", handleAuthSuccess);
+      socket.off("lobby:joinRequest", handleJoinRequest);
+      socket.off("lobby:joinAccepted", handleJoinAccepted);
+      socket.off("lobby:joinDenied", handleJoinDenied);
       socket.off("chat:message", handleChatMessage);
       socket.off("chat:typing", handleTyping);
       socket.off("voice:userJoined", handleVoiceUserJoined);
@@ -272,7 +314,7 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       socket.off("friends:userOffline", handleFriendOffline);
       socket.off("friends:lobbyUpdate", handleFriendLobbyUpdate);
     };
-  }, [socket]);
+  }, [socket, notificationsEnabled, addJoinRequest, setCurrentLobby, showToast]);
 
   // Fetch friends list and profile
   useEffect(() => {
@@ -368,25 +410,26 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
   }, [messages]);
 
   // Lobby handlers
-  const handleJoinFriendLobby = useCallback(
+  const handleRequestJoinLobby = useCallback(
     (lobbyId: string) => {
       if (!socket) return;
       setError(null);
+      setRequestingJoin(lobbyId);
 
       socket.emit(
-        "lobby:join",
+        "lobby:requestJoin",
         { lobbyId },
-        (response: { success: boolean; lobby?: any; error?: string }) => {
-          if (response.success && response.lobby) {
-            setCurrentLobby(response.lobby);
-            setActiveTab("lobby");
+        (response: { success: boolean; error?: string }) => {
+          if (response.success) {
+            showToast("Join request sent! Waiting for approval...", "info");
           } else {
-            setError(response.error || "Failed to join lobby");
+            setRequestingJoin(null);
+            setError(response.error || "Failed to send join request");
           }
         }
       );
     },
-    [socket, setCurrentLobby]
+    [socket, showToast]
   );
 
   const handleLeave = useCallback(() => {
@@ -396,6 +439,46 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       reset();
     });
   }, [socket, reset]);
+
+  // Accept a join request
+  const handleAcceptJoinRequest = useCallback(
+    (requesterSocketId: string) => {
+      if (!socket) return;
+
+      socket.emit(
+        "lobby:acceptJoin",
+        { requesterSocketId },
+        (response: { success: boolean; error?: string }) => {
+          if (response.success) {
+            removeJoinRequest(requesterSocketId);
+          } else {
+            setError(response.error || "Failed to accept join request");
+          }
+        }
+      );
+    },
+    [socket, removeJoinRequest]
+  );
+
+  // Deny a join request
+  const handleDenyJoinRequest = useCallback(
+    (requesterSocketId: string) => {
+      if (!socket) return;
+
+      socket.emit(
+        "lobby:denyJoin",
+        { requesterSocketId },
+        (response: { success: boolean; error?: string }) => {
+          if (response.success) {
+            removeJoinRequest(requesterSocketId);
+          } else {
+            setError(response.error || "Failed to deny join request");
+          }
+        }
+      );
+    },
+    [socket, removeJoinRequest]
+  );
 
   const handleKickMember = useCallback(
     (targetSocketId: string) => {
@@ -499,8 +582,7 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
             if (!response.success) {
               setError(response.error || "Failed to send invite");
             } else {
-              setToast({ message: "Invite sent!", type: "success" });
-              setTimeout(() => setToast(null), 3000);
+              showToast("Invite sent!", "success");
             }
           }
         );
@@ -523,8 +605,7 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
                 if (!inviteResponse.success) {
                   setError(inviteResponse.error || "Failed to send invite");
                 } else {
-                  setToast({ message: "Lobby created and invite sent!", type: "success" });
-                  setTimeout(() => setToast(null), 3000);
+                  showToast("Lobby created and invite sent!", "success");
                 }
               }
             );
@@ -555,13 +636,11 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
         throw new Error(data.error || "Failed to save name");
       }
 
+      setDisplayName(nameInput.trim()); // Update local display name
       setEditingName(false);
-      // Update session would require page refresh, but the name is saved
-      setToast({ message: "Name saved!", type: "success" });
-      setTimeout(() => setToast(null), 3000);
+      showToast("Name saved!", "success");
     } catch (err) {
-      setToast({ message: err instanceof Error ? err.message : "Failed to save", type: "error" });
-      setTimeout(() => setToast(null), 3000);
+      showToast(err instanceof Error ? err.message : "Failed to save", "error");
     } finally {
       setNameSaving(false);
     }
@@ -666,26 +745,6 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
 
   return (
     <>
-      {/* Toast Notification */}
-      {toast && (
-        <div
-          className={`fixed top-4 left-1/2 -translate-x-1/2 z-[100] px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-in slide-in-from-top duration-300 ${
-            toast.type === "success"
-              ? "bg-green-500 text-white"
-              : toast.type === "error"
-              ? "bg-red-500 text-white"
-              : "bg-[#FF6B4A] text-white"
-          }`}
-        >
-          {toast.type === "info" && <Bell className="h-4 w-4" />}
-          {toast.type === "success" && <Check className="h-4 w-4" />}
-          <span className="text-sm font-medium">{toast.message}</span>
-          <button onClick={() => setToast(null)} className="ml-2 hover:opacity-80">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
       {/* Backdrop */}
       <div
         className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm"
@@ -887,6 +946,56 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
                   })}
                 </div>
               </div>
+
+              {/* Pending Join Requests (for lobby owner) */}
+              {session?.user?.id === currentLobby.ownerId && pendingJoinRequests.length > 0 && (
+                <div className={`p-3 border-b ${isDark ? "border-white/10" : "border-gray-200"}`}>
+                  <p className={`text-xs font-medium mb-2 ${isDark ? "text-white/60" : "text-gray-500"}`}>
+                    Join Requests ({pendingJoinRequests.length})
+                  </p>
+                  <div className="space-y-2">
+                    {pendingJoinRequests.map((request) => (
+                      <div
+                        key={request.socketId}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg ${
+                          isDark ? "bg-white/5" : "bg-gray-50"
+                        }`}
+                      >
+                        {request.image ? (
+                          <Image
+                            src={request.image}
+                            alt={request.name || "User"}
+                            width={28}
+                            height={28}
+                            className="w-7 h-7 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#FF6B4A] to-[#FF8F6B] flex items-center justify-center">
+                            <User className="h-4 w-4 text-white" />
+                          </div>
+                        )}
+                        <span className={`flex-1 text-sm ${isDark ? "text-white" : "text-gray-900"}`}>
+                          {request.name || request.username || "User"}
+                        </span>
+                        <button
+                          onClick={() => handleAcceptJoinRequest(request.socketId)}
+                          className="p-1.5 rounded bg-[#FF6B4A] text-white hover:bg-[#FF8F6B]"
+                          title="Accept"
+                        >
+                          <Check className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDenyJoinRequest(request.socketId)}
+                          className={`p-1.5 rounded ${isDark ? "bg-white/10 hover:bg-white/20" : "bg-gray-200 hover:bg-gray-300"}`}
+                          title="Deny"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Invite Friends (if in lobby) */}
               {friends.filter((f) => isOnline(f.id) && !currentLobby.members.some((m) => m.userId === f.id)).length > 0 && (
@@ -1149,12 +1258,12 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
                   ) : (
                     <>
                       <p className={`font-medium ${isDark ? "text-white" : "text-gray-900"}`}>
-                        {session?.user?.name || "User"}
+                        {displayName || session?.user?.name || "User"}
                       </p>
                       <button
                         type="button"
                         onClick={() => {
-                          setNameInput(session?.user?.name || "");
+                          setNameInput(displayName || session?.user?.name || "");
                           setEditingName(true);
                         }}
                         className={`p-1.5 rounded transition-colors ${isDark ? "hover:bg-white/10 text-white/40" : "hover:bg-gray-100 text-gray-400"}`}
@@ -1400,14 +1509,19 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
                             </p>
                           </div>
                           <div className="flex items-center gap-1">
-                            {/* Join friend's lobby button */}
+                            {/* Request to join friend's lobby button */}
                             {friendLobby && (
                               <button
-                                onClick={() => handleJoinFriendLobby(friendLobby.lobbyId!)}
-                                className="p-2 rounded-lg bg-[#FF6B4A]/20 text-[#FF6B4A] hover:bg-[#FF6B4A]/30 transition-colors"
-                                title="Join lobby"
+                                onClick={() => handleRequestJoinLobby(friendLobby.lobbyId!)}
+                                disabled={requestingJoin === friendLobby.lobbyId}
+                                className="p-2 rounded-lg bg-[#FF6B4A]/20 text-[#FF6B4A] hover:bg-[#FF6B4A]/30 transition-colors disabled:opacity-50"
+                                title="Request to join"
                               >
-                                <Play className="h-4 w-4" />
+                                {requestingJoin === friendLobby.lobbyId ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Play className="h-4 w-4" />
+                                )}
                               </button>
                             )}
                             <button
@@ -1518,14 +1632,19 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
                               </p>
                             </div>
                             <div className="flex items-center gap-2">
-                              {/* Join friend's lobby button */}
+                              {/* Request to join friend's lobby button */}
                               {friendLobby && (
                                 <button
-                                  onClick={() => handleJoinFriendLobby(friendLobby.lobbyId!)}
-                                  className="px-3 py-1.5 rounded-lg bg-[#FF6B4A] text-white text-xs font-medium hover:bg-[#FF8F6B] flex items-center gap-1"
+                                  onClick={() => handleRequestJoinLobby(friendLobby.lobbyId!)}
+                                  disabled={requestingJoin === friendLobby.lobbyId}
+                                  className="px-3 py-1.5 rounded-lg bg-[#FF6B4A] text-white text-xs font-medium hover:bg-[#FF8F6B] flex items-center gap-1 disabled:opacity-50"
                                 >
-                                  <Play className="h-3 w-3" />
-                                  Join
+                                  {requestingJoin === friendLobby.lobbyId ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <Play className="h-3 w-3" />
+                                  )}
+                                  {requestingJoin === friendLobby.lobbyId ? "Requesting..." : "Request"}
                                 </button>
                               )}
                               {/* Invite button - only show if online and not in a lobby with them already */}
