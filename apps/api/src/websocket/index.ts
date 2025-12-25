@@ -692,25 +692,39 @@ export function setupWebSocket(io: Server) {
         notifyFriendsOfLobbyUpdate(io, member.userId, socket.id, null, null);
       }
 
-      // If lobby is empty, delete it
-      if (lobby.members.size === 0) {
-        lobbies.delete(lobbyId);
-        console.log(`🎮 Lobby ${lobbyId} deleted (empty)`);
-      } else {
-        // If owner left, transfer ownership
-        if (lobby.ownerSocketId === socket.id) {
-          const newOwner = lobby.members.values().next().value;
-          if (newOwner) {
-            lobby.ownerId = newOwner.userId;
-            lobby.ownerSocketId = newOwner.odId;
-            io.to(`lobby:${lobbyId}`).emit("lobby:ownerChanged", {
-              newOwnerId: newOwner.userId,
-              lobbyId,
-            });
+      // If owner left, shut down the entire lobby and kick everyone
+      if (lobby.ownerSocketId === socket.id) {
+        // Notify all remaining members that lobby is shutting down
+        io.to(`lobby:${lobbyId}`).emit("lobby:shutdown", {
+          lobbyId,
+          reason: "Host left the lobby",
+        });
+
+        // Remove all remaining members from the lobby
+        for (const [memberSocketId, memberData] of lobby.members) {
+          socketToLobby.delete(memberSocketId);
+          const memberSocket = io.sockets.sockets.get(memberSocketId);
+          if (memberSocket) {
+            memberSocket.leave(`lobby:${lobbyId}`);
+          }
+          // Notify friends that member left lobby
+          if (memberData?.userId) {
+            notifyFriendsOfLobbyUpdate(io, memberData.userId, memberSocketId, null, null);
           }
         }
 
-        // Notify remaining members
+        // Delete the lobby
+        lobbies.delete(lobbyId);
+        // Clean up pending join requests for this lobby
+        pendingJoinRequests.delete(lobbyId);
+        console.log(`🎮 Lobby ${lobbyId} shut down (host left)`);
+      } else if (lobby.members.size === 0) {
+        // If lobby is empty, delete it
+        lobbies.delete(lobbyId);
+        pendingJoinRequests.delete(lobbyId);
+        console.log(`🎮 Lobby ${lobbyId} deleted (empty)`);
+      } else {
+        // Notify remaining members that someone left
         io.to(`lobby:${lobbyId}`).emit("lobby:memberLeft", {
           odId: socket.id,
           userId: member?.userId,
@@ -1016,25 +1030,38 @@ export function setupWebSocket(io: Server) {
             });
           }
 
-          // If lobby is empty, delete it
-          if (lobby.members.size === 0) {
-            lobbies.delete(lobbyId);
-            console.log(`🎮 Lobby ${lobbyId} deleted (empty after disconnect)`);
-          } else {
-            // Transfer ownership if needed
-            if (lobby.ownerSocketId === socket.id) {
-              const newOwner = lobby.members.values().next().value;
-              if (newOwner) {
-                lobby.ownerId = newOwner.userId;
-                lobby.ownerSocketId = newOwner.odId;
-                io.to(`lobby:${lobbyId}`).emit("lobby:ownerChanged", {
-                  newOwnerId: newOwner.userId,
-                  lobbyId,
-                });
+          // If owner disconnected, shut down the entire lobby and kick everyone
+          if (lobby.ownerSocketId === socket.id) {
+            // Notify all remaining members that lobby is shutting down
+            io.to(`lobby:${lobbyId}`).emit("lobby:shutdown", {
+              lobbyId,
+              reason: "Host disconnected",
+            });
+
+            // Remove all remaining members from the lobby
+            for (const [memberSocketId, memberData] of lobby.members) {
+              socketToLobby.delete(memberSocketId);
+              const memberSocket = io.sockets.sockets.get(memberSocketId);
+              if (memberSocket) {
+                memberSocket.leave(`lobby:${lobbyId}`);
+              }
+              // Notify friends that member left lobby
+              if (memberData?.userId) {
+                notifyFriendsOfLobbyUpdate(io, memberData.userId, memberSocketId, null, null);
               }
             }
 
-            // Notify remaining members
+            // Delete the lobby
+            lobbies.delete(lobbyId);
+            pendingJoinRequests.delete(lobbyId);
+            console.log(`🎮 Lobby ${lobbyId} shut down (host disconnected)`);
+          } else if (lobby.members.size === 0) {
+            // If lobby is empty, delete it
+            lobbies.delete(lobbyId);
+            pendingJoinRequests.delete(lobbyId);
+            console.log(`🎮 Lobby ${lobbyId} deleted (empty after disconnect)`);
+          } else {
+            // Notify remaining members that someone left
             io.to(`lobby:${lobbyId}`).emit("lobby:memberLeft", {
               odId: socket.id,
               userId: member?.userId,

@@ -275,11 +275,19 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       showToast(`Your request to join ${lobbyName} was denied`, "error");
     };
 
+    // Handle lobby shutdown (host left)
+    const handleShutdown = ({ reason }: { lobbyId: string; reason: string }) => {
+      reset();
+      setRequestingJoin(null);
+      showToast(reason || "Lobby was closed", "info");
+    };
+
     socket.on("lobby:memberJoined", handleMemberJoined);
     socket.on("lobby:memberLeft", handleMemberLeft);
     socket.on("lobby:ownerChanged", handleOwnerChanged);
     socket.on("lobby:invite", handleInvite);
     socket.on("lobby:kicked", handleKicked);
+    socket.on("lobby:shutdown", handleShutdown);
     socket.on("lobby:authSuccess", handleAuthSuccess);
     socket.on("lobby:joinRequest", handleJoinRequest);
     socket.on("lobby:joinAccepted", handleJoinAccepted);
@@ -300,6 +308,7 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       socket.off("lobby:ownerChanged", handleOwnerChanged);
       socket.off("lobby:invite", handleInvite);
       socket.off("lobby:kicked", handleKicked);
+      socket.off("lobby:shutdown", handleShutdown);
       socket.off("lobby:authSuccess", handleAuthSuccess);
       socket.off("lobby:joinRequest", handleJoinRequest);
       socket.off("lobby:joinAccepted", handleJoinAccepted);
@@ -1104,9 +1113,9 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
                     <LogOut className="h-4 w-4" />
                   </button>
                 </div>
-                {inVoice && voiceMembers.length > 0 && (
+                {inVoice && (
                   <div className={`mt-2 text-xs ${isDark ? "text-white/40" : "text-gray-500"}`}>
-                    {voiceMembers.length} {voiceMembers.length === 1 ? "user" : "users"} in voice
+                    {voiceMembers.length + 1} {voiceMembers.length + 1 === 1 ? "user" : "users"} in voice
                   </div>
                 )}
               </div>

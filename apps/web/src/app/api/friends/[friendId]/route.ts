@@ -19,7 +19,7 @@ export async function DELETE(
 
     const { friendId } = await params;
 
-    // Delete both directions of the friendship
+    // Delete both directions of the friendship AND any old friend requests
     await prisma.$transaction([
       prisma.friendship.deleteMany({
         where: {
@@ -31,6 +31,15 @@ export async function DELETE(
         where: {
           userId: friendId,
           friendId: session.user.id,
+        },
+      }),
+      // Also delete any friend requests between these users so they can re-add each other
+      prisma.friendRequest.deleteMany({
+        where: {
+          OR: [
+            { senderId: session.user.id, receiverId: friendId },
+            { senderId: friendId, receiverId: session.user.id },
+          ],
         },
       }),
     ]);
