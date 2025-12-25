@@ -776,41 +776,40 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
           </div>
         )}
 
-        {/* Tabs - only show when not in lobby */}
-        {!currentLobby && (
-          <div className={`flex border-b ${isDark ? "border-white/10" : "border-gray-200"}`}>
-            <button
-              onClick={() => setActiveTab("profile")}
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
-                activeTab === "profile"
-                  ? isDark
-                    ? "text-white border-b-2 border-[#FF6B4A]"
-                    : "text-gray-900 border-b-2 border-[#FF6B4A]"
-                  : isDark
-                  ? "text-white/60 hover:text-white"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              <User className="h-4 w-4" />
-              Profile
-            </button>
-            <button
-              onClick={() => setActiveTab("friends")}
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
-                activeTab === "friends"
-                  ? isDark
-                    ? "text-white border-b-2 border-[#FF6B4A]"
-                    : "text-gray-900 border-b-2 border-[#FF6B4A]"
-                  : isDark
-                  ? "text-white/60 hover:text-white"
-                  : "text-gray-600 hover:text-gray-900"
-              }`}
-            >
-              <Users className="h-4 w-4" />
-              Friends
-            </button>
-            <button
-              onClick={() => setActiveTab("lobby")}
+        {/* Tabs - always visible */}
+        <div className={`flex border-b ${isDark ? "border-white/10" : "border-gray-200"}`}>
+          <button
+            onClick={() => setActiveTab("profile")}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === "profile"
+                ? isDark
+                  ? "text-white border-b-2 border-[#FF6B4A]"
+                  : "text-gray-900 border-b-2 border-[#FF6B4A]"
+                : isDark
+                ? "text-white/60 hover:text-white"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <User className="h-4 w-4" />
+            Profile
+          </button>
+          <button
+            onClick={() => setActiveTab("friends")}
+            className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+              activeTab === "friends"
+                ? isDark
+                  ? "text-white border-b-2 border-[#FF6B4A]"
+                  : "text-gray-900 border-b-2 border-[#FF6B4A]"
+                : isDark
+                ? "text-white/60 hover:text-white"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <Users className="h-4 w-4" />
+            Friends
+          </button>
+          <button
+            onClick={() => setActiveTab("lobby")}
               className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
                 activeTab === "lobby"
                   ? isDark
@@ -820,16 +819,16 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
                   ? "text-white/60 hover:text-white"
                   : "text-gray-600 hover:text-gray-900"
               }`}
-            >
-              <MessageCircle className="h-4 w-4" />
-              Lobby
-            </button>
-          </div>
-        )}
+          >
+            <MessageCircle className="h-4 w-4" />
+            {currentLobby ? currentLobby.name : "Lobby"}
+            {currentLobby && <span className="w-2 h-2 rounded-full bg-green-500 ml-1" />}
+          </button>
+        </div>
 
         {/* Content */}
         <div className="flex-1 overflow-hidden flex flex-col" style={{ height: "calc(100vh - 130px)" }}>
-          {currentLobby ? (
+          {activeTab === "lobby" && currentLobby ? (
             // Active Lobby View
             <>
               {/* Members with kick functionality */}
@@ -1115,9 +1114,16 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
                         type="text"
                         value={nameInput}
                         onChange={(e) => setNameInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && nameInput.trim()) {
+                            handleSaveName();
+                          } else if (e.key === "Escape") {
+                            setEditingName(false);
+                          }
+                        }}
                         placeholder="Display name"
                         maxLength={50}
-                        className={`px-3 py-1 rounded-lg border text-sm font-medium ${
+                        className={`px-3 py-1.5 rounded-lg border text-sm font-medium outline-none focus:ring-2 focus:ring-[#FF6B4A]/50 ${
                           isDark
                             ? "bg-white/5 text-white border-white/10"
                             : "bg-white text-gray-900 border-gray-200"
@@ -1125,15 +1131,17 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
                         autoFocus
                       />
                       <button
+                        type="button"
                         onClick={handleSaveName}
                         disabled={!nameInput.trim() || nameSaving}
-                        className="p-1 rounded bg-[#FF6B4A] text-white hover:bg-[#FF8F6B] disabled:opacity-50"
+                        className="p-1.5 rounded bg-[#FF6B4A] text-white hover:bg-[#FF8F6B] disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {nameSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                       </button>
                       <button
+                        type="button"
                         onClick={() => setEditingName(false)}
-                        className={`p-1 rounded ${isDark ? "hover:bg-white/10" : "hover:bg-gray-100"}`}
+                        className={`p-1.5 rounded ${isDark ? "hover:bg-white/10 text-white/60" : "hover:bg-gray-100 text-gray-500"}`}
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -1144,11 +1152,12 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
                         {session?.user?.name || "User"}
                       </p>
                       <button
+                        type="button"
                         onClick={() => {
                           setNameInput(session?.user?.name || "");
                           setEditingName(true);
                         }}
-                        className={`p-1 rounded transition-colors ${isDark ? "hover:bg-white/10 text-white/40" : "hover:bg-gray-100 text-gray-400"}`}
+                        className={`p-1.5 rounded transition-colors ${isDark ? "hover:bg-white/10 text-white/40" : "hover:bg-gray-100 text-gray-400"}`}
                       >
                         <Pencil className="h-4 w-4" />
                       </button>

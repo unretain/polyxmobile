@@ -135,9 +135,13 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
     return { typingUsers: newTypingUsers };
   }),
 
-  addInvite: (invite) => set((state) => ({
-    pendingInvites: [...state.pendingInvites, invite],
-  })),
+  addInvite: (invite) => set((state) => {
+    // Prevent duplicate invites from same lobby
+    if (state.pendingInvites.some((i) => i.lobbyId === invite.lobbyId)) {
+      return state;
+    }
+    return { pendingInvites: [...state.pendingInvites, invite] };
+  }),
 
   removeInvite: (lobbyId) => set((state) => ({
     pendingInvites: state.pendingInvites.filter((i) => i.lobbyId !== lobbyId),
