@@ -436,14 +436,25 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Calculate totals from ALL positions (not just display period)
-    const totalRealizedPnl = positionsArray.reduce((sum, p) => sum + p.realizedPnl, 0);
-    const totalVolume = allTrades.reduce((sum, t) => {
+    // Calculate totals for the DISPLAY PERIOD (not all time)
+    // Period PnL = sum of daily PnL in the display period
+    const periodRealizedPnl = dailyPnL.reduce((sum, d) => sum + d.pnl, 0);
+    const periodVolume = dailyPnL.reduce((sum, d) => sum + d.volume, 0);
+    const periodTrades = dailyPnL.reduce((sum, d) => sum + d.trades, 0);
+
+    // All-time totals (for reference)
+    const allTimeRealizedPnl = positionsArray.reduce((sum, p) => sum + p.realizedPnl, 0);
+    const allTimeVolume = allTrades.reduce((sum, t) => {
       const isBuy = t.inputMint === SOL_MINT;
       const solAmount = isBuy ? Number(t.amountIn) / 1e9 : Number(t.amountOut) / 1e9;
       return sum + solAmount;
     }, 0);
-    const totalTrades = allTrades.length;
+    const allTimeTrades = allTrades.length;
+
+    // Use period-specific values in summary (what the user is viewing)
+    const totalRealizedPnl = period === "all" ? allTimeRealizedPnl : periodRealizedPnl;
+    const totalVolume = period === "all" ? allTimeVolume : periodVolume;
+    const totalTrades = period === "all" ? allTimeTrades : periodTrades;
 
     // Calculate streak
     let currentStreak = 0;
