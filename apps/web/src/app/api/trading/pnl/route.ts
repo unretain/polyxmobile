@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { TradeStatus } from "@prisma/client";
+import { config } from "@/lib/config";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
+const MORALIS_API_URL = "https://solana-gateway.moralis.io";
 
 // Simple token stats for SwapWidget
 async function getTokenStats(userId: string, tokenMint: string) {
@@ -377,25 +379,30 @@ export async function GET(req: NextRequest) {
     // Find tokens missing from database
     const missingMints = tokenMints.filter(mint => !tokenMap.has(mint));
 
-    // Fetch missing token metadata from DexScreener (free, reliable)
-    if (missingMints.length > 0) {
-      const dexPromises = missingMints.map(async (mint) => {
+    // Fetch missing token metadata from Moralis
+    if (missingMints.length > 0 && config.moralisApiKey) {
+      const moralisPromises = missingMints.map(async (mint) => {
         try {
           const res = await fetch(
-            `https://api.dexscreener.com/latest/dex/tokens/${mint}`,
-            { signal: AbortSignal.timeout(5000) }
+            `${MORALIS_API_URL}/token/mainnet/${mint}/metadata`,
+            {
+              headers: {
+                accept: "application/json",
+                "X-API-Key": config.moralisApiKey,
+              },
+              signal: AbortSignal.timeout(5000),
+            }
           );
 
           if (res.ok) {
             const data = await res.json();
-            const pair = data.pairs?.[0];
 
-            if (pair?.baseToken) {
+            if (data) {
               const tokenInfo = {
                 address: mint,
-                name: pair.baseToken.name || pair.baseToken.symbol || mint.slice(0, 8),
-                symbol: pair.baseToken.symbol || mint.slice(0, 6),
-                logoUri: pair.info?.imageUrl || null,
+                name: data.name || data.symbol || mint.slice(0, 8),
+                symbol: data.symbol || mint.slice(0, 6),
+                logoUri: data.logo || null,
               };
 
               tokenMap.set(mint, tokenInfo);
@@ -407,7 +414,7 @@ export async function GET(req: NextRequest) {
                   address: mint,
                   name: tokenInfo.name,
                   symbol: tokenInfo.symbol,
-                  decimals: 6,
+                  decimals: parseInt(data.decimals || "6"),
                   logoUri: tokenInfo.logoUri,
                 },
                 update: {
@@ -423,7 +430,7 @@ export async function GET(req: NextRequest) {
         }
       });
 
-      await Promise.allSettled(dexPromises);
+      await Promise.allSettled(moralisPromises);
     }
 
     // Enrich positions with token metadata
