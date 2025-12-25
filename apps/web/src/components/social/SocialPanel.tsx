@@ -486,6 +486,10 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       if (res.ok) {
         const data = await res.json();
         setUsername(data.username || "");
+        // Set displayName from the database to ensure we show the correct name
+        if (data.name) {
+          setDisplayName(data.name);
+        }
       }
     } catch (error) {
       console.error("Failed to fetch profile:", error);
@@ -791,7 +795,6 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
     setNameSaving(true);
     try {
       const newName = nameInput.trim();
-      console.log("[Profile] Saving name:", newName);
 
       const res = await fetch("/api/users/profile", {
         method: "PUT",
@@ -800,18 +803,12 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       });
 
       const data = await res.json();
-      console.log("[Profile] Save response:", res.status, data);
 
       if (!res.ok) {
         throw new Error(data.error || "Failed to save name");
       }
 
-      // Verify the name was actually saved
-      if (data.name !== newName) {
-        console.warn("[Profile] Name mismatch! Expected:", newName, "Got:", data.name);
-      }
-
-      setDisplayName(newName); // Update local display name
+      setDisplayName(newName); // Update local display name immediately
       setEditingName(false);
       // Update session to reflect the new name
       await updateSession();
@@ -819,7 +816,6 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       socket?.emit("profile:updated", { name: newName });
       showToast("Name saved!", "success");
     } catch (err) {
-      console.error("[Profile] Save error:", err);
       showToast(err instanceof Error ? err.message : "Failed to save", "error");
     } finally {
       setNameSaving(false);

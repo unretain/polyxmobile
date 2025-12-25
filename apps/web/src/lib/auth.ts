@@ -47,16 +47,16 @@ async function ensureUserHasWallet(userId: string): Promise<string | null> {
 }
 
 // Custom adapter that doesn't overwrite name/image on OAuth sign-in
+const basePrismaAdapter = PrismaAdapter(prisma);
 const customAdapter = {
-  ...PrismaAdapter(prisma),
+  ...basePrismaAdapter,
   // Override updateUser to preserve user-set name/image
-  async updateUser(data: { id: string; name?: string | null; email?: string | null; emailVerified?: Date | null; image?: string | null }) {
+  async updateUser(data: Parameters<NonNullable<typeof basePrismaAdapter.updateUser>>[0]) {
     // Don't update name or image from OAuth - user may have customized them
+    // Strip out name and image, keep everything else
     const { name, image, ...safeData } = data;
-    return prisma.user.update({
-      where: { id: data.id },
-      data: safeData,
-    });
+    // Use the base adapter's updateUser with the filtered data
+    return basePrismaAdapter.updateUser!(safeData as typeof data);
   },
 };
 
@@ -146,7 +146,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   events: {
     // Generate wallet after OAuth sign-in (Google, etc.)
     async signIn({ user, account }) {
-      console.log(`[auth] signIn event - user: ${user?.id}, provider: ${account?.provider}`);
       if (user.id && account?.provider !== "credentials") {
         // For OAuth providers, ensure user has a wallet
         await ensureUserHasWallet(user.id);
@@ -155,7 +154,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   callbacks: {
     async jwt({ token, user, account, trigger }) {
-      console.log(`[auth] jwt callback - trigger: ${trigger}, hasUser: ${!!user}, hasAccount: ${!!account}`);
       if (user) {
         token.id = user.id;
       }
