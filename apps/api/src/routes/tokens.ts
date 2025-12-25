@@ -148,100 +148,140 @@ const DASHBOARD_TOKENS = [
 
 // Track if initial sync has run (to avoid running multiple times per server start)
 let initialSyncComplete = false;
+let metadataSynced = false; // Only fetch metadata ONCE per server start
 let dashboardSyncTimer: NodeJS.Timeout | null = null;
-const DASHBOARD_SYNC_INTERVAL = 60000; // 60 seconds - balance freshness vs API usage
+const DASHBOARD_SYNC_INTERVAL = 60000; // 60 seconds for price updates
 
 // Start background sync for dashboard tokens
 export function startDashboardTokenSync() {
   if (dashboardSyncTimer) return;
 
-  console.log("[Dashboard] Starting background token sync every 5s");
+  console.log("[Dashboard] Starting background token sync every 60s");
 
-  // Sync immediately
+  // Sync immediately (includes one-time metadata fetch)
   syncDashboardTokens().then(() => {
     initialSyncComplete = true;
   }).catch(console.error);
 
-  // Then sync every 5 seconds for live trading
+  // Then sync every 60 seconds for price updates only
   dashboardSyncTimer = setInterval(() => {
     syncDashboardTokens().catch(console.error);
   }, DASHBOARD_SYNC_INTERVAL);
 }
 
-// Sync ONLY curated dashboard tokens - deletes all others
+// Sync ONLY curated dashboard tokens
+// METADATA: Only fetched ONCE per server start (logos, names never change)
+// PRICES: Fetched every 60 seconds
 async function syncDashboardTokens() {
   console.log("📊 Syncing curated dashboard tokens...");
   try {
     // Get the addresses we want to keep
     const allowedAddresses = DASHBOARD_TOKENS.map(t => t.address);
 
-    // Delete ALL tokens that are not in our curated list
-    const deleted = await prisma.token.deleteMany({
-      where: {
-        address: {
-          notIn: allowedAddresses,
+    // Delete ALL tokens that are not in our curated list (only on first run)
+    if (!metadataSynced) {
+      const deleted = await prisma.token.deleteMany({
+        where: {
+          address: {
+            notIn: allowedAddresses,
+          },
         },
-      },
-    });
-    console.log(`🗑️ Deleted ${deleted.count} tokens not in curated list`);
-
-    // Add/update only the curated tokens with fresh data from Birdeye
-    let added = 0;
-    for (const token of DASHBOARD_TOKENS) {
-      try {
-        const freshData = await birdeyeService.getTokenData(token.address);
-
-        if (freshData) {
-          console.log(`📈 ${token.symbol}: price=$${freshData.price?.toFixed(6)}, vol=$${freshData.volume24h?.toLocaleString()}, mc=$${freshData.marketCap?.toLocaleString()}`);
-          await prisma.token.upsert({
-            where: { address: token.address },
-            update: {
-              price: freshData.price || 0,
-              priceChange24h: freshData.priceChange24h || 0,
-              volume24h: freshData.volume24h || 0,
-              marketCap: freshData.marketCap || 0,
-              liquidity: freshData.liquidity || 0,
-              logoUri: freshData.logoURI,
-            },
-            create: {
-              address: token.address,
-              symbol: freshData.symbol || token.symbol,
-              name: freshData.name || token.name,
-              decimals: freshData.decimals || token.decimals,
-              logoUri: freshData.logoURI,
-              price: freshData.price || 0,
-              priceChange24h: freshData.priceChange24h || 0,
-              volume24h: freshData.volume24h || 0,
-              marketCap: freshData.marketCap || 0,
-              liquidity: freshData.liquidity || 0,
-            },
-          });
-          added++;
-          console.log(`✅ Added ${token.symbol}`);
-        } else {
-          // Add with basic info if Birdeye doesn't have data
-          await prisma.token.upsert({
-            where: { address: token.address },
-            update: {},
-            create: {
-              address: token.address,
-              symbol: token.symbol,
-              name: token.name,
-              decimals: token.decimals,
-              price: 0,
-              volume24h: 0,
-              marketCap: 0,
-            },
-          });
-          added++;
-          console.log(`✅ Added ${token.symbol} (no Birdeye data)`);
-        }
-      } catch (err) {
-        console.warn(`Failed to add ${token.symbol}:`, err instanceof Error ? err.message : err);
+      });
+      if (deleted.count > 0) {
+        console.log(`🗑️ Deleted ${deleted.count} tokens not in curated list`);
       }
     }
 
-    console.log(`✅ Dashboard now has exactly ${added} curated tokens`);
+    // Check which tokens need metadata (only fetch once)
+    const existingTokens = await prisma.token.findMany({
+      where: { address: { in: allowedAddresses } },
+      select: { address: true, logoUri: true },
+    });
+    const existingMap = new Map(existingTokens.map(t => [t.address, t]));
+
+    let added = 0;
+    for (const token of DASHBOARD_TOKENS) {
+      try {
+        const existing = existingMap.get(token.address);
+        const needsMetadata = !metadataSynced && (!existing || !existing.logoUri);
+
+        if (needsMetadata) {
+          // Fetch full data from Birdeye (includes metadata) - only once
+          const freshData = await birdeyeService.getTokenData(token.address);
+
+          if (freshData) {
+            console.log(`📈 ${token.symbol}: price=$${freshData.price?.toFixed(6)}, mc=$${freshData.marketCap?.toLocaleString()}`);
+            await prisma.token.upsert({
+              where: { address: token.address },
+              update: {
+                price: freshData.price || 0,
+                priceChange24h: freshData.priceChange24h || 0,
+                volume24h: freshData.volume24h || 0,
+                marketCap: freshData.marketCap || 0,
+                liquidity: freshData.liquidity || 0,
+                logoUri: freshData.logoURI,
+              },
+              create: {
+                address: token.address,
+                symbol: freshData.symbol || token.symbol,
+                name: freshData.name || token.name,
+                decimals: freshData.decimals || token.decimals,
+                logoUri: freshData.logoURI,
+                price: freshData.price || 0,
+                priceChange24h: freshData.priceChange24h || 0,
+                volume24h: freshData.volume24h || 0,
+                marketCap: freshData.marketCap || 0,
+                liquidity: freshData.liquidity || 0,
+              },
+            });
+            added++;
+          } else {
+            // Add with basic info if Birdeye doesn't have data
+            await prisma.token.upsert({
+              where: { address: token.address },
+              update: {},
+              create: {
+                address: token.address,
+                symbol: token.symbol,
+                name: token.name,
+                decimals: token.decimals,
+                price: 0,
+                volume24h: 0,
+                marketCap: 0,
+              },
+            });
+            added++;
+          }
+        } else {
+          // Just update prices - use Birdeye price endpoint (cheaper than full token data)
+          const freshData = await birdeyeService.getTokenData(token.address);
+          if (freshData) {
+            await prisma.token.update({
+              where: { address: token.address },
+              data: {
+                price: freshData.price || 0,
+                priceChange24h: freshData.priceChange24h || 0,
+                volume24h: freshData.volume24h || 0,
+                marketCap: freshData.marketCap || 0,
+                liquidity: freshData.liquidity || 0,
+              },
+            });
+          }
+        }
+      } catch (err) {
+        console.warn(`Failed to sync ${token.symbol}:`, err instanceof Error ? err.message : err);
+      }
+    }
+
+    // Mark metadata as synced after first run
+    if (!metadataSynced) {
+      metadataSynced = true;
+      console.log(`✅ Dashboard metadata synced for ${DASHBOARD_TOKENS.length} tokens`);
+    }
+
+    if (added > 0) {
+      console.log(`✅ Added ${added} new tokens`);
+    }
     return added;
   } catch (error) {
     console.error("Error syncing dashboard tokens:", error);
@@ -395,58 +435,19 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
     }
     // For weekly timeframe, fetch daily candles and aggregate them
     else if (timeframe === "1w") {
-      // Fetch daily candles and aggregate to weekly
-      // For full history, we make multiple requests paginating backwards
-      const allDailyCandles: any[] = [];
-      let currentTo = to || Math.floor(Date.now() / 1000);
+      // For weekly, just get last 365 days of daily data (1 request) and aggregate
+      // This is much cheaper than fetching "all time" with 20 requests
+      const now = Math.floor(Date.now() / 1000);
+      const requestFrom = from && from > 0 ? from : now - (365 * 86400); // Max 1 year back
+      const requestTo = to || now;
 
-      // Check if this is an "all time" request (from=0 or not specified)
-      const isAllTime = !from || from === 0;
+      const dailyCandles = await birdeyeService.getOHLCV(address, "1d", {
+        from: requestFrom,
+        to: requestTo,
+        limit: 1000,
+      });
 
-      // Make up to 20 requests to get more history for "all time"
-      const maxRequests = isAllTime ? 20 : 10;
-
-      for (let i = 0; i < maxRequests; i++) {
-        try {
-          // For "all time", go back 1000 days from currentTo each request
-          // For specific range, use the provided from
-          const requestFrom = isAllTime
-            ? currentTo - (1000 * 86400)  // 1000 days back
-            : from;
-
-          const dailyCandles = await birdeyeService.getOHLCV(address, "1d", {
-            from: requestFrom,
-            to: currentTo,
-            limit: 1000,
-          });
-
-          if (dailyCandles.length === 0) break;
-
-          // Prepend candles (older candles go first)
-          allDailyCandles.unshift(...dailyCandles);
-
-          // Move to before the oldest candle we got
-          // Timestamp is in milliseconds from birdeye service
-          const oldestTimestamp = dailyCandles[0]?.timestamp;
-          if (!oldestTimestamp) break;
-
-          // If we got less than 1000 candles, we've reached the beginning
-          if (dailyCandles.length < 1000) {
-            console.log(`Reached beginning of history at ${new Date(oldestTimestamp).toISOString()}`);
-            break;
-          }
-
-          // Convert to seconds for next request
-          currentTo = Math.floor(oldestTimestamp / 1000) - 1;
-
-          // If specific from was requested and we've passed it, stop
-          if (!isAllTime && currentTo <= from) break;
-        } catch (err) {
-          // If request fails (e.g., no more history), stop fetching
-          console.log("Stopped fetching history:", err);
-          break;
-        }
-      }
+      const allDailyCandles = dailyCandles || [];
 
       // Remove duplicates and sort by timestamp
       const uniqueCandles = Array.from(
@@ -463,53 +464,19 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
     }
     // For monthly timeframe, fetch daily candles and aggregate them
     else if (timeframe === "1M") {
-      // Fetch daily candles and aggregate to monthly
-      const allDailyCandles: any[] = [];
-      let currentTo = to || Math.floor(Date.now() / 1000);
+      // For monthly, get last 3 years of daily data (1 request) and aggregate
+      // This is much cheaper than fetching "all time" with 20 requests
+      const now = Math.floor(Date.now() / 1000);
+      const requestFrom = from && from > 0 ? from : now - (3 * 365 * 86400); // Max 3 years back
+      const requestTo = to || now;
 
-      // Check if this is an "all time" request (from=0 or not specified)
-      const isAllTime = !from || from === 0;
+      const dailyCandles = await birdeyeService.getOHLCV(address, "1d", {
+        from: requestFrom,
+        to: requestTo,
+        limit: 1000,
+      });
 
-      // Make up to 20 requests to get full history
-      const maxRequests = isAllTime ? 20 : 10;
-
-      for (let i = 0; i < maxRequests; i++) {
-        try {
-          const requestFrom = isAllTime
-            ? currentTo - (1000 * 86400)  // 1000 days back
-            : from;
-
-          const dailyCandles = await birdeyeService.getOHLCV(address, "1d", {
-            from: requestFrom,
-            to: currentTo,
-            limit: 1000,
-          });
-
-          if (dailyCandles.length === 0) break;
-
-          allDailyCandles.unshift(...dailyCandles);
-
-          const oldestTimestamp = dailyCandles[0]?.timestamp;
-          if (!oldestTimestamp) break;
-
-          if (dailyCandles.length < 1000) {
-            console.log(`Reached beginning of history at ${new Date(oldestTimestamp).toISOString()}`);
-            break;
-          }
-
-          currentTo = Math.floor(oldestTimestamp / 1000) - 1;
-
-          if (!isAllTime && currentTo <= from) break;
-        } catch (err) {
-          console.log("Stopped fetching history:", err);
-          break;
-        }
-      }
-
-      // Remove duplicates and sort by timestamp
-      const uniqueCandles = Array.from(
-        new Map(allDailyCandles.map(c => [c.timestamp, c])).values()
-      ).sort((a, b) => a.timestamp - b.timestamp);
+      const uniqueCandles = (dailyCandles || []).sort((a: any, b: any) => a.timestamp - b.timestamp);
 
       // Aggregate to monthly
       ohlcv = aggregateToMonthly(uniqueCandles);
