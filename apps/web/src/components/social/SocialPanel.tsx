@@ -790,18 +790,27 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
 
     setNameSaving(true);
     try {
+      const newName = nameInput.trim();
+      console.log("[Profile] Saving name:", newName);
+
       const res = await fetch("/api/users/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: nameInput.trim() }),
+        body: JSON.stringify({ name: newName }),
       });
 
+      const data = await res.json();
+      console.log("[Profile] Save response:", res.status, data);
+
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.error || "Failed to save name");
       }
 
-      const newName = nameInput.trim();
+      // Verify the name was actually saved
+      if (data.name !== newName) {
+        console.warn("[Profile] Name mismatch! Expected:", newName, "Got:", data.name);
+      }
+
       setDisplayName(newName); // Update local display name
       setEditingName(false);
       // Update session to reflect the new name
@@ -810,6 +819,7 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       socket?.emit("profile:updated", { name: newName });
       showToast("Name saved!", "success");
     } catch (err) {
+      console.error("[Profile] Save error:", err);
       showToast(err instanceof Error ? err.message : "Failed to save", "error");
     } finally {
       setNameSaving(false);
