@@ -149,7 +149,7 @@ const DASHBOARD_TOKENS = [
 // Track if initial sync has run (to avoid running multiple times per server start)
 let initialSyncComplete = false;
 let dashboardSyncTimer: NodeJS.Timeout | null = null;
-const DASHBOARD_SYNC_INTERVAL = 5000; // 5 seconds - fast updates for live trading
+const DASHBOARD_SYNC_INTERVAL = 60000; // 60 seconds - balance freshness vs API usage
 
 // Start background sync for dashboard tokens
 export function startDashboardTokenSync() {
