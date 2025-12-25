@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 // Public pricing information - no auth required
+// Embeds are unlimited for all tiers (we serve cached data, no marginal cost)
 const PRICING_PLANS = {
   FREE: {
     id: "FREE",
@@ -10,16 +11,12 @@ const PRICING_PLANS = {
     currency: "USD",
     interval: "month",
     features: {
-      domains: 1,
-      viewsPerMonth: 1000,
+      unlimitedEmbeds: true,
       watermark: true,
       customThemes: false,
       whiteLabel: false,
+      apiAccess: false,
       support: "community",
-    },
-    limits: {
-      maxDomains: 1,
-      maxViewsPerMonth: 1000,
     },
   },
   PRO: {
@@ -31,37 +28,30 @@ const PRICING_PLANS = {
     interval: "month",
     stripePriceId: process.env.STRIPE_PRICE_PRO,
     features: {
-      domains: 3,
-      viewsPerMonth: 50000,
+      unlimitedEmbeds: true,
       watermark: false,
       customThemes: true,
       whiteLabel: false,
+      apiAccess: false,
       support: "priority",
-    },
-    limits: {
-      maxDomains: 3,
-      maxViewsPerMonth: 50000,
     },
   },
   BUSINESS: {
     id: "BUSINESS",
     name: "Business",
-    description: "For enterprises with custom needs",
+    description: "For enterprises with API access",
     price: 99,
     currency: "USD",
     interval: "month",
     stripePriceId: process.env.STRIPE_PRICE_BUSINESS,
     features: {
-      domains: 10,
-      viewsPerMonth: 500000,
+      unlimitedEmbeds: true,
       watermark: false,
       customThemes: true,
       whiteLabel: true,
+      apiAccess: true,
+      apiRateLimit: 5000, // 5000 CU per month
       support: "dedicated",
-    },
-    limits: {
-      maxDomains: 10,
-      maxViewsPerMonth: 500000,
     },
   },
 };
@@ -69,7 +59,7 @@ const PRICING_PLANS = {
 // GET /api/pricing - Public endpoint to fetch pricing info
 export async function GET() {
   // Return public pricing without sensitive Stripe IDs
-  const publicPricing = Object.entries(PRICING_PLANS).map(([key, plan]) => ({
+  const publicPricing = Object.entries(PRICING_PLANS).map(([, plan]) => ({
     id: plan.id,
     name: plan.name,
     description: plan.description,
@@ -77,7 +67,6 @@ export async function GET() {
     currency: plan.currency,
     interval: plan.interval,
     features: plan.features,
-    limits: plan.limits,
     // Don't expose stripePriceId
   }));
 
@@ -88,6 +77,7 @@ export async function GET() {
     // API info
     checkoutEndpoint: "/api/checkout",
     embedEndpoint: "/embed/{tokenAddress}",
+    ohlcvApiEndpoint: "/api/v1/ohlcv/{tokenAddress}",
     documentationUrl: "/api/docs",
   });
 }

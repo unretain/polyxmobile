@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import crypto from "crypto";
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,9 +31,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, alreadyVerified: true });
     }
 
-    // Verify code
-    if (user.verificationCode !== code) {
-      console.log(`[verify-email] Code mismatch: got ${code}, expected ${user.verificationCode}`);
+    // Verify code using timing-safe comparison to prevent timing attacks
+    const storedCode = user.verificationCode || "";
+    const providedCode = String(code);
+
+    // Pad codes to same length for timing-safe comparison
+    const codeMatch = storedCode.length === providedCode.length &&
+      crypto.timingSafeEqual(Buffer.from(storedCode), Buffer.from(providedCode));
+
+    if (!codeMatch) {
+      console.log(`[verify-email] Code mismatch for user: ${userId}`);
       return NextResponse.json({ error: "Invalid verification code" }, { status: 400 });
     }
 

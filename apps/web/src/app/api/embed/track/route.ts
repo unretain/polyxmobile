@@ -4,25 +4,6 @@ import { prisma } from "@/lib/prisma";
 
 const LICENSE_SECRET = process.env.LICENSE_SECRET || "dev-secret";
 
-// Plan limits (monthly views)
-const PLAN_LIMITS = {
-  FREE: 1000,
-  PRO: 50000,
-  BUSINESS: 500000, // 500k views/month - not unlimited since we pay for API usage
-};
-
-// Check if embedViews should be reset (monthly reset)
-function shouldResetViews(resetAt: Date | null): boolean {
-  if (!resetAt) return true;
-  return new Date() >= resetAt;
-}
-
-// Get next month reset date
-function getNextMonthReset(): Date {
-  const now = new Date();
-  return new Date(now.getFullYear(), now.getMonth() + 1, 1);
-}
-
 // Verify old license key format (sub_{id}_{hmac}) and extract subscription ID
 function verifyOldFormat(licenseKey: string): string | null {
   if (!licenseKey.startsWith("sub_")) return null;
@@ -67,11 +48,9 @@ function verifyNewFormat(licenseKey: string): boolean {
 
 // Lookup subscription by license key
 async function lookupSubscriptionByLicenseKey(licenseKey: string): Promise<string | null> {
-  // First check old format (direct subscription ID)
   const oldFormatId = verifyOldFormat(licenseKey);
   if (oldFormatId) return oldFormatId;
 
-  // For new format, verify HMAC and lookup by stored license key
   if (verifyNewFormat(licenseKey)) {
     const subscription = await prisma.subscription.findFirst({
       where: { licenseKey },
@@ -82,24 +61,21 @@ async function lookupSubscriptionByLicenseKey(licenseKey: string): Promise<strin
   return null;
 }
 
-// POST /api/embed/track - Track an embed view and check rate limits
-// Uses database for persistent tracking (not in-memory)
+// POST /api/embed/track - Track embed view for analytics (no limits)
+// Embeds are always allowed - we serve cached data so no marginal cost
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { licenseKey, domain, tokenAddress } = body;
 
-    // Determine plan from license
+    // Determine plan from license (for watermark logic in embed)
     let plan: "FREE" | "PRO" | "BUSINESS" = "FREE";
-    let subscription = null;
 
     if (licenseKey) {
-      // Verify and lookup subscription by license key
       const subscriptionId = await lookupSubscriptionByLicenseKey(licenseKey);
 
       if (subscriptionId) {
-        // Get subscription from database
-        subscription = await prisma.subscription.findUnique({
+        const subscription = await prisma.subscription.findUnique({
           where: { id: subscriptionId },
         });
 
@@ -109,135 +85,70 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const limit = PLAN_LIMITS[plan];
-
-    // For FREE tier (no subscription), use simple tracking without persistence
-    if (!subscription) {
-      // Track in EmbedView table for analytics
-      await prisma.embedView.create({
-        data: {
-          domain: domain || "unknown",
-          tokenAddress: tokenAddress || "unknown",
-        },
-      });
-
-      return NextResponse.json({
-        allowed: true,
-        plan: "FREE",
-        limit,
-        used: 0,
-        remaining: limit,
-        message: "Free tier - upgrade for higher limits",
-      });
-    }
-
-    // Check if we need to reset monthly views
-    if (shouldResetViews(subscription.embedViewsResetAt)) {
-      await prisma.subscription.update({
-        where: { id: subscription.id },
-        data: {
-          embedViews: 0,
-          embedViewsResetAt: getNextMonthReset(),
-        },
-      });
-      subscription.embedViews = 0;
-    }
-
-    // Check if over limit
-    if (subscription.embedViews >= limit) {
-      return NextResponse.json({
-        allowed: false,
-        reason: "rate_limit_exceeded",
-        plan,
-        limit,
-        used: subscription.embedViews,
-        resetAt: subscription.embedViewsResetAt?.toISOString() || getNextMonthReset().toISOString(),
-        upgradeUrl: "/solutions#pricing",
-      }, { status: 429 });
-    }
-
-    // Increment view count in database (persistent)
-    const updated = await prisma.subscription.update({
-      where: { id: subscription.id },
-      data: {
-        embedViews: { increment: 1 },
-      },
-    });
-
-    // Also track in EmbedView table for analytics
-    await prisma.embedView.create({
+    // Track in EmbedView table for analytics only (no limits enforced)
+    prisma.embedView.create({
       data: {
         domain: domain || "unknown",
         tokenAddress: tokenAddress || "unknown",
       },
-    });
+    }).catch(() => {}); // Fire and forget
 
+    // Always allow - just return plan info for watermark logic
     return NextResponse.json({
       allowed: true,
       plan,
-      limit,
-      used: updated.embedViews,
-      remaining: Math.max(0, limit - updated.embedViews),
-      resetAt: subscription.embedViewsResetAt?.toISOString() || getNextMonthReset().toISOString(),
+      // PRO and BUSINESS get no watermark
+      showWatermark: plan === "FREE",
     });
 
   } catch (error) {
     console.error("View tracking error:", error);
-    // Allow on error to prevent blocking embeds
+    // Allow on error
     return NextResponse.json({
       allowed: true,
-      error: "tracking_failed",
+      plan: "FREE",
+      showWatermark: true,
     });
   }
 }
 
-// GET /api/embed/track - Get current usage stats
+// GET /api/embed/track - Get subscription info
 export async function GET(req: NextRequest) {
   const licenseKey = req.nextUrl.searchParams.get("licenseKey");
 
   if (!licenseKey) {
-    return NextResponse.json(
-      { error: "License key parameter required" },
-      { status: 400 }
-    );
+    return NextResponse.json({
+      plan: "FREE",
+      showWatermark: true,
+    });
   }
 
-  // Verify license key
   const subscriptionId = await lookupSubscriptionByLicenseKey(licenseKey);
   if (!subscriptionId) {
-    return NextResponse.json(
-      { error: "Invalid license key" },
-      { status: 403 }
-    );
+    return NextResponse.json({
+      plan: "FREE",
+      showWatermark: true,
+      error: "Invalid license key",
+    });
   }
 
-  // Get subscription from database
   const subscription = await prisma.subscription.findUnique({
     where: { id: subscriptionId },
   });
 
   if (!subscription) {
-    return NextResponse.json(
-      { error: "Subscription not found" },
-      { status: 404 }
-    );
+    return NextResponse.json({
+      plan: "FREE",
+      showWatermark: true,
+      error: "Subscription not found",
+    });
   }
 
   const plan = subscription.status === "ACTIVE" ? subscription.plan : "FREE";
-  const limit = PLAN_LIMITS[plan];
-
-  // Check if views should be reset
-  let used = subscription.embedViews;
-  if (shouldResetViews(subscription.embedViewsResetAt)) {
-    used = 0; // Will be reset on next POST
-  }
 
   return NextResponse.json({
     subscriptionId,
     plan,
-    limit,
-    used,
-    remaining: Math.max(0, limit - used),
-    resetAt: subscription.embedViewsResetAt?.toISOString() || getNextMonthReset().toISOString(),
+    showWatermark: plan === "FREE",
   });
 }
