@@ -43,6 +43,15 @@ export interface LobbyInvite {
   };
 }
 
+export interface JoinRequest {
+  socketId: string;
+  userId: string;
+  username: string | null;
+  name: string | null;
+  image: string | null;
+  timestamp: number;
+}
+
 export interface OnlineFriend {
   odId: string;
   odIdIndex?: string;
@@ -63,6 +72,9 @@ interface LobbyState {
   // Invites
   pendingInvites: LobbyInvite[];
 
+  // Join requests (for lobby owner)
+  pendingJoinRequests: JoinRequest[];
+
   // Voice
   inVoice: boolean;
   voiceMembers: LobbyMember[];
@@ -80,6 +92,8 @@ interface LobbyState {
   setTyping: (odId: string, username: string | null, isTyping: boolean) => void;
   addInvite: (invite: LobbyInvite) => void;
   removeInvite: (lobbyId: string) => void;
+  addJoinRequest: (request: JoinRequest) => void;
+  removeJoinRequest: (socketId: string) => void;
   setInVoice: (inVoice: boolean) => void;
   setVoiceMembers: (members: LobbyMember[]) => void;
   addVoiceMember: (member: LobbyMember) => void;
@@ -95,6 +109,7 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
   messages: [],
   typingUsers: new Map(),
   pendingInvites: [],
+  pendingJoinRequests: [],
   inVoice: false,
   voiceMembers: [],
   onlineFriends: [],
@@ -107,11 +122,20 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
       : null,
   })),
 
-  addMember: (member) => set((state) => ({
-    currentLobby: state.currentLobby
-      ? { ...state.currentLobby, members: [...state.currentLobby.members, member] }
-      : null,
-  })),
+  addMember: (member) => set((state) => {
+    if (!state.currentLobby) return { currentLobby: null };
+    // Prevent duplicates - check by odId (socket ID) AND userId
+    const alreadyExists = state.currentLobby.members.some(
+      (m) => m.odId === member.odId || m.userId === member.userId
+    );
+    if (alreadyExists) return state;
+    return {
+      currentLobby: {
+        ...state.currentLobby,
+        members: [...state.currentLobby.members, member],
+      },
+    };
+  }),
 
   removeMember: (odId) => set((state) => ({
     currentLobby: state.currentLobby
@@ -145,6 +169,18 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
 
   removeInvite: (lobbyId) => set((state) => ({
     pendingInvites: state.pendingInvites.filter((i) => i.lobbyId !== lobbyId),
+  })),
+
+  addJoinRequest: (request) => set((state) => {
+    // Prevent duplicates
+    if (state.pendingJoinRequests.some((r) => r.socketId === request.socketId)) {
+      return state;
+    }
+    return { pendingJoinRequests: [...state.pendingJoinRequests, request] };
+  }),
+
+  removeJoinRequest: (socketId) => set((state) => ({
+    pendingJoinRequests: state.pendingJoinRequests.filter((r) => r.socketId !== socketId),
   })),
 
   setInVoice: (inVoice) => set({ inVoice }),
@@ -181,6 +217,7 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
     currentLobby: null,
     messages: [],
     typingUsers: new Map(),
+    pendingJoinRequests: [],
     inVoice: false,
     voiceMembers: [],
   }),

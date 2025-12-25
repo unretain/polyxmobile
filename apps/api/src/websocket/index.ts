@@ -102,6 +102,17 @@ const lobbies = new Map<string, Lobby>();
 const socketToLobby = new Map<string, string>(); // socketId -> lobbyId
 const socketToUser = new Map<string, { userId: string; username: string | null; name: string | null; image: string | null }>();
 
+// Track pending join requests: lobbyId -> Map<requestingSocketId, requesterInfo>
+interface JoinRequest {
+  socketId: string;
+  userId: string;
+  username: string | null;
+  name: string | null;
+  image: string | null;
+  timestamp: number;
+}
+const pendingJoinRequests = new Map<string, Map<string, JoinRequest>>();
+
 function generateLobbyId(): string {
   // Use cryptographically secure random bytes
   return crypto.randomBytes(4).toString("hex").toUpperCase();
@@ -421,8 +432,8 @@ export function setupWebSocket(io: Server) {
       });
     });
 
-    // Join an existing lobby
-    socket.on("lobby:join", (data: { lobbyId: string }, callback: (response: { success: boolean; lobby?: any; error?: string }) => void) => {
+    // Join an existing lobby (only via invite acceptance - used internally after invite)
+    socket.on("lobby:join", (data: { lobbyId: string; fromInvite?: boolean }, callback: (response: { success: boolean; lobby?: any; error?: string }) => void) => {
       // Rate limit lobby actions
       if (!checkRateLimit(socket.id, "lobbyActions")) {
         callback({ success: false, error: "Too many requests. Please wait." });
@@ -488,6 +499,162 @@ export function setupWebSocket(io: Server) {
           createdAt: lobby.createdAt,
         },
       });
+    });
+
+    // Request to join a friend's lobby
+    socket.on("lobby:requestJoin", (data: { lobbyId: string }, callback: (response: { success: boolean; error?: string }) => void) => {
+      // Rate limit lobby actions
+      if (!checkRateLimit(socket.id, "lobbyActions")) {
+        callback({ success: false, error: "Too many requests. Please wait." });
+        return;
+      }
+
+      const user = socketToUser.get(socket.id);
+      if (!user) {
+        callback({ success: false, error: "Not authenticated" });
+        return;
+      }
+
+      // Check if user is already in a lobby
+      const existingLobbyId = socketToLobby.get(socket.id);
+      if (existingLobbyId) {
+        callback({ success: false, error: "Already in a lobby" });
+        return;
+      }
+
+      const lobby = lobbies.get(data.lobbyId);
+      if (!lobby) {
+        callback({ success: false, error: "Lobby not found" });
+        return;
+      }
+
+      // Check max members (5 for voice)
+      if (lobby.members.size >= 5) {
+        callback({ success: false, error: "Lobby is full (max 5 members)" });
+        return;
+      }
+
+      // Initialize pending requests map for this lobby if needed
+      if (!pendingJoinRequests.has(data.lobbyId)) {
+        pendingJoinRequests.set(data.lobbyId, new Map());
+      }
+
+      const lobbyRequests = pendingJoinRequests.get(data.lobbyId)!;
+
+      // Check if already requested
+      if (lobbyRequests.has(socket.id)) {
+        callback({ success: false, error: "Join request already pending" });
+        return;
+      }
+
+      // Add join request
+      const request: JoinRequest = {
+        socketId: socket.id,
+        userId: user.userId,
+        username: user.username,
+        name: user.name,
+        image: user.image,
+        timestamp: Date.now(),
+      };
+      lobbyRequests.set(socket.id, request);
+
+      console.log(`🎮 User ${user.username || user.userId} requested to join lobby ${data.lobbyId}`);
+
+      // Notify lobby owner of the join request
+      io.to(lobby.ownerSocketId).emit("lobby:joinRequest", {
+        lobbyId: data.lobbyId,
+        requester: request,
+      });
+
+      callback({ success: true });
+    });
+
+    // Accept a join request (owner only)
+    socket.on("lobby:acceptJoin", (data: { requesterSocketId: string }, callback: (response: { success: boolean; error?: string }) => void) => {
+      const lobbyId = socketToLobby.get(socket.id);
+      if (!lobbyId) {
+        callback({ success: false, error: "Not in a lobby" });
+        return;
+      }
+
+      const lobby = lobbies.get(lobbyId);
+      if (!lobby) {
+        callback({ success: false, error: "Lobby not found" });
+        return;
+      }
+
+      // Only owner can accept
+      if (lobby.ownerSocketId !== socket.id) {
+        callback({ success: false, error: "Only the lobby owner can accept join requests" });
+        return;
+      }
+
+      const lobbyRequests = pendingJoinRequests.get(lobbyId);
+      const request = lobbyRequests?.get(data.requesterSocketId);
+
+      if (!request) {
+        callback({ success: false, error: "Join request not found" });
+        return;
+      }
+
+      // Check max members
+      if (lobby.members.size >= 5) {
+        callback({ success: false, error: "Lobby is full" });
+        return;
+      }
+
+      // Remove from pending requests
+      lobbyRequests.delete(data.requesterSocketId);
+
+      // Tell the requester they were accepted
+      io.to(data.requesterSocketId).emit("lobby:joinAccepted", {
+        lobbyId,
+        lobbyName: lobby.name,
+      });
+
+      console.log(`🎮 Join request accepted for ${request.username || request.userId} to lobby ${lobbyId}`);
+      callback({ success: true });
+    });
+
+    // Deny a join request (owner only)
+    socket.on("lobby:denyJoin", (data: { requesterSocketId: string }, callback: (response: { success: boolean; error?: string }) => void) => {
+      const lobbyId = socketToLobby.get(socket.id);
+      if (!lobbyId) {
+        callback({ success: false, error: "Not in a lobby" });
+        return;
+      }
+
+      const lobby = lobbies.get(lobbyId);
+      if (!lobby) {
+        callback({ success: false, error: "Lobby not found" });
+        return;
+      }
+
+      // Only owner can deny
+      if (lobby.ownerSocketId !== socket.id) {
+        callback({ success: false, error: "Only the lobby owner can deny join requests" });
+        return;
+      }
+
+      const lobbyRequests = pendingJoinRequests.get(lobbyId);
+      const request = lobbyRequests?.get(data.requesterSocketId);
+
+      if (!request) {
+        callback({ success: false, error: "Join request not found" });
+        return;
+      }
+
+      // Remove from pending requests
+      lobbyRequests.delete(data.requesterSocketId);
+
+      // Tell the requester they were denied
+      io.to(data.requesterSocketId).emit("lobby:joinDenied", {
+        lobbyId,
+        lobbyName: lobby.name,
+      });
+
+      console.log(`🎮 Join request denied for ${request.username || request.userId} to lobby ${lobbyId}`);
+      callback({ success: true });
     });
 
     // Leave current lobby
