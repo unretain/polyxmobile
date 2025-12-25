@@ -482,6 +482,64 @@ export function setupWebSocket(io: Server) {
       }
     });
 
+    // Broadcast profile update to friends and lobby members
+    socket.on("profile:updated", async (data: { name?: string; username?: string; image?: string }) => {
+      const user = socketToUser.get(socket.id);
+      if (!user) return;
+
+      // Update local cache
+      if (data.name !== undefined) user.name = data.name;
+      if (data.username !== undefined) user.username = data.username;
+      if (data.image !== undefined) user.image = data.image;
+
+      // Notify friends of profile update
+      try {
+        const friendships = await prisma.friendship.findMany({
+          where: { userId: user.userId },
+          select: { friendId: true },
+        });
+        const friendIds = friendships.map((f) => f.friendId);
+
+        for (const [socketId, userData] of socketToUser.entries()) {
+          if (friendIds.includes(userData.userId)) {
+            io.to(socketId).emit("friends:profileUpdated", {
+              odId: socket.id,
+              userId: user.userId,
+              name: user.name,
+              username: user.username,
+              image: user.image,
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Failed to notify friends of profile update:", error);
+      }
+
+      // Notify lobby members of profile update
+      const lobbyId = socketToLobby.get(socket.id);
+      if (lobbyId) {
+        const lobby = lobbies.get(lobbyId);
+        if (lobby) {
+          // Update member info in lobby
+          const member = lobby.members.get(socket.id);
+          if (member) {
+            if (data.name !== undefined) member.name = data.name;
+            if (data.username !== undefined) member.username = data.username;
+            if (data.image !== undefined) member.image = data.image;
+          }
+
+          // Notify other lobby members
+          socket.to(`lobby:${lobbyId}`).emit("lobby:memberProfileUpdated", {
+            odId: socket.id,
+            userId: user.userId,
+            name: user.name,
+            username: user.username,
+            image: user.image,
+          });
+        }
+      }
+    });
+
     // Create a new lobby
     socket.on("lobby:create", (data: { name: string }, callback: (response: { success: boolean; lobby?: any; error?: string }) => void) => {
       // Rate limit lobby actions
@@ -975,11 +1033,13 @@ export function setupWebSocket(io: Server) {
         lobbyId,
         lobbyName: lobby.name,
         invitedBy: {
+          odId: socket.id,
           userId: user.userId,
           username: user.username,
           name: user.name,
           image: user.image,
         },
+        timestamp: Date.now(),
       });
 
       callback({ success: true });
