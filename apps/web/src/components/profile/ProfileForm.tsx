@@ -236,9 +236,9 @@ export function ProfileForm({ profile, onUpdate, onImageUpdate }: ProfileFormPro
           <input
             type="text"
             value={username}
-            onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+            onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z]/g, ""))}
             placeholder="username"
-            maxLength={20}
+            maxLength={9}
             className={`w-full pl-8 pr-3 py-2 rounded-lg border outline-none focus:border-[#FF6B4A]/50 text-sm ${
               isDark
                 ? "bg-white/5 text-white border-white/10 placeholder:text-white/30"
@@ -251,7 +251,7 @@ export function ProfileForm({ profile, onUpdate, onImageUpdate }: ProfileFormPro
             isDark ? "text-white/40" : "text-gray-400"
           }`}
         >
-          3-20 characters, letters, numbers, and underscores only
+          1-9 letters only
         </p>
       </div>
 
