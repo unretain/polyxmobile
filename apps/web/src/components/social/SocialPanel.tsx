@@ -15,13 +15,13 @@ import {
   User,
   VolumeX,
   Volume2,
-  Copy,
-  Check,
   UserPlus,
   Loader2,
   UserMinus,
   Search,
   Play,
+  Ban,
+  Check,
 } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import {
@@ -49,7 +49,7 @@ interface Friend {
   image: string | null;
 }
 
-type Tab = "friends" | "lobby";
+type Tab = "profile" | "friends" | "lobby";
 
 export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
   const { isDark } = useThemeStore();
@@ -84,14 +84,18 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
 
   const [activeTab, setActiveTab] = useState<Tab>("friends");
   const [lobbyName, setLobbyName] = useState("");
-  const [joinCode, setJoinCode] = useState("");
   const [messageInput, setMessageInput] = useState("");
   const [isCreating, setIsCreating] = useState(false);
-  const [isJoining, setIsJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
-  const [showJoinForm, setShowJoinForm] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [kickingMember, setKickingMember] = useState<string | null>(null);
+
+  // Profile state
+  const [username, setUsername] = useState("");
+  const [usernameLoading, setUsernameLoading] = useState(true);
+  const [usernameSaving, setUsernameSaving] = useState(false);
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [usernameSuccess, setUsernameSuccess] = useState(false);
 
   // Friends state
   const [friends, setFriends] = useState<Friend[]>([]);
@@ -207,10 +211,23 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       }
     };
 
+    // Handle auth success - fixes timing issue with online friends
+    const handleAuthSuccess = ({ onlineFriends }: { onlineFriends: OnlineFriend[] }) => {
+      setOnlineFriends(onlineFriends);
+    };
+
+    // Handle being kicked from lobby
+    const handleKicked = ({ lobbyName }: { lobbyId: string; lobbyName: string }) => {
+      reset();
+      setError(`You were kicked from ${lobbyName}`);
+    };
+
     socket.on("lobby:memberJoined", handleMemberJoined);
     socket.on("lobby:memberLeft", handleMemberLeft);
     socket.on("lobby:ownerChanged", handleOwnerChanged);
     socket.on("lobby:invite", handleInvite);
+    socket.on("lobby:kicked", handleKicked);
+    socket.on("lobby:authSuccess", handleAuthSuccess);
     socket.on("chat:message", handleChatMessage);
     socket.on("chat:typing", handleTyping);
     socket.on("voice:userJoined", handleVoiceUserJoined);
@@ -226,6 +243,8 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       socket.off("lobby:memberLeft", handleMemberLeft);
       socket.off("lobby:ownerChanged", handleOwnerChanged);
       socket.off("lobby:invite", handleInvite);
+      socket.off("lobby:kicked", handleKicked);
+      socket.off("lobby:authSuccess", handleAuthSuccess);
       socket.off("chat:message", handleChatMessage);
       socket.off("chat:typing", handleTyping);
       socket.off("voice:userJoined", handleVoiceUserJoined);
@@ -238,13 +257,59 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
     };
   }, [socket]);
 
-  // Fetch friends list
+  // Fetch friends list and profile
   useEffect(() => {
     if (isOpen) {
       fetchFriends();
       fetchPendingRequests();
+      fetchProfile();
     }
   }, [isOpen]);
+
+  // Fetch profile/username
+  const fetchProfile = async () => {
+    try {
+      setUsernameLoading(true);
+      const res = await fetch("/api/users/profile");
+      if (res.ok) {
+        const data = await res.json();
+        setUsername(data.username || "");
+      }
+    } catch (error) {
+      console.error("Failed to fetch profile:", error);
+    } finally {
+      setUsernameLoading(false);
+    }
+  };
+
+  const handleSaveUsername = async () => {
+    if (!username.trim()) return;
+
+    setUsernameSaving(true);
+    setUsernameError(null);
+    setUsernameSuccess(false);
+
+    try {
+      const res = await fetch("/api/users/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim().toLowerCase() }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to save username");
+      }
+
+      setUsernameSuccess(true);
+      setTimeout(() => setUsernameSuccess(false), 3000);
+    } catch (err) {
+      setUsernameError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setUsernameSaving(false);
+    }
+  };
 
   const fetchFriends = async () => {
     try {
@@ -308,28 +373,6 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
     );
   }, [socket, lobbyName, session?.user?.name, setCurrentLobby]);
 
-  const handleJoin = useCallback(() => {
-    if (!socket || !joinCode.trim()) return;
-    setIsJoining(true);
-    setError(null);
-
-    socket.emit(
-      "lobby:join",
-      { lobbyId: joinCode.trim().toUpperCase() },
-      (response: { success: boolean; lobby?: any; error?: string }) => {
-        setIsJoining(false);
-        if (response.success && response.lobby) {
-          setCurrentLobby(response.lobby);
-          setJoinCode("");
-          setShowJoinForm(false);
-          setActiveTab("lobby");
-        } else {
-          setError(response.error || "Failed to join lobby");
-        }
-      }
-    );
-  }, [socket, joinCode, setCurrentLobby]);
-
   const handleJoinFriendLobby = useCallback(
     (lobbyId: string) => {
       if (!socket) return;
@@ -358,6 +401,25 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       reset();
     });
   }, [socket, reset]);
+
+  const handleKickMember = useCallback(
+    (targetSocketId: string) => {
+      if (!socket) return;
+      setKickingMember(targetSocketId);
+
+      socket.emit(
+        "lobby:kick",
+        { targetSocketId },
+        (response: { success: boolean; error?: string }) => {
+          setKickingMember(null);
+          if (!response.success) {
+            setError(response.error || "Failed to kick member");
+          }
+        }
+      );
+    },
+    [socket]
+  );
 
   const handleSendMessage = useCallback(() => {
     if (!socket || !messageInput.trim()) return;
@@ -406,14 +468,6 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
     },
     [removeInvite]
   );
-
-  const handleCopyCode = useCallback(() => {
-    if (currentLobby) {
-      navigator.clipboard.writeText(currentLobby.id);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  }, [currentLobby]);
 
   const handleInviteFriend = useCallback(
     (odId: string) => {
@@ -611,6 +665,21 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
         {!currentLobby && (
           <div className={`flex border-b ${isDark ? "border-white/10" : "border-gray-200"}`}>
             <button
+              onClick={() => setActiveTab("profile")}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+                activeTab === "profile"
+                  ? isDark
+                    ? "text-white border-b-2 border-[#FF6B4A]"
+                    : "text-gray-900 border-b-2 border-[#FF6B4A]"
+                  : isDark
+                  ? "text-white/60 hover:text-white"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              <User className="h-4 w-4" />
+              Profile
+            </button>
+            <button
               onClick={() => setActiveTab("friends")}
               className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
                 activeTab === "friends"
@@ -648,64 +717,60 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
           {currentLobby ? (
             // Active Lobby View
             <>
-              {/* Lobby Code */}
-              <div className={`p-3 border-b ${isDark ? "border-white/10" : "border-gray-200"}`}>
-                <div className="flex items-center justify-between">
-                  <p className={`text-xs ${isDark ? "text-white/50" : "text-gray-500"}`}>
-                    Lobby Code:{" "}
-                    <span className="font-mono font-medium">{currentLobby.id}</span>
-                  </p>
-                  <button
-                    onClick={handleCopyCode}
-                    className={`p-1.5 rounded transition-colors ${
-                      isDark ? "hover:bg-white/10" : "hover:bg-gray-100"
-                    }`}
-                    title="Copy code"
-                  >
-                    {copied ? (
-                      <Check className="h-4 w-4 text-green-500" />
-                    ) : (
-                      <Copy className={`h-4 w-4 ${isDark ? "text-white/40" : "text-gray-400"}`} />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Members */}
+              {/* Members with kick functionality */}
               <div className={`p-3 border-b ${isDark ? "border-white/10" : "border-gray-200"}`}>
                 <p className={`text-xs font-medium mb-2 ${isDark ? "text-white/60" : "text-gray-500"}`}>
                   Members ({currentLobby.members.length}/5)
                 </p>
-                <div className="flex flex-wrap gap-2">
-                  {currentLobby.members.map((member) => (
-                    <div
-                      key={member.odId}
-                      className={`flex items-center gap-2 px-2 py-1 rounded-full ${
-                        isDark ? "bg-white/10" : "bg-gray-100"
-                      }`}
-                    >
-                      {member.image ? (
-                        <Image
-                          src={member.image}
-                          alt={member.name || "User"}
-                          width={20}
-                          height={20}
-                          className="w-5 h-5 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-5 h-5 rounded-full bg-gradient-to-br from-[#FF6B4A] to-[#FF8F6B] flex items-center justify-center">
-                          <User className="h-3 w-3 text-white" />
-                        </div>
-                      )}
-                      <span className={`text-xs ${isDark ? "text-white" : "text-gray-900"}`}>
-                        {member.name || member.username || "User"}
-                      </span>
-                      {member.userId === currentLobby.ownerId && (
-                        <Crown className="h-3 w-3 text-yellow-500" />
-                      )}
-                      {member.inVoice && <Mic className="h-3 w-3 text-green-500" />}
-                    </div>
-                  ))}
+                <div className="space-y-2">
+                  {currentLobby.members.map((member) => {
+                    const isOwner = member.userId === currentLobby.ownerId;
+                    const isSelf = member.odId === socket?.id;
+                    const canKick = session?.user?.id === currentLobby.ownerId && !isSelf;
+
+                    return (
+                      <div
+                        key={member.odId}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg ${
+                          isDark ? "bg-white/5" : "bg-gray-50"
+                        }`}
+                      >
+                        {member.image ? (
+                          <Image
+                            src={member.image}
+                            alt={member.name || "User"}
+                            width={28}
+                            height={28}
+                            className="w-7 h-7 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#FF6B4A] to-[#FF8F6B] flex items-center justify-center">
+                            <User className="h-4 w-4 text-white" />
+                          </div>
+                        )}
+                        <span className={`flex-1 text-sm ${isDark ? "text-white" : "text-gray-900"}`}>
+                          {member.name || member.username || "User"}
+                          {isSelf && <span className={`ml-1 text-xs ${isDark ? "text-white/40" : "text-gray-400"}`}>(you)</span>}
+                        </span>
+                        {isOwner && <Crown className="h-4 w-4 text-yellow-500" />}
+                        {member.inVoice && <Mic className="h-4 w-4 text-green-500" />}
+                        {canKick && (
+                          <button
+                            onClick={() => handleKickMember(member.odId)}
+                            disabled={kickingMember === member.odId}
+                            className="p-1 rounded hover:bg-red-500/20 text-red-400 transition-colors"
+                            title="Kick from lobby"
+                          >
+                            {kickingMember === member.odId ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Ban className="h-4 w-4" />
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -902,6 +967,88 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
                 </div>
               </div>
             </>
+          ) : activeTab === "profile" ? (
+            // Profile Tab
+            <div className="p-4 space-y-4 overflow-y-auto">
+              {/* Profile Picture */}
+              <div className="flex flex-col items-center py-4">
+                <div className="relative">
+                  {session?.user?.image ? (
+                    <Image
+                      src={session.user.image}
+                      alt={session.user.name || "User"}
+                      width={80}
+                      height={80}
+                      className="w-20 h-20 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#FF6B4A] to-[#FF8F6B] flex items-center justify-center">
+                      <User className="h-10 w-10 text-white" />
+                    </div>
+                  )}
+                </div>
+                <p className={`mt-3 font-medium ${isDark ? "text-white" : "text-gray-900"}`}>
+                  {session?.user?.name || "User"}
+                </p>
+                <p className={`text-sm ${isDark ? "text-white/50" : "text-gray-500"}`}>
+                  {session?.user?.email}
+                </p>
+              </div>
+
+              {/* Username */}
+              <div className={`p-4 rounded-lg ${isDark ? "bg-white/5" : "bg-gray-50"}`}>
+                <h3 className={`text-sm font-medium mb-3 ${isDark ? "text-white/80" : "text-gray-700"}`}>
+                  Username
+                </h3>
+                <p className={`text-xs mb-3 ${isDark ? "text-white/40" : "text-gray-500"}`}>
+                  Your unique username for friends to find you. 1-9 letters only.
+                </p>
+                {usernameLoading ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className={`h-5 w-5 animate-spin ${isDark ? "text-white/40" : "text-gray-400"}`} />
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-sm ${isDark ? "text-white/40" : "text-gray-400"}`}>@</span>
+                        <input
+                          type="text"
+                          value={username}
+                          onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z]/g, ""))}
+                          placeholder="username"
+                          maxLength={9}
+                          className={`w-full pl-8 pr-3 py-2 rounded-lg border outline-none focus:border-[#FF6B4A]/50 text-sm ${
+                            isDark
+                              ? "bg-white/5 text-white border-white/10 placeholder:text-white/30"
+                              : "bg-white text-gray-900 border-gray-200 placeholder:text-gray-400"
+                          }`}
+                        />
+                      </div>
+                      <button
+                        onClick={handleSaveUsername}
+                        disabled={!username.trim() || usernameSaving}
+                        className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+                          !username.trim() || usernameSaving
+                            ? isDark
+                              ? "bg-white/10 text-white/40 cursor-not-allowed"
+                              : "bg-gray-100 text-gray-400 cursor-not-allowed"
+                            : "bg-[#FF6B4A] text-white hover:bg-[#FF8F6B]"
+                        }`}
+                      >
+                        {usernameSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+                      </button>
+                    </div>
+                    {usernameError && (
+                      <p className="text-xs text-red-400 bg-red-500/10 p-2 rounded">{usernameError}</p>
+                    )}
+                    {usernameSuccess && (
+                      <p className="text-xs text-green-400 bg-green-500/10 p-2 rounded">Username saved!</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           ) : activeTab === "friends" ? (
             // Friends Tab
             <div className="p-4 space-y-4 overflow-y-auto">
@@ -1110,111 +1257,62 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
             </div>
           ) : (
             // Lobby Tab (not in lobby)
-            <div className="p-4 space-y-4">
+            <div className="p-4 space-y-4 overflow-y-auto">
               {error && (
                 <div className="p-3 rounded-lg bg-red-500/10 text-red-400 text-sm">{error}</div>
               )}
 
               {/* Create Lobby */}
-              {!showJoinForm && (
-                <div className={`p-4 rounded-lg ${isDark ? "bg-white/5" : "bg-gray-50"}`}>
-                  {showCreateForm ? (
-                    <div className="space-y-3">
-                      <input
-                        type="text"
-                        value={lobbyName}
-                        onChange={(e) => setLobbyName(e.target.value)}
-                        placeholder="Lobby name (optional)"
-                        className={`w-full px-3 py-2 rounded-lg border text-sm ${
-                          isDark
-                            ? "bg-white/5 border-white/10 text-white placeholder:text-white/30"
-                            : "bg-white border-gray-200 text-gray-900 placeholder:text-gray-400"
-                        }`}
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          onClick={handleCreate}
-                          disabled={isCreating}
-                          className="flex-1 py-2 rounded-lg bg-[#FF6B4A] text-white text-sm font-medium hover:bg-[#FF8F6B] disabled:opacity-50"
-                        >
-                          {isCreating ? "Creating..." : "Create"}
-                        </button>
-                        <button
-                          onClick={() => setShowCreateForm(false)}
-                          className={`px-4 py-2 rounded-lg text-sm ${
-                            isDark ? "bg-white/10 text-white/60" : "bg-gray-200 text-gray-600"
-                          }`}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setShowCreateForm(true)}
-                      className={`w-full py-3 rounded-lg flex items-center justify-center gap-2 transition-colors ${
+              <div className={`p-4 rounded-lg ${isDark ? "bg-white/5" : "bg-gray-50"}`}>
+                {showCreateForm ? (
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={lobbyName}
+                      onChange={(e) => setLobbyName(e.target.value)}
+                      placeholder="Lobby name (optional)"
+                      className={`w-full px-3 py-2 rounded-lg border text-sm ${
                         isDark
-                          ? "bg-white/10 text-white hover:bg-white/20"
-                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          ? "bg-white/5 border-white/10 text-white placeholder:text-white/30"
+                          : "bg-white border-gray-200 text-gray-900 placeholder:text-gray-400"
                       }`}
-                    >
-                      <Plus className="h-5 w-5" />
-                      Create Lobby
-                    </button>
-                  )}
-                </div>
-              )}
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleCreate}
+                        disabled={isCreating}
+                        className="flex-1 py-2 rounded-lg bg-[#FF6B4A] text-white text-sm font-medium hover:bg-[#FF8F6B] disabled:opacity-50"
+                      >
+                        {isCreating ? "Creating..." : "Create"}
+                      </button>
+                      <button
+                        onClick={() => setShowCreateForm(false)}
+                        className={`px-4 py-2 rounded-lg text-sm ${
+                          isDark ? "bg-white/10 text-white/60" : "bg-gray-200 text-gray-600"
+                        }`}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowCreateForm(true)}
+                    className={`w-full py-3 rounded-lg flex items-center justify-center gap-2 transition-colors ${
+                      isDark
+                        ? "bg-white/10 text-white hover:bg-white/20"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    <Plus className="h-5 w-5" />
+                    Create Lobby
+                  </button>
+                )}
+              </div>
 
-              {/* Join Lobby */}
-              {!showCreateForm && (
-                <div className={`p-4 rounded-lg ${isDark ? "bg-white/5" : "bg-gray-50"}`}>
-                  {showJoinForm ? (
-                    <div className="space-y-3">
-                      <input
-                        type="text"
-                        value={joinCode}
-                        onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                        placeholder="Enter lobby code"
-                        maxLength={6}
-                        className={`w-full px-3 py-2 rounded-lg border text-sm font-mono uppercase ${
-                          isDark
-                            ? "bg-white/5 border-white/10 text-white placeholder:text-white/30"
-                            : "bg-white border-gray-200 text-gray-900 placeholder:text-gray-400"
-                        }`}
-                      />
-                      <div className="flex gap-2">
-                        <button
-                          onClick={handleJoin}
-                          disabled={isJoining || !joinCode.trim()}
-                          className="flex-1 py-2 rounded-lg bg-[#FF6B4A] text-white text-sm font-medium hover:bg-[#FF8F6B] disabled:opacity-50"
-                        >
-                          {isJoining ? "Joining..." : "Join"}
-                        </button>
-                        <button
-                          onClick={() => setShowJoinForm(false)}
-                          className={`px-4 py-2 rounded-lg text-sm ${
-                            isDark ? "bg-white/10 text-white/60" : "bg-gray-200 text-gray-600"
-                          }`}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setShowJoinForm(true)}
-                      className={`w-full py-3 rounded-lg flex items-center justify-center gap-2 transition-colors ${
-                        isDark
-                          ? "bg-white/10 text-white hover:bg-white/20"
-                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                      }`}
-                    >
-                      <Users className="h-5 w-5" />
-                      Join Lobby
-                    </button>
-                  )}
-                </div>
-              )}
+              <p className={`text-center text-sm ${isDark ? "text-white/40" : "text-gray-400"}`}>
+                Or join a friend&apos;s lobby from the Friends tab
+              </p>
 
               {/* Friends in Lobbies */}
               {onlineFriends.filter((f) => f.lobbyId).length > 0 && (

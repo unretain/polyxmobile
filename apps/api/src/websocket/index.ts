@@ -292,8 +292,10 @@ export function setupWebSocket(io: Server) {
         const friendIds = friendships.map((f) => f.friendId);
 
         // Find which friends are online and notify them
+        const onlineFriends: any[] = [];
         for (const [socketId, userData] of socketToUser.entries()) {
           if (friendIds.includes(userData.userId)) {
+            // Notify each friend that this user came online
             io.to(socketId).emit("friends:userOnline", {
               odId: socket.id,
               userId: user.id,
@@ -303,8 +305,24 @@ export function setupWebSocket(io: Server) {
               lobbyId: null,
               lobbyName: null,
             });
+
+            // Also collect online friends to send back to the authenticating user
+            const lobbyId = socketToLobby.get(socketId);
+            const lobby = lobbyId ? lobbies.get(lobbyId) : null;
+            onlineFriends.push({
+              odId: socketId,
+              userId: userData.userId,
+              username: userData.username,
+              name: userData.name,
+              image: userData.image,
+              lobbyId: lobby?.id || null,
+              lobbyName: lobby?.name || null,
+            });
           }
         }
+
+        // Send auth success with online friends list (fixes timing issue)
+        socket.emit("lobby:authSuccess", { onlineFriends });
       } catch (error) {
         console.error("Failed to authenticate user for lobbies:", error);
         socket.emit("lobby:authError", { error: "Authentication failed" });
@@ -526,6 +544,66 @@ export function setupWebSocket(io: Server) {
       }
 
       callback?.({ success: true });
+    });
+
+    // Kick a member from lobby (owner only)
+    socket.on("lobby:kick", (data: { targetSocketId: string }, callback: (response: { success: boolean; error?: string }) => void) => {
+      const lobbyId = socketToLobby.get(socket.id);
+      if (!lobbyId) {
+        callback({ success: false, error: "Not in a lobby" });
+        return;
+      }
+
+      const lobby = lobbies.get(lobbyId);
+      if (!lobby) {
+        callback({ success: false, error: "Lobby not found" });
+        return;
+      }
+
+      // Only owner can kick
+      if (lobby.ownerSocketId !== socket.id) {
+        callback({ success: false, error: "Only the lobby owner can kick members" });
+        return;
+      }
+
+      // Can't kick yourself
+      if (data.targetSocketId === socket.id) {
+        callback({ success: false, error: "You can't kick yourself" });
+        return;
+      }
+
+      const targetMember = lobby.members.get(data.targetSocketId);
+      if (!targetMember) {
+        callback({ success: false, error: "Member not found" });
+        return;
+      }
+
+      // Remove member
+      lobby.members.delete(data.targetSocketId);
+      socketToLobby.delete(data.targetSocketId);
+
+      // Get the target socket and make them leave the room
+      const targetSocket = io.sockets.sockets.get(data.targetSocketId);
+      if (targetSocket) {
+        targetSocket.leave(`lobby:${lobbyId}`);
+        targetSocket.emit("lobby:kicked", { lobbyId, lobbyName: lobby.name });
+      }
+
+      // Notify friends of the kicked user
+      if (targetMember.userId) {
+        notifyFriendsOfLobbyUpdate(io, targetMember.userId, data.targetSocketId, null, null);
+      }
+
+      // Notify remaining members
+      io.to(`lobby:${lobbyId}`).emit("lobby:memberLeft", {
+        odId: data.targetSocketId,
+        userId: targetMember.userId,
+        lobbyId,
+        kicked: true,
+      });
+
+      console.log(`🎮 User ${targetMember.username || targetMember.userId} was kicked from lobby ${lobbyId}`);
+      callback({ success: true });
     });
 
     // Invite a friend to lobby
