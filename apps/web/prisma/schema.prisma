@@ -75,6 +75,10 @@ model User {
   image         String?
   emailVerified DateTime?
 
+  // Profile fields
+  username      String?   @unique  // Set in profile, used for adding friends
+  bio           String?
+
   // Email verification
   verificationCode   String?
   verificationExpiry DateTime?
@@ -97,11 +101,18 @@ model User {
   // Trading history
   trades        Trade[]
 
+  // Friend relations
+  sentFriendRequests     FriendRequest[] @relation("SentRequests")
+  receivedFriendRequests FriendRequest[] @relation("ReceivedRequests")
+  friends                Friendship[]    @relation("UserFriends")
+  friendOf               Friendship[]    @relation("FriendOf")
+
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   @@index([email])
   @@index([walletAddress])
+  @@index([username])
 }
 
 model Account {
@@ -487,4 +498,36 @@ model TokenSyncStatus {
 
   @@index([tokenAddress])
   @@index([swapsSynced])
+}
+
+// ==========================================
+// Social Features: Friends
+// ==========================================
+
+model FriendRequest {
+  id         String   @id @default(cuid())
+  senderId   String
+  receiverId String
+  status     String   @default("pending") // pending, accepted, rejected
+  createdAt  DateTime @default(now())
+
+  sender     User     @relation("SentRequests", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver   User     @relation("ReceivedRequests", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId, status])
+}
+
+model Friendship {
+  id        String   @id @default(cuid())
+  userId    String
+  friendId  String
+  createdAt DateTime @default(now())
+
+  user      User     @relation("UserFriends", fields: [userId], references: [id], onDelete: Cascade)
+  friend    User     @relation("FriendOf", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, friendId])
+  @@index([userId])
+  @@index([friendId])
 }

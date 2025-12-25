@@ -13,6 +13,51 @@ interface SubscriptionState {
 }
 
 const subscriptions = new Map<string, SubscriptionState>();
+
+// ==========================================
+// Lobby System (in-memory, temporary)
+// ==========================================
+
+interface LobbyMember {
+  odId: string; // Socket id
+  userId: string;
+  username: string | null;
+  name: string | null;
+  image: string | null;
+  inVoice: boolean;
+}
+
+interface Lobby {
+  id: string;
+  name: string;
+  ownerId: string;
+  ownerSocketId: string;
+  members: Map<string, LobbyMember>; // socketId -> member
+  createdAt: number;
+}
+
+interface ChatMessage {
+  id: string;
+  odId: string;
+  userId: string;
+  username: string | null;
+  name: string | null;
+  image: string | null;
+  content: string;
+  timestamp: number;
+}
+
+const lobbies = new Map<string, Lobby>();
+const socketToLobby = new Map<string, string>(); // socketId -> lobbyId
+const socketToUser = new Map<string, { userId: string; username: string | null; name: string | null; image: string | null }>();
+
+function generateLobbyId(): string {
+  return Math.random().toString(36).substring(2, 10);
+}
+
+function generateMessageId(): string {
+  return Math.random().toString(36).substring(2, 15);
+}
 let pumpPortalInitialized = false;
 let meteoraPollingCleanup: (() => void) | null = null;
 let dashboardPriceInterval: NodeJS.Timeout | null = null;
@@ -129,8 +174,408 @@ export function setupWebSocket(io: Server) {
       console.log(`Client ${socket.id} unsubscribed from trades ${subKey}`);
     });
 
+    // ==========================================
+    // Lobby Event Handlers
+    // ==========================================
+
+    // Authenticate user for lobby features
+    socket.on("lobby:auth", (data: { userId: string; username: string | null; name: string | null; image: string | null }) => {
+      socketToUser.set(socket.id, {
+        userId: data.userId,
+        username: data.username,
+        name: data.name,
+        image: data.image,
+      });
+      console.log(`🎮 User authenticated for lobbies: ${data.username || data.userId}`);
+    });
+
+    // Create a new lobby
+    socket.on("lobby:create", (data: { name: string }, callback: (response: { success: boolean; lobby?: any; error?: string }) => void) => {
+      const user = socketToUser.get(socket.id);
+      if (!user) {
+        callback({ success: false, error: "Not authenticated" });
+        return;
+      }
+
+      // Check if user is already in a lobby
+      const existingLobbyId = socketToLobby.get(socket.id);
+      if (existingLobbyId) {
+        callback({ success: false, error: "Already in a lobby" });
+        return;
+      }
+
+      const lobbyId = generateLobbyId();
+      const lobby: Lobby = {
+        id: lobbyId,
+        name: data.name || `${user.username || user.name}'s Lobby`,
+        ownerId: user.userId,
+        ownerSocketId: socket.id,
+        members: new Map(),
+        createdAt: Date.now(),
+      };
+
+      // Add creator as first member
+      const member: LobbyMember = {
+        odId: socket.id,
+        userId: user.userId,
+        username: user.username,
+        name: user.name,
+        image: user.image,
+        inVoice: false,
+      };
+      lobby.members.set(socket.id, member);
+
+      lobbies.set(lobbyId, lobby);
+      socketToLobby.set(socket.id, lobbyId);
+      socket.join(`lobby:${lobbyId}`);
+
+      console.log(`🎮 Lobby created: ${lobbyId} by ${user.username || user.userId}`);
+
+      callback({
+        success: true,
+        lobby: {
+          id: lobby.id,
+          name: lobby.name,
+          ownerId: lobby.ownerId,
+          members: Array.from(lobby.members.values()),
+          createdAt: lobby.createdAt,
+        },
+      });
+    });
+
+    // Join an existing lobby
+    socket.on("lobby:join", (data: { lobbyId: string }, callback: (response: { success: boolean; lobby?: any; error?: string }) => void) => {
+      const user = socketToUser.get(socket.id);
+      if (!user) {
+        callback({ success: false, error: "Not authenticated" });
+        return;
+      }
+
+      // Check if user is already in a lobby
+      const existingLobbyId = socketToLobby.get(socket.id);
+      if (existingLobbyId) {
+        callback({ success: false, error: "Already in a lobby" });
+        return;
+      }
+
+      const lobby = lobbies.get(data.lobbyId);
+      if (!lobby) {
+        callback({ success: false, error: "Lobby not found" });
+        return;
+      }
+
+      // Check max members (5 for voice)
+      if (lobby.members.size >= 5) {
+        callback({ success: false, error: "Lobby is full (max 5 members)" });
+        return;
+      }
+
+      // Add member
+      const member: LobbyMember = {
+        odId: socket.id,
+        userId: user.userId,
+        username: user.username,
+        name: user.name,
+        image: user.image,
+        inVoice: false,
+      };
+      lobby.members.set(socket.id, member);
+      socketToLobby.set(socket.id, data.lobbyId);
+      socket.join(`lobby:${data.lobbyId}`);
+
+      console.log(`🎮 User ${user.username || user.userId} joined lobby ${data.lobbyId}`);
+
+      // Notify other members
+      socket.to(`lobby:${data.lobbyId}`).emit("lobby:memberJoined", {
+        member,
+        lobbyId: data.lobbyId,
+      });
+
+      callback({
+        success: true,
+        lobby: {
+          id: lobby.id,
+          name: lobby.name,
+          ownerId: lobby.ownerId,
+          members: Array.from(lobby.members.values()),
+          createdAt: lobby.createdAt,
+        },
+      });
+    });
+
+    // Leave current lobby
+    socket.on("lobby:leave", (callback?: (response: { success: boolean }) => void) => {
+      const lobbyId = socketToLobby.get(socket.id);
+      if (!lobbyId) {
+        callback?.({ success: false });
+        return;
+      }
+
+      const lobby = lobbies.get(lobbyId);
+      if (!lobby) {
+        socketToLobby.delete(socket.id);
+        callback?.({ success: false });
+        return;
+      }
+
+      const member = lobby.members.get(socket.id);
+      lobby.members.delete(socket.id);
+      socketToLobby.delete(socket.id);
+      socket.leave(`lobby:${lobbyId}`);
+
+      console.log(`🎮 User left lobby ${lobbyId}`);
+
+      // If lobby is empty, delete it
+      if (lobby.members.size === 0) {
+        lobbies.delete(lobbyId);
+        console.log(`🎮 Lobby ${lobbyId} deleted (empty)`);
+      } else {
+        // If owner left, transfer ownership
+        if (lobby.ownerSocketId === socket.id) {
+          const newOwner = lobby.members.values().next().value;
+          if (newOwner) {
+            lobby.ownerId = newOwner.userId;
+            lobby.ownerSocketId = newOwner.odId;
+            io.to(`lobby:${lobbyId}`).emit("lobby:ownerChanged", {
+              newOwnerId: newOwner.userId,
+              lobbyId,
+            });
+          }
+        }
+
+        // Notify remaining members
+        io.to(`lobby:${lobbyId}`).emit("lobby:memberLeft", {
+          odId: socket.id,
+          userId: member?.userId,
+          lobbyId,
+        });
+      }
+
+      callback?.({ success: true });
+    });
+
+    // Invite a friend to lobby
+    socket.on("lobby:invite", (data: { friendSocketId: string }, callback: (response: { success: boolean; error?: string }) => void) => {
+      const lobbyId = socketToLobby.get(socket.id);
+      if (!lobbyId) {
+        callback({ success: false, error: "Not in a lobby" });
+        return;
+      }
+
+      const lobby = lobbies.get(lobbyId);
+      if (!lobby) {
+        callback({ success: false, error: "Lobby not found" });
+        return;
+      }
+
+      const user = socketToUser.get(socket.id);
+
+      // Send invite to friend
+      io.to(data.friendSocketId).emit("lobby:invite", {
+        lobbyId,
+        lobbyName: lobby.name,
+        invitedBy: {
+          userId: user?.userId,
+          username: user?.username,
+          name: user?.name,
+          image: user?.image,
+        },
+      });
+
+      callback({ success: true });
+    });
+
+    // Get lobby info
+    socket.on("lobby:info", (data: { lobbyId: string }, callback: (response: { success: boolean; lobby?: any; error?: string }) => void) => {
+      const lobby = lobbies.get(data.lobbyId);
+      if (!lobby) {
+        callback({ success: false, error: "Lobby not found" });
+        return;
+      }
+
+      callback({
+        success: true,
+        lobby: {
+          id: lobby.id,
+          name: lobby.name,
+          ownerId: lobby.ownerId,
+          members: Array.from(lobby.members.values()),
+          createdAt: lobby.createdAt,
+        },
+      });
+    });
+
+    // ==========================================
+    // Chat Event Handlers
+    // ==========================================
+
+    // Send chat message
+    socket.on("chat:message", (data: { content: string }) => {
+      const lobbyId = socketToLobby.get(socket.id);
+      if (!lobbyId) return;
+
+      const user = socketToUser.get(socket.id);
+      if (!user) return;
+
+      const message: ChatMessage = {
+        id: generateMessageId(),
+        odId: socket.id,
+        userId: user.userId,
+        username: user.username,
+        name: user.name,
+        image: user.image,
+        content: data.content.slice(0, 1000), // Limit message length
+        timestamp: Date.now(),
+      };
+
+      // Broadcast to all lobby members (including sender)
+      io.to(`lobby:${lobbyId}`).emit("chat:message", message);
+    });
+
+    // Typing indicator
+    socket.on("chat:typing", (data: { isTyping: boolean }) => {
+      const lobbyId = socketToLobby.get(socket.id);
+      if (!lobbyId) return;
+
+      const user = socketToUser.get(socket.id);
+      if (!user) return;
+
+      // Broadcast to other members (not sender)
+      socket.to(`lobby:${lobbyId}`).emit("chat:typing", {
+        odId: socket.id,
+        userId: user.userId,
+        username: user.username,
+        isTyping: data.isTyping,
+      });
+    });
+
+    // ==========================================
+    // Voice Chat Event Handlers (WebRTC Signaling)
+    // ==========================================
+
+    // Join voice channel
+    socket.on("voice:join", () => {
+      const lobbyId = socketToLobby.get(socket.id);
+      if (!lobbyId) return;
+
+      const lobby = lobbies.get(lobbyId);
+      if (!lobby) return;
+
+      const member = lobby.members.get(socket.id);
+      if (!member) return;
+
+      member.inVoice = true;
+
+      // Get list of other members in voice
+      const voiceMembers = Array.from(lobby.members.values()).filter(
+        (m) => m.inVoice && m.odId !== socket.id
+      );
+
+      // Notify others that user joined voice
+      socket.to(`lobby:${lobbyId}`).emit("voice:userJoined", {
+        odId: socket.id,
+        userId: member.userId,
+        username: member.username,
+        name: member.name,
+        image: member.image,
+      });
+
+      // Send back list of current voice members (for WebRTC connections)
+      socket.emit("voice:members", { members: voiceMembers });
+    });
+
+    // Leave voice channel
+    socket.on("voice:leave", () => {
+      const lobbyId = socketToLobby.get(socket.id);
+      if (!lobbyId) return;
+
+      const lobby = lobbies.get(lobbyId);
+      if (!lobby) return;
+
+      const member = lobby.members.get(socket.id);
+      if (!member) return;
+
+      member.inVoice = false;
+
+      // Notify others
+      socket.to(`lobby:${lobbyId}`).emit("voice:userLeft", {
+        odId: socket.id,
+        userId: member.userId,
+      });
+    });
+
+    // WebRTC signaling: offer
+    socket.on("voice:offer", (data: { targetSocketId: string; offer: RTCSessionDescriptionInit }) => {
+      io.to(data.targetSocketId).emit("voice:offer", {
+        fromSocketId: socket.id,
+        offer: data.offer,
+      });
+    });
+
+    // WebRTC signaling: answer
+    socket.on("voice:answer", (data: { targetSocketId: string; answer: RTCSessionDescriptionInit }) => {
+      io.to(data.targetSocketId).emit("voice:answer", {
+        fromSocketId: socket.id,
+        answer: data.answer,
+      });
+    });
+
+    // WebRTC signaling: ICE candidate
+    socket.on("voice:ice-candidate", (data: { targetSocketId: string; candidate: RTCIceCandidateInit }) => {
+      io.to(data.targetSocketId).emit("voice:ice-candidate", {
+        fromSocketId: socket.id,
+        candidate: data.candidate,
+      });
+    });
+
     // Handle disconnection
     socket.on("disconnect", () => {
+      // Clean up lobby membership
+      const lobbyId = socketToLobby.get(socket.id);
+      if (lobbyId) {
+        const lobby = lobbies.get(lobbyId);
+        if (lobby) {
+          const member = lobby.members.get(socket.id);
+          lobby.members.delete(socket.id);
+
+          // Notify voice leave if in voice
+          if (member?.inVoice) {
+            io.to(`lobby:${lobbyId}`).emit("voice:userLeft", {
+              odId: socket.id,
+              userId: member.userId,
+            });
+          }
+
+          // If lobby is empty, delete it
+          if (lobby.members.size === 0) {
+            lobbies.delete(lobbyId);
+            console.log(`🎮 Lobby ${lobbyId} deleted (empty after disconnect)`);
+          } else {
+            // Transfer ownership if needed
+            if (lobby.ownerSocketId === socket.id) {
+              const newOwner = lobby.members.values().next().value;
+              if (newOwner) {
+                lobby.ownerId = newOwner.userId;
+                lobby.ownerSocketId = newOwner.odId;
+                io.to(`lobby:${lobbyId}`).emit("lobby:ownerChanged", {
+                  newOwnerId: newOwner.userId,
+                  lobbyId,
+                });
+              }
+            }
+
+            // Notify remaining members
+            io.to(`lobby:${lobbyId}`).emit("lobby:memberLeft", {
+              odId: socket.id,
+              userId: member?.userId,
+              lobbyId,
+            });
+          }
+        }
+        socketToLobby.delete(socket.id);
+      }
+
+      socketToUser.delete(socket.id);
       subscriptions.delete(socket.id);
       console.log(`Client disconnected: ${socket.id}`);
     });
