@@ -590,8 +590,12 @@ export function setupWebSocket(io: Server) {
       }
 
       const lobbyRequests = pendingJoinRequests.get(lobbyId);
-      const request = lobbyRequests?.get(data.requesterSocketId);
+      if (!lobbyRequests) {
+        callback({ success: false, error: "Join request not found" });
+        return;
+      }
 
+      const request = lobbyRequests.get(data.requesterSocketId);
       if (!request) {
         callback({ success: false, error: "Join request not found" });
         return;
@@ -637,8 +641,12 @@ export function setupWebSocket(io: Server) {
       }
 
       const lobbyRequests = pendingJoinRequests.get(lobbyId);
-      const request = lobbyRequests?.get(data.requesterSocketId);
+      if (!lobbyRequests) {
+        callback({ success: false, error: "Join request not found" });
+        return;
+      }
 
+      const request = lobbyRequests.get(data.requesterSocketId);
       if (!request) {
         callback({ success: false, error: "Join request not found" });
         return;
