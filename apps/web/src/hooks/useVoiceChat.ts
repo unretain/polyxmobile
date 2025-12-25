@@ -32,6 +32,7 @@ export function useVoiceChat({
 }: UseVoiceChatProps) {
   const localStreamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef<Map<string, PeerConnection>>(new Map());
+  const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
   const [isMuted, setIsMuted] = useState(false);
   const [isDeafened, setIsDeafened] = useState(false);
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
@@ -95,16 +96,29 @@ export function useVoiceChat({
       pc.ontrack = (event) => {
         const [remoteStream] = event.streams;
         if (remoteStream) {
+          console.log(`[Voice] Received remote stream from ${targetSocketId}`);
           setRemoteStreams((prev) => {
             const next = new Map(prev);
             next.set(targetSocketId, remoteStream);
             return next;
           });
 
-          // Auto-play remote audio
-          const audio = new Audio();
+          // Create and store audio element to prevent garbage collection
+          let audio = audioElementsRef.current.get(targetSocketId);
+          if (!audio) {
+            audio = new Audio();
+            audioElementsRef.current.set(targetSocketId, audio);
+          }
           audio.srcObject = remoteStream;
           audio.autoplay = true;
+          audio.volume = 1.0;
+
+          // Explicitly try to play (needed for some browsers)
+          audio.play().then(() => {
+            console.log(`[Voice] Playing audio from ${targetSocketId}`);
+          }).catch((err) => {
+            console.error(`[Voice] Failed to play audio from ${targetSocketId}:`, err);
+          });
         }
       };
 
@@ -161,6 +175,13 @@ export function useVoiceChat({
         next.delete(socketId);
         return next;
       });
+      // Clean up audio element
+      const audio = audioElementsRef.current.get(socketId);
+      if (audio) {
+        audio.pause();
+        audio.srcObject = null;
+        audioElementsRef.current.delete(socketId);
+      }
     }
   }, []);
 
@@ -171,6 +192,12 @@ export function useVoiceChat({
     });
     peersRef.current.clear();
     setRemoteStreams(new Map());
+    // Clean up all audio elements
+    audioElementsRef.current.forEach((audio) => {
+      audio.pause();
+      audio.srcObject = null;
+    });
+    audioElementsRef.current.clear();
   }, []);
 
   // Handle WebRTC signaling events
