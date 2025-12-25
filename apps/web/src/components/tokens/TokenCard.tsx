@@ -11,7 +11,7 @@ import type { OHLCV } from "@/stores/chartStore";
 import { Mini3DChart } from "@/components/charts/Mini3DChart";
 import { useThemeStore } from "@/stores/themeStore";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+// API calls go through Next.js proxy routes (protects internal API key)
 
 // Token logo overrides - use local images for specific tokens
 const TOKEN_LOGO_OVERRIDES: Record<string, string> = {
@@ -82,7 +82,7 @@ export function TokenCard({ token }: TokenCardProps) {
         const to = Math.floor(Date.now() / 1000);
         const from = to - 3600; // 1 hour of data
         const response = await fetch(
-          `${API_URL}/api/tokens/${token.address}/ohlcv?timeframe=1m&from=${from}&to=${to}&limit=60`
+          `/api/tokens/${token.address}/ohlcv?timeframe=1m&from=${from}&to=${to}&limit=60`
         );
         if (response.ok) {
           const data = await response.json();

@@ -27,7 +27,7 @@ const Chart3D = dynamic(
 
 const SOL_ADDRESS = "So11111111111111111111111111111111111111112";
 const WETH_ADDRESS = "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs";
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+// API calls go through Next.js proxy routes (protects internal API key)
 
 // Featured tokens for carousel
 const FEATURED_TOKENS = [
@@ -314,14 +314,14 @@ export function LandingPage() {
     setIsLoading(true);
     setTokenPrice(null);
 
-    fetch(`${API_URL}/api/tokens/${currentToken.address}`)
+    fetch(`/api/tokens/${currentToken.address}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.price) setTokenPrice(data.price);
       })
       .catch(() => setTokenPrice(currentToken.symbol === "SOL" ? 235 : 3018));
 
-    fetch(`${API_URL}/api/tokens/${currentToken.address}/ohlcv?timeframe=${timeframe}&limit=100`)
+    fetch(`/api/tokens/${currentToken.address}/ohlcv?timeframe=${timeframe}&limit=100`)
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data) && data.length > 0) {
@@ -335,7 +335,7 @@ export function LandingPage() {
   // Auto-refresh data
   useEffect(() => {
     const interval = setInterval(() => {
-      fetch(`${API_URL}/api/tokens/${currentToken.address}/ohlcv?timeframe=${timeframe}&limit=100`)
+      fetch(`/api/tokens/${currentToken.address}/ohlcv?timeframe=${timeframe}&limit=100`)
         .then((res) => res.json())
         .then((data) => {
           if (Array.isArray(data) && data.length > 0) {
