@@ -36,11 +36,13 @@ export interface LobbyInvite {
   lobbyId: string;
   lobbyName: string;
   invitedBy: {
+    odId: string; // Socket ID of inviter
     userId: string;
     username: string | null;
     name: string | null;
     image: string | null;
   };
+  timestamp: number; // When invite was sent (for expiration)
 }
 
 export interface JoinRequest {

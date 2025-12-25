@@ -231,6 +231,60 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       removeOnlineFriend(odId);
     };
 
+    // Handle friend profile update (name/username/image change)
+    const handleFriendProfileUpdated = ({
+      userId,
+      name,
+      username,
+      image,
+    }: {
+      odId: string;
+      userId: string;
+      name: string | null;
+      username: string | null;
+      image: string | null;
+    }) => {
+      // Update in online friends
+      const friend = useLobbyStore.getState().onlineFriends.find((f) => f.userId === userId);
+      if (friend) {
+        updateOnlineFriend({ ...friend, name, username, image });
+      }
+      // Update in pending invites
+      const { pendingInvites } = useLobbyStore.getState();
+      const updatedInvites = pendingInvites.map((invite) => {
+        if (invite.invitedBy.userId === userId) {
+          return { ...invite, invitedBy: { ...invite.invitedBy, name, username, image } };
+        }
+        return invite;
+      });
+      if (JSON.stringify(updatedInvites) !== JSON.stringify(pendingInvites)) {
+        // Only update if something changed
+        useLobbyStore.setState({ pendingInvites: updatedInvites });
+      }
+    };
+
+    // Handle lobby member profile update
+    const handleMemberProfileUpdated = ({
+      odId,
+      name,
+      username,
+      image,
+    }: {
+      odId: string;
+      userId: string;
+      name: string | null;
+      username: string | null;
+      image: string | null;
+    }) => {
+      const lobby = useLobbyStore.getState().currentLobby;
+      if (lobby) {
+        const updatedMembers = lobby.members.map((m) =>
+          m.odId === odId ? { ...m, name, username, image } : m
+        );
+        setCurrentLobby({ ...lobby, members: updatedMembers });
+      }
+    };
+
     const handleFriendLobbyUpdate = ({
       odId,
       userId,
@@ -345,6 +399,7 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
     socket.on("lobby:memberLeft", handleMemberLeft);
     socket.on("lobby:memberReconnected", handleMemberReconnected);
     socket.on("lobby:memberDisconnected", handleMemberDisconnected);
+    socket.on("lobby:memberProfileUpdated", handleMemberProfileUpdated);
     socket.on("lobby:ownerChanged", handleOwnerChanged);
     socket.on("lobby:invite", handleInvite);
     socket.on("lobby:kicked", handleKicked);
@@ -361,6 +416,7 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
     socket.on("friends:online", handleOnlineFriends);
     socket.on("friends:userOnline", handleFriendOnline);
     socket.on("friends:userOffline", handleFriendOffline);
+    socket.on("friends:profileUpdated", handleFriendProfileUpdated);
     socket.on("friends:lobbyUpdate", handleFriendLobbyUpdate);
     socket.on("friends:requestReceived", handleFriendRequestReceived);
     socket.on("friends:newFriend", handleNewFriend);
@@ -371,6 +427,7 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       socket.off("lobby:memberLeft", handleMemberLeft);
       socket.off("lobby:memberReconnected", handleMemberReconnected);
       socket.off("lobby:memberDisconnected", handleMemberDisconnected);
+      socket.off("lobby:memberProfileUpdated", handleMemberProfileUpdated);
       socket.off("lobby:ownerChanged", handleOwnerChanged);
       socket.off("lobby:invite", handleInvite);
       socket.off("lobby:kicked", handleKicked);
@@ -387,6 +444,7 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       socket.off("friends:online", handleOnlineFriends);
       socket.off("friends:userOnline", handleFriendOnline);
       socket.off("friends:userOffline", handleFriendOffline);
+      socket.off("friends:profileUpdated", handleFriendProfileUpdated);
       socket.off("friends:lobbyUpdate", handleFriendLobbyUpdate);
       socket.off("friends:requestReceived", handleFriendRequestReceived);
       socket.off("friends:newFriend", handleNewFriend);
@@ -402,6 +460,23 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       fetchProfile();
     }
   }, [isOpen]);
+
+  // Clean up expired lobby invites (expire after 2 minutes)
+  const INVITE_EXPIRY_MS = 2 * 60 * 1000;
+  useEffect(() => {
+    const cleanupInterval = setInterval(() => {
+      const { pendingInvites } = useLobbyStore.getState();
+      const now = Date.now();
+      const validInvites = pendingInvites.filter(
+        (invite) => !invite.timestamp || now - invite.timestamp < INVITE_EXPIRY_MS
+      );
+      if (validInvites.length !== pendingInvites.length) {
+        useLobbyStore.setState({ pendingInvites: validInvites });
+      }
+    }, 10000); // Check every 10 seconds
+
+    return () => clearInterval(cleanupInterval);
+  }, []);
 
   // Fetch profile/username
   const fetchProfile = async () => {
@@ -427,10 +502,11 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
     setUsernameSuccess(false);
 
     try {
+      const newUsername = username.trim().toLowerCase();
       const res = await fetch("/api/users/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim().toLowerCase() }),
+        body: JSON.stringify({ username: newUsername }),
       });
 
       const data = await res.json();
@@ -441,6 +517,8 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
 
       // Update session to reflect the new username
       await updateSession();
+      // Broadcast profile update to friends and lobby members
+      socket?.emit("profile:updated", { username: newUsername });
       setUsernameSuccess(true);
       setTimeout(() => setUsernameSuccess(false), 3000);
     } catch (err) {
@@ -723,10 +801,13 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
         throw new Error(data.error || "Failed to save name");
       }
 
-      setDisplayName(nameInput.trim()); // Update local display name
+      const newName = nameInput.trim();
+      setDisplayName(newName); // Update local display name
       setEditingName(false);
       // Update session to reflect the new name
       await updateSession();
+      // Broadcast profile update to friends and lobby members
+      socket?.emit("profile:updated", { name: newName });
       showToast("Name saved!", "success");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to save", "error");
