@@ -368,7 +368,16 @@
       "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\pumplab\" commit -m \"Simplify video export - remove debug code, clean implementation\")",
       "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\pumplab\" commit -m \"Add flat string logs for video export debugging\")",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nImprove video export quality and frame sync\n\n- Use requestVideoFrameCallback for perfect frame sync with video playback\n- Output at native resolution \\(up to 1080p\\) instead of fixed 720x480\n- Higher bitrate encoding \\(8 bits/pixel, max 8Mbps\\)\n- Scale fonts proportionally based on output resolution\n- Use captureStream\\(0\\) with manual requestFrame for better control\n- Fix TypeScript errors\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(if [ -f .env ])",
+      "Bash(then grep -E \"^\\(AUTH_SECRET|NEXTAUTH_SECRET\\)=\" .env)",
+      "Bash(else echo \"No .env file\")",
+      "Bash(fi)",
+      "Bash(elif [ -f .env.local ])",
+      "Bash(then grep -E \"^\\(AUTH_SECRET|NEXTAUTH_SECRET\\)=\" .env.local)",
+      "Bash(else echo \"No .env file in apps/web\")",
+      "Bash(npx tsx:*)",
+      "Bash(npx prisma migrate:*)"
     ],
     "deny": [],
     "ask": []
