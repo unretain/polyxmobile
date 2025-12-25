@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { supabase } from "@/lib/supabase";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -9,6 +9,14 @@ const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 // POST /api/users/profile-picture - Upload profile picture
 export async function POST(request: Request) {
   try {
+    // Check if Supabase is configured
+    if (!isSupabaseConfigured() || !supabase) {
+      return NextResponse.json(
+        { error: "Profile picture uploads are not configured" },
+        { status: 503 }
+      );
+    }
+
     const session = await auth();
 
     if (!session?.user?.id) {
@@ -108,6 +116,14 @@ export async function POST(request: Request) {
 // DELETE /api/users/profile-picture - Remove profile picture
 export async function DELETE() {
   try {
+    // Check if Supabase is configured
+    if (!isSupabaseConfigured() || !supabase) {
+      return NextResponse.json(
+        { error: "Profile picture uploads are not configured" },
+        { status: 503 }
+      );
+    }
+
     const session = await auth();
 
     if (!session?.user?.id) {
