@@ -4,6 +4,57 @@ import { meteoraService } from "../services/meteora";
 import { getGrpcService } from "../grpc";
 import { Timeframe } from "../ohlcv";
 import { prisma } from "../lib/prisma";
+import crypto from "crypto";
+
+// ==========================================
+// Rate Limiting
+// ==========================================
+
+interface RateLimitState {
+  messageCount: number;
+  messageWindowStart: number;
+  lobbyActionCount: number;
+  lobbyActionWindowStart: number;
+}
+
+const rateLimits = new Map<string, RateLimitState>();
+
+const RATE_LIMITS = {
+  messages: { max: 10, windowMs: 5000 },       // 10 messages per 5 seconds
+  lobbyActions: { max: 5, windowMs: 10000 },   // 5 lobby actions per 10 seconds
+};
+
+function checkRateLimit(socketId: string, type: "messages" | "lobbyActions"): boolean {
+  let state = rateLimits.get(socketId);
+  if (!state) {
+    state = {
+      messageCount: 0,
+      messageWindowStart: Date.now(),
+      lobbyActionCount: 0,
+      lobbyActionWindowStart: Date.now(),
+    };
+    rateLimits.set(socketId, state);
+  }
+
+  const now = Date.now();
+  const limit = RATE_LIMITS[type];
+
+  if (type === "messages") {
+    if (now - state.messageWindowStart > limit.windowMs) {
+      state.messageCount = 0;
+      state.messageWindowStart = now;
+    }
+    state.messageCount++;
+    return state.messageCount <= limit.max;
+  } else {
+    if (now - state.lobbyActionWindowStart > limit.windowMs) {
+      state.lobbyActionCount = 0;
+      state.lobbyActionWindowStart = now;
+    }
+    state.lobbyActionCount++;
+    return state.lobbyActionCount <= limit.max;
+  }
+}
 
 interface SubscriptionState {
   tokens: Set<string>;
@@ -52,7 +103,8 @@ const socketToLobby = new Map<string, string>(); // socketId -> lobbyId
 const socketToUser = new Map<string, { userId: string; username: string | null; name: string | null; image: string | null }>();
 
 function generateLobbyId(): string {
-  return Math.random().toString(36).substring(2, 8).toUpperCase();
+  // Use cryptographically secure random bytes
+  return crypto.randomBytes(4).toString("hex").toUpperCase();
 }
 
 function generateMessageId(): string {
@@ -210,18 +262,31 @@ export function setupWebSocket(io: Server) {
 
     // Authenticate user for lobby features
     socket.on("lobby:auth", async (data: { userId: string; username: string | null; name: string | null; image: string | null }) => {
-      socketToUser.set(socket.id, {
-        userId: data.userId,
-        username: data.username,
-        name: data.name,
-        image: data.image,
-      });
-      console.log(`🎮 User authenticated for lobbies: ${data.username || data.userId}`);
-
-      // Notify friends that this user is online
+      // Verify user exists in database (prevents impersonation with fake userIds)
       try {
+        const user = await prisma.user.findUnique({
+          where: { id: data.userId },
+          select: { id: true, name: true, image: true },
+        });
+
+        if (!user) {
+          console.warn(`🎮 Auth failed: User ${data.userId} not found in database`);
+          socket.emit("lobby:authError", { error: "User not found" });
+          return;
+        }
+
+        // Use server-verified data (except username which comes from Profile table in web app)
+        socketToUser.set(socket.id, {
+          userId: user.id,
+          username: data.username, // Username comes from client but userId is verified
+          name: user.name,
+          image: user.image,
+        });
+        console.log(`🎮 User authenticated for lobbies: ${data.username || user.id}`);
+
+        // Notify friends that this user is online
         const friendships = await prisma.friendship.findMany({
-          where: { userId: data.userId },
+          where: { userId: user.id },
           select: { friendId: true },
         });
         const friendIds = friendships.map((f) => f.friendId);
@@ -231,17 +296,18 @@ export function setupWebSocket(io: Server) {
           if (friendIds.includes(userData.userId)) {
             io.to(socketId).emit("friends:userOnline", {
               odId: socket.id,
-              userId: data.userId,
+              userId: user.id,
               username: data.username,
-              name: data.name,
-              image: data.image,
+              name: user.name,
+              image: user.image,
               lobbyId: null,
               lobbyName: null,
             });
           }
         }
       } catch (error) {
-        console.error("Failed to notify friends of user online:", error);
+        console.error("Failed to authenticate user for lobbies:", error);
+        socket.emit("lobby:authError", { error: "Authentication failed" });
       }
     });
 
@@ -271,6 +337,12 @@ export function setupWebSocket(io: Server) {
 
     // Create a new lobby
     socket.on("lobby:create", (data: { name: string }, callback: (response: { success: boolean; lobby?: any; error?: string }) => void) => {
+      // Rate limit lobby actions
+      if (!checkRateLimit(socket.id, "lobbyActions")) {
+        callback({ success: false, error: "Too many requests. Please wait." });
+        return;
+      }
+
       const user = socketToUser.get(socket.id);
       if (!user) {
         callback({ success: false, error: "Not authenticated" });
@@ -284,10 +356,15 @@ export function setupWebSocket(io: Server) {
         return;
       }
 
+      // Sanitize lobby name (prevent XSS)
+      const sanitizedName = (data.name || `${user.username || user.name}'s Lobby`)
+        .slice(0, 50)
+        .replace(/[<>&"']/g, "");
+
       const lobbyId = generateLobbyId();
       const lobby: Lobby = {
         id: lobbyId,
-        name: data.name || `${user.username || user.name}'s Lobby`,
+        name: sanitizedName,
         ownerId: user.userId,
         ownerSocketId: socket.id,
         members: new Map(),
@@ -328,6 +405,12 @@ export function setupWebSocket(io: Server) {
 
     // Join an existing lobby
     socket.on("lobby:join", (data: { lobbyId: string }, callback: (response: { success: boolean; lobby?: any; error?: string }) => void) => {
+      // Rate limit lobby actions
+      if (!checkRateLimit(socket.id, "lobbyActions")) {
+        callback({ success: false, error: "Too many requests. Please wait." });
+        return;
+      }
+
       const user = socketToUser.get(socket.id);
       if (!user) {
         callback({ success: false, error: "Not authenticated" });
@@ -446,7 +529,7 @@ export function setupWebSocket(io: Server) {
     });
 
     // Invite a friend to lobby
-    socket.on("lobby:invite", (data: { friendSocketId: string }, callback: (response: { success: boolean; error?: string }) => void) => {
+    socket.on("lobby:invite", async (data: { friendSocketId: string }, callback: (response: { success: boolean; error?: string }) => void) => {
       const lobbyId = socketToLobby.get(socket.id);
       if (!lobbyId) {
         callback({ success: false, error: "Not in a lobby" });
@@ -460,16 +543,46 @@ export function setupWebSocket(io: Server) {
       }
 
       const user = socketToUser.get(socket.id);
+      if (!user) {
+        callback({ success: false, error: "Not authenticated" });
+        return;
+      }
+
+      // Verify the target socket belongs to a friend
+      const targetUser = socketToUser.get(data.friendSocketId);
+      if (!targetUser) {
+        callback({ success: false, error: "User not found" });
+        return;
+      }
+
+      // Verify friendship exists
+      try {
+        const friendship = await prisma.friendship.findFirst({
+          where: {
+            userId: user.userId,
+            friendId: targetUser.userId,
+          },
+        });
+
+        if (!friendship) {
+          callback({ success: false, error: "You can only invite friends" });
+          return;
+        }
+      } catch (error) {
+        console.error("Failed to verify friendship:", error);
+        callback({ success: false, error: "Failed to verify friendship" });
+        return;
+      }
 
       // Send invite to friend
       io.to(data.friendSocketId).emit("lobby:invite", {
         lobbyId,
         lobbyName: lobby.name,
         invitedBy: {
-          userId: user?.userId,
-          username: user?.username,
-          name: user?.name,
-          image: user?.image,
+          userId: user.userId,
+          username: user.username,
+          name: user.name,
+          image: user.image,
         },
       });
 
@@ -502,11 +615,22 @@ export function setupWebSocket(io: Server) {
 
     // Send chat message
     socket.on("chat:message", (data: { content: string }) => {
+      // Rate limit messages
+      if (!checkRateLimit(socket.id, "messages")) {
+        socket.emit("chat:error", { error: "Slow down! You're sending messages too fast." });
+        return;
+      }
+
       const lobbyId = socketToLobby.get(socket.id);
       if (!lobbyId) return;
 
       const user = socketToUser.get(socket.id);
       if (!user) return;
+
+      // Sanitize message content (basic XSS prevention)
+      const sanitizedContent = data.content
+        .slice(0, 1000)
+        .replace(/[<>]/g, ""); // Remove < and > to prevent HTML injection
 
       const message: ChatMessage = {
         id: generateMessageId(),
@@ -515,7 +639,7 @@ export function setupWebSocket(io: Server) {
         username: user.username,
         name: user.name,
         image: user.image,
-        content: data.content.slice(0, 1000), // Limit message length
+        content: sanitizedContent,
         timestamp: Date.now(),
       };
 
@@ -692,6 +816,7 @@ export function setupWebSocket(io: Server) {
 
       socketToUser.delete(socket.id);
       subscriptions.delete(socket.id);
+      rateLimits.delete(socket.id);
       console.log(`Client disconnected: ${socket.id}`);
     });
   });
