@@ -46,8 +46,22 @@ async function ensureUserHasWallet(userId: string): Promise<string | null> {
   return publicKey;
 }
 
+// Custom adapter that doesn't overwrite name/image on OAuth sign-in
+const customAdapter = {
+  ...PrismaAdapter(prisma),
+  // Override updateUser to preserve user-set name/image
+  async updateUser(data: { id: string; name?: string | null; email?: string | null; emailVerified?: Date | null; image?: string | null }) {
+    // Don't update name or image from OAuth - user may have customized them
+    const { name, image, ...safeData } = data;
+    return prisma.user.update({
+      where: { id: data.id },
+      data: safeData,
+    });
+  },
+};
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  adapter: customAdapter,
   providers: [
     // Google OAuth
     Google({
