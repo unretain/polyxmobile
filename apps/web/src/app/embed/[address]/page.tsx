@@ -17,7 +17,7 @@ const Chart3D = dynamic(
   }
 );
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+// API calls go through Next.js proxy routes (protects internal API key)
 
 // Available timeframes
 const TIMEFRAMES = [
@@ -144,8 +144,8 @@ export default function EmbedPage() {
     setIsLoading(true);
     setError(null);
 
-    // Fetch token info
-    fetch(`${API_URL}/api/tokens/${address}`)
+    // Fetch token info (uses Next.js proxy route)
+    fetch(`/api/tokens/${address}`)
       .then((res) => {
         if (!res.ok) throw new Error("Token not found");
         return res.json();
@@ -164,8 +164,8 @@ export default function EmbedPage() {
         console.error("Token fetch error:", err);
       });
 
-    // Fetch OHLCV
-    fetch(`${API_URL}/api/tokens/${address}/ohlcv?timeframe=${currentTimeframe}&limit=100`)
+    // Fetch OHLCV (uses Next.js proxy route)
+    fetch(`/api/tokens/${address}/ohlcv?timeframe=${currentTimeframe}&limit=100`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch chart data");
         return res.json();
@@ -192,7 +192,7 @@ export default function EmbedPage() {
     const interval = setInterval(() => {
       if (!address) return;
 
-      fetch(`${API_URL}/api/tokens/${address}/ohlcv?timeframe=${currentTimeframe}&limit=100`)
+      fetch(`/api/tokens/${address}/ohlcv?timeframe=${currentTimeframe}&limit=100`)
         .then((res) => res.json())
         .then((data) => {
           if (Array.isArray(data) && data.length > 0) {
@@ -201,7 +201,7 @@ export default function EmbedPage() {
         })
         .catch(() => {});
 
-      fetch(`${API_URL}/api/tokens/${address}`)
+      fetch(`/api/tokens/${address}`)
         .then((res) => res.json())
         .then((data) => {
           if (data.price) {
