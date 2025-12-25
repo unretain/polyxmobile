@@ -59,13 +59,13 @@ export async function PATCH(request: Request) {
 
     // Validate username if provided
     if (username !== undefined) {
-      // Username must be 3-20 characters, alphanumeric + underscores
+      // Username must be 1-9 characters, letters only
       if (username !== null && username !== "") {
-        if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
+        if (!/^[a-zA-Z]{1,9}$/.test(username)) {
           return NextResponse.json(
             {
               error:
-                "Username must be 3-20 characters, only letters, numbers, and underscores",
+                "Username must be 1-9 letters only",
             },
             { status: 400 }
           );
