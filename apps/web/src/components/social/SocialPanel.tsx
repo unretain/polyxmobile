@@ -1453,7 +1453,7 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
                     />
                   </div>
                   {requestError && (
-                    <p className="text-xs text-red-400 bg-red-500/10 p-2 rounded">{requestError}</p>
+                    <p className="text-xs text-[#FF6B4A] bg-[#FF6B4A]/10 p-2 rounded">{requestError}</p>
                   )}
                   {requestSuccess && (
                     <p className="text-xs text-green-400 bg-green-500/10 p-2 rounded flex items-center gap-1">

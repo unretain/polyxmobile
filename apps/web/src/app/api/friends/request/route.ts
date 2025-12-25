@@ -145,7 +145,7 @@ export async function POST(request: Request) {
       // If it's a pending request we already sent, tell them
       if (existingRequest.senderId === session.user.id && existingRequest.status === "pending") {
         return NextResponse.json(
-          { error: "Friend request already sent" },
+          { error: "You already sent a request to this user. Wait for them to accept!" },
           { status: 400 }
         );
       }
