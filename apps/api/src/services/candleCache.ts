@@ -21,16 +21,17 @@ const TIMEFRAME_MS: Record<string, number> = {
   "1d": 24 * 60 * 60 * 1000,
 };
 
-// How long before the most recent cached candle is considered stale
-const CACHE_STALE_MS: Record<string, number> = {
-  "1min": 30 * 1000,
-  "1m": 30 * 1000,
-  "5min": 60 * 1000,
-  "5m": 60 * 1000,
-  "15m": 2 * 60 * 1000,
-  "1h": 5 * 60 * 1000,
-  "4h": 10 * 60 * 1000,
-  "1d": 30 * 60 * 1000,
+// How often to refresh the CURRENT (live) candle only
+// Historical candles NEVER need refreshing - they're immutable
+const LIVE_CANDLE_REFRESH_MS: Record<string, number> = {
+  "1min": 10 * 1000,    // Refresh live 1m candle every 10s
+  "1m": 10 * 1000,
+  "5min": 30 * 1000,    // Refresh live 5m candle every 30s
+  "5m": 30 * 1000,
+  "15m": 60 * 1000,     // Refresh live 15m candle every 60s
+  "1h": 60 * 1000,      // Refresh live 1h candle every 60s
+  "4h": 2 * 60 * 1000,  // Refresh live 4h candle every 2m
+  "1d": 5 * 60 * 1000,  // Refresh live 1d candle every 5m
 };
 
 // Normalize timeframe names
@@ -87,48 +88,60 @@ class CandleCacheService {
   }
 
   // Check if we need to fetch fresh data from external API
+  // PRINCIPLE: Historical candles are IMMUTABLE - never refetch them
+  // Only fetch: (1) missing historical data, (2) the LIVE candle that's still forming
   async shouldFetchFresh(
     tokenAddress: string,
     timeframe: string,
     requestedToTimestamp: number
-  ): Promise<{ shouldFetch: boolean; fetchFromTimestamp: number | null }> {
+  ): Promise<{ shouldFetch: boolean; fetchFromTimestamp: number | null; onlyLiveCandle: boolean }> {
     const normalizedTf = normalizeTimeframe(timeframe);
     const latestCached = await this.getLatestCachedTimestamp(tokenAddress, normalizedTf);
     const intervalMs = TIMEFRAME_MS[normalizedTf] || 60 * 60 * 1000;
-    const staleMs = CACHE_STALE_MS[normalizedTf] || 5 * 60 * 1000;
+    const liveRefreshMs = LIVE_CANDLE_REFRESH_MS[normalizedTf] || 60 * 1000;
 
-    // No cached data - need full fetch
+    // No cached data at all - need full fetch
     if (!latestCached) {
-      return { shouldFetch: true, fetchFromTimestamp: null };
+      console.log(`[candleCache] No cache for ${tokenAddress.substring(0, 8)}... ${normalizedTf}, need full fetch`);
+      return { shouldFetch: true, fetchFromTimestamp: null, onlyLiveCandle: false };
     }
 
     const now = Date.now();
-    const timeSinceLastCandle = now - latestCached;
 
-    // If the last cached candle is more than 2 intervals old, fetch from there
-    if (timeSinceLastCandle > intervalMs * 2) {
-      console.log(`[candleCache] Cache is ${Math.round(timeSinceLastCandle / 1000 / 60)}min old, fetching fresh from ${new Date(latestCached).toISOString()}`);
-      return { shouldFetch: true, fetchFromTimestamp: latestCached };
+    // Calculate the current candle's start time (the "live" candle that's still forming)
+    const currentCandleStart = Math.floor(now / intervalMs) * intervalMs;
+
+    // Check if we have ALL historical candles up to (but not including) the current live candle
+    // If latestCached >= currentCandleStart - intervalMs, we have all historical data
+    const hasAllHistorical = latestCached >= currentCandleStart - intervalMs;
+
+    if (!hasAllHistorical) {
+      // We're missing some historical candles - fetch from where we left off
+      console.log(`[candleCache] Missing historical candles for ${tokenAddress.substring(0, 8)}... ${normalizedTf}, fetching from ${new Date(latestCached).toISOString()}`);
+      return { shouldFetch: true, fetchFromTimestamp: latestCached, onlyLiveCandle: false };
     }
 
-    // Check if the most recent candle was updated recently
+    // We have all historical data - only need to refresh the LIVE candle
+    // Check when we last updated the live candle
     const latestRecord = await prisma.candleCache.findFirst({
       where: { tokenAddress, timeframe: normalizedTf },
       orderBy: { timestamp: "desc" },
-      select: { updatedAt: true },
+      select: { updatedAt: true, timestamp: true },
     });
 
     if (latestRecord) {
       const timeSinceUpdate = now - latestRecord.updatedAt.getTime();
-      if (timeSinceUpdate > staleMs) {
-        // Need to refresh the most recent candle
-        console.log(`[candleCache] Most recent candle is ${Math.round(timeSinceUpdate / 1000)}s old, refreshing`);
-        return { shouldFetch: true, fetchFromTimestamp: latestCached - intervalMs };
+
+      // Only refresh if enough time has passed
+      if (timeSinceUpdate > liveRefreshMs) {
+        console.log(`[candleCache] Refreshing live candle for ${tokenAddress.substring(0, 8)}... ${normalizedTf} (last update ${Math.round(timeSinceUpdate / 1000)}s ago)`);
+        // Only fetch the current candle and maybe the previous one (in case it just closed)
+        return { shouldFetch: true, fetchFromTimestamp: currentCandleStart - intervalMs, onlyLiveCandle: true };
       }
     }
 
-    console.log(`[candleCache] Cache is fresh, no fetch needed`);
-    return { shouldFetch: false, fetchFromTimestamp: null };
+    console.log(`[candleCache] Cache is complete and fresh for ${tokenAddress.substring(0, 8)}... ${normalizedTf}`);
+    return { shouldFetch: false, fetchFromTimestamp: null, onlyLiveCandle: false };
   }
 
   // Store candles in the cache
@@ -195,6 +208,7 @@ class CandleCacheService {
   }
 
   // Get candles, using cache when possible, fetching fresh when needed
+  // OPTIMIZED: Only fetches NEW data - historical candles are cached permanently
   async getCandles(
     tokenAddress: string,
     timeframe: string,
@@ -203,36 +217,77 @@ class CandleCacheService {
     fetchFn: (from: number, to: number) => Promise<OHLCV[]>
   ): Promise<OHLCV[]> {
     const normalizedTf = normalizeTimeframe(timeframe);
+    const intervalMs = TIMEFRAME_MS[normalizedTf] || 60 * 60 * 1000;
 
-    // Check if we should fetch fresh data (for recent candles)
-    const { shouldFetch, fetchFromTimestamp } = await this.shouldFetchFresh(
+    // Check if we should fetch fresh data
+    const { shouldFetch, fetchFromTimestamp, onlyLiveCandle } = await this.shouldFetchFresh(
       tokenAddress,
       normalizedTf,
       toTimestamp
     );
 
-    // Also check if we need historical data that's not cached
+    // Also check if we need historical data OLDER than what's cached
     const oldestCached = await this.getOldestCachedTimestamp(tokenAddress, normalizedTf);
-    const needsHistoricalFetch = oldestCached === null || fromTimestamp < oldestCached;
+    const needsOlderHistoricalFetch = oldestCached !== null && fromTimestamp < oldestCached;
 
-    if (shouldFetch || needsHistoricalFetch) {
-      // Determine what range to fetch
+    // Get cached candles first - this is our foundation
+    const cachedCandles = await this.getCachedCandles(
+      tokenAddress,
+      normalizedTf,
+      fromTimestamp,
+      toTimestamp
+    );
+
+    // If we only need the live candle and we have cached data, just update that
+    if (onlyLiveCandle && cachedCandles.length > 0 && shouldFetch && fetchFromTimestamp) {
+      try {
+        const now = Date.now();
+        console.log(`[candleCache] Fetching ONLY live candle for ${tokenAddress.substring(0, 8)}... ${normalizedTf}`);
+        const liveCandles = await fetchFn(fetchFromTimestamp, now);
+
+        if (liveCandles.length > 0) {
+          // Store just the live candle(s)
+          this.storeCandles(tokenAddress, normalizedTf, liveCandles).catch((e) =>
+            console.error("[candleCache] Failed to store live candle:", e)
+          );
+
+          // Merge: cached historical + fresh live candles
+          const uniqueByTimestamp = new Map<number, OHLCV>();
+          for (const c of cachedCandles) {
+            uniqueByTimestamp.set(c.timestamp, c);
+          }
+          // Live candles override cached ones (they're more recent)
+          for (const c of liveCandles) {
+            uniqueByTimestamp.set(c.timestamp, c);
+          }
+          return Array.from(uniqueByTimestamp.values()).sort((a, b) => a.timestamp - b.timestamp);
+        }
+      } catch (error) {
+        console.error("[candleCache] Live candle fetch failed, using cache:", error);
+      }
+      return cachedCandles;
+    }
+
+    // Need to fetch data (either no cache, missing historical, or missing recent)
+    if (shouldFetch || needsOlderHistoricalFetch || cachedCandles.length === 0) {
       let fetchFrom: number;
-      if (needsHistoricalFetch && !oldestCached) {
-        // No cache at all, fetch full range
+      let fetchTo = toTimestamp;
+
+      if (cachedCandles.length === 0 && !oldestCached) {
+        // No cache at all - fetch full range
         fetchFrom = fromTimestamp;
-      } else if (needsHistoricalFetch && oldestCached && fromTimestamp < oldestCached) {
-        // Need older data than what's cached - fetch from requested start
+      } else if (needsOlderHistoricalFetch && oldestCached) {
+        // Need older data - fetch from requested start to oldest cached
         fetchFrom = fromTimestamp;
+        fetchTo = oldestCached - 1;
       } else {
-        // Just need recent data
+        // Need recent data - fetch from where cache ends
         fetchFrom = fetchFromTimestamp || fromTimestamp;
       }
 
       try {
-        // Fetch fresh candles
-        console.log(`[candleCache] Fetching ${tokenAddress.substring(0, 8)}... ${normalizedTf} from ${new Date(fetchFrom).toISOString()}`);
-        const freshCandles = await fetchFn(fetchFrom, toTimestamp);
+        console.log(`[candleCache] Fetching ${tokenAddress.substring(0, 8)}... ${normalizedTf} from ${new Date(fetchFrom).toISOString()} to ${new Date(fetchTo).toISOString()}`);
+        const freshCandles = await fetchFn(fetchFrom, fetchTo);
 
         if (freshCandles.length > 0) {
           // Store in cache (async, don't block response)
@@ -241,37 +296,22 @@ class CandleCacheService {
           );
         }
 
-        // If we have cached data that might fill gaps, merge it
-        if (oldestCached && fetchFrom > fromTimestamp) {
-          const cachedCandles = await this.getCachedCandles(
-            tokenAddress,
-            normalizedTf,
-            fromTimestamp,
-            fetchFrom - 1
-          );
-
-          // Merge and deduplicate by timestamp
-          const allCandles = [...cachedCandles, ...freshCandles];
-          const uniqueByTimestamp = new Map<number, OHLCV>();
-          for (const c of allCandles) {
-            uniqueByTimestamp.set(c.timestamp, c);
-          }
-          return Array.from(uniqueByTimestamp.values()).sort(
-            (a, b) => a.timestamp - b.timestamp
-          );
+        // Merge cached + fresh, deduplicate by timestamp
+        const allCandles = [...cachedCandles, ...freshCandles];
+        const uniqueByTimestamp = new Map<number, OHLCV>();
+        for (const c of allCandles) {
+          uniqueByTimestamp.set(c.timestamp, c);
         }
-
-        return freshCandles;
+        return Array.from(uniqueByTimestamp.values()).sort((a, b) => a.timestamp - b.timestamp);
       } catch (error) {
         console.error("[candleCache] Fetch failed, falling back to cache:", error);
-        // Fall back to cache if fetch fails
-        return this.getCachedCandles(tokenAddress, normalizedTf, fromTimestamp, toTimestamp);
+        return cachedCandles;
       }
     }
 
-    // Use cached data - it covers the full requested range
-    console.log(`[candleCache] Serving ${tokenAddress.substring(0, 8)}... ${normalizedTf} from cache`);
-    return this.getCachedCandles(tokenAddress, normalizedTf, fromTimestamp, toTimestamp);
+    // Cache is complete and fresh - serve directly
+    console.log(`[candleCache] Serving ${tokenAddress.substring(0, 8)}... ${normalizedTf} from cache (${cachedCandles.length} candles)`);
+    return cachedCandles;
   }
 }
 

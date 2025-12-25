@@ -451,32 +451,6 @@ pulseRoutes.get("/king", async (req, res) => {
   }
 });
 
-// GET /api/pulse/realtime/:address - Get real-time OHLCV data
-pulseRoutes.get("/realtime/:address", async (req, res) => {
-  try {
-    const { address } = req.params;
-
-    const to = Math.floor(Date.now() / 1000);
-    const from = to - 600; // Last 10 minutes
-
-    const ohlcv = await birdeyeService.getOHLCV(address, "1m", {
-      from,
-      to,
-      limit: 100,
-    });
-
-    res.json({
-      address,
-      timeframe: "1m",
-      data: ohlcv,
-      timestamp: Date.now(),
-    });
-  } catch (error) {
-    console.error("Error fetching realtime data:", error);
-    res.status(500).json({ error: "Failed to fetch realtime data" });
-  }
-});
-
 // GET /api/pulse/token/:address - Get enriched token data from multiple sources
 // PRIORITY: 1. Database (free), 2. In-memory caches (free), 3. External APIs (costly)
 pulseRoutes.get("/token/:address", async (req, res) => {
