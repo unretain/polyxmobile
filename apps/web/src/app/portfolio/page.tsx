@@ -1315,14 +1315,28 @@ export default function PortfolioPage() {
                             ctx.fillText('polyx.trade', outW - padX, outH - padY);
                           };
 
-                          // VP9 WebM - highest quality, works reliably
-                          const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
-                            ? 'video/webm;codecs=vp9,opus'
-                            : 'video/webm;codecs=vp8,opus';
-                          console.log('EXPORT: using ' + mimeType);
+                          // 1. Start video playing first
+                          await video.play();
+                          console.log('EXPORT: video playing');
 
+                          // 2. Start drawing to canvas BEFORE creating the stream
+                          let isRecording = true;
+                          const frameLoop = () => {
+                            if (!isRecording) return;
+                            drawOverlay();
+                            requestAnimationFrame(frameLoop);
+                          };
+                          frameLoop();
+
+                          // 3. Draw first frame and wait a bit for canvas to have content
+                          drawOverlay();
+                          await new Promise(r => setTimeout(r, 100));
+
+                          // 4. Now create the stream from canvas that has content
                           const canvasStream = canvas.captureStream(30);
+                          console.log('EXPORT: canvas stream created');
 
+                          // 5. Add audio from video
                           let stream: MediaStream = canvasStream;
                           try {
                             const vidStream = (video as any).captureStream?.();
@@ -1330,48 +1344,45 @@ export default function PortfolioPage() {
                               stream = new MediaStream([...canvasStream.getVideoTracks(), ...vidStream.getAudioTracks()]);
                               console.log('EXPORT: audio added');
                             }
-                          } catch (e) { /* no audio */ }
+                          } catch (e) { console.log('EXPORT: no audio'); }
 
-                          const bitrate = Math.min(outW * outH * 10, 10000000);
+                          // 6. Create recorder
+                          const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+                            ? 'video/webm;codecs=vp9,opus'
+                            : 'video/webm;codecs=vp8,opus';
+                          console.log('EXPORT: using ' + mimeType);
 
+                          const chunks: Blob[] = [];
                           const recorder = new MediaRecorder(stream, {
                             mimeType,
-                            videoBitsPerSecond: bitrate
+                            videoBitsPerSecond: 8000000
                           });
-                          const chunks: Blob[] = [];
-                          const startTime = Date.now();
 
+                          // 7. Setup handlers BEFORE start
                           recorder.ondataavailable = (e) => {
-                            if (e.data.size > 0) chunks.push(e.data);
+                            console.log('EXPORT: chunk ' + e.data.size);
+                            chunks.push(e.data);
                           };
 
-                          let animationId: number;
-                          let isRecording = true;
-
-                          const frameLoop = () => {
-                            if (!isRecording) return;
-                            drawOverlay();
-                            animationId = requestAnimationFrame(frameLoop);
-                          };
-
-                          recorder.onstart = () => {
-                            console.log('EXPORT: recording bitrate=' + bitrate);
-                            video.play();
-                            frameLoop();
-                          };
+                          const startTime = Date.now();
 
                           recorder.onstop = async () => {
                             isRecording = false;
-                            if (animationId) cancelAnimationFrame(animationId);
                             video.pause();
 
                             const duration = Date.now() - startTime;
-                            console.log('EXPORT: stopped chunks=' + chunks.length);
+                            console.log('EXPORT: stopped, chunks=' + chunks.length);
 
-                            const rawBlob = new Blob(chunks, { type: 'video/webm' });
-                            console.log('EXPORT: blob size=' + rawBlob.size);
+                            const blob = new Blob(chunks, { type: 'video/webm' });
+                            console.log('EXPORT: blob size=' + blob.size);
 
-                            const fixedBlob = await fixWebmDuration(rawBlob, duration);
+                            if (blob.size < 1000) {
+                              showToast('Recording failed', 'error');
+                              setIsGeneratingCard(false);
+                              return;
+                            }
+
+                            const fixedBlob = await fixWebmDuration(blob, duration);
 
                             const a = document.createElement('a');
                             a.href = URL.createObjectURL(fixedBlob);
@@ -1381,14 +1392,15 @@ export default function PortfolioPage() {
                             setIsGeneratingCard(false);
                           };
 
+                          // 8. Start recording
                           const videoDuration = Math.min(video.duration * 1000, 60000) || 10000;
-                          console.log('EXPORT: will record for ' + videoDuration + 'ms');
-                          recorder.start(100); // Collect data every 100ms for smoother chunks
+                          console.log('EXPORT: recording for ' + videoDuration + 'ms');
+                          recorder.start();
 
+                          // 9. Stop after duration
                           setTimeout(() => {
-                            if (recorder.state === 'recording') {
-                              recorder.stop();
-                            }
+                            console.log('EXPORT: stopping');
+                            recorder.stop();
                           }, videoDuration);
 
                         } catch (err) {
