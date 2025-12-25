@@ -11,7 +11,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { shortenAddress } from "@/lib/wallet";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { ProfilePanel } from "@/components/profile/ProfilePanel";
-import { LobbyPanel } from "@/components/lobby/LobbyPanel";
+import { SocialPanel } from "@/components/social/SocialPanel";
 
 // Extended session user type with our custom fields
 interface SessionUser {
@@ -66,7 +66,7 @@ export function Header() {
   const [pendingRedirect, setPendingRedirect] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showProfilePanel, setShowProfilePanel] = useState(false);
-  const [showLobbyPanel, setShowLobbyPanel] = useState(false);
+  const [showSocialPanel, setShowSocialPanel] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const currentUser = session?.user as SessionUser | undefined;
@@ -357,7 +357,7 @@ export function Header() {
             {/* Lobby Button - only for logged in users */}
             {currentUser && (
               <button
-                onClick={() => setShowLobbyPanel(true)}
+                onClick={() => setShowSocialPanel(true)}
                 className={`hidden md:flex p-2.5 rounded-full border backdrop-blur-md transition-colors ${
                   isDark
                     ? 'bg-white/5 border-white/10 hover:bg-white/10 text-white/60 hover:text-white'
@@ -639,13 +639,13 @@ export function Header() {
                   Profile
                 </button>
                 <button
-                  onClick={() => { setMobileMenuOpen(false); setShowLobbyPanel(true); }}
+                  onClick={() => { setMobileMenuOpen(false); setShowSocialPanel(true); }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors ${
                     isDark ? 'text-white/70 hover:bg-white/5' : 'text-black/70 hover:bg-black/5'
                   }`}
                 >
                   <Users className="h-4 w-4" />
-                  Lobbies
+                  Social
                 </button>
                 <Link
                   href="/portfolio"
@@ -903,10 +903,10 @@ export function Header() {
         onClose={() => setShowProfilePanel(false)}
       />
 
-      {/* Lobby Panel */}
-      <LobbyPanel
-        isOpen={showLobbyPanel}
-        onClose={() => setShowLobbyPanel(false)}
+      {/* Social Panel */}
+      <SocialPanel
+        isOpen={showSocialPanel}
+        onClose={() => setShowSocialPanel(false)}
       />
 
       {/* Security Modal */}

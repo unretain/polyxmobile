@@ -4,6 +4,8 @@ import { create } from "zustand";
 
 export interface LobbyMember {
   odId: string;
+  odIdIndex?: string; // Alias for socket ID
+  odIdIsSocket?: boolean;
   userId: string;
   username: string | null;
   name: string | null;
@@ -41,6 +43,17 @@ export interface LobbyInvite {
   };
 }
 
+export interface OnlineFriend {
+  odId: string;
+  odIdIndex?: string;
+  userId: string;
+  username: string | null;
+  name: string | null;
+  image: string | null;
+  lobbyId: string | null;
+  lobbyName: string | null;
+}
+
 interface LobbyState {
   // Current lobby
   currentLobby: Lobby | null;
@@ -53,6 +66,9 @@ interface LobbyState {
   // Voice
   inVoice: boolean;
   voiceMembers: LobbyMember[];
+
+  // Online friends
+  onlineFriends: OnlineFriend[];
 
   // Actions
   setCurrentLobby: (lobby: Lobby | null) => void;
@@ -68,6 +84,9 @@ interface LobbyState {
   setVoiceMembers: (members: LobbyMember[]) => void;
   addVoiceMember: (member: LobbyMember) => void;
   removeVoiceMember: (odId: string) => void;
+  setOnlineFriends: (friends: OnlineFriend[]) => void;
+  updateOnlineFriend: (friend: OnlineFriend) => void;
+  removeOnlineFriend: (odId: string) => void;
   reset: () => void;
 }
 
@@ -78,6 +97,7 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
   pendingInvites: [],
   inVoice: false,
   voiceMembers: [],
+  onlineFriends: [],
 
   setCurrentLobby: (lobby) => set({ currentLobby: lobby, messages: [], typingUsers: new Map() }),
 
@@ -133,6 +153,24 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
 
   removeVoiceMember: (odId) => set((state) => ({
     voiceMembers: state.voiceMembers.filter((m) => m.odId !== odId),
+  })),
+
+  setOnlineFriends: (friends) => set({ onlineFriends: friends }),
+
+  updateOnlineFriend: (friend) => set((state) => {
+    const existing = state.onlineFriends.find((f) => f.userId === friend.userId);
+    if (existing) {
+      return {
+        onlineFriends: state.onlineFriends.map((f) =>
+          f.userId === friend.userId ? friend : f
+        ),
+      };
+    }
+    return { onlineFriends: [...state.onlineFriends, friend] };
+  }),
+
+  removeOnlineFriend: (odId) => set((state) => ({
+    onlineFriends: state.onlineFriends.filter((f) => f.odId !== odId),
   })),
 
   reset: () => set({
