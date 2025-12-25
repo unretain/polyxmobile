@@ -599,6 +599,30 @@ pulseRoutes.get("/token/:address", async (req, res) => {
             createdAt: Date.now(),
             source: "birdeye",
           };
+
+          // CACHE in database so we don't call Birdeye again for this token
+          prisma.pulseToken.upsert({
+            where: { address },
+            create: {
+              address,
+              symbol: birdeyeData.symbol || address.slice(0, 6),
+              name: birdeyeData.name || birdeyeData.symbol || "Unknown",
+              logoUri: birdeyeData.logoURI,
+              price: birdeyeData.price || 0,
+              priceChange24h: birdeyeData.priceChange24h || 0,
+              volume24h: birdeyeData.volume24h || 0,
+              liquidity: birdeyeData.liquidity || 0,
+              marketCap: birdeyeData.marketCap || 0,
+            },
+            update: {
+              price: birdeyeData.price || 0,
+              priceChange24h: birdeyeData.priceChange24h || 0,
+              volume24h: birdeyeData.volume24h || 0,
+              liquidity: birdeyeData.liquidity || 0,
+              marketCap: birdeyeData.marketCap || 0,
+              logoUri: birdeyeData.logoURI,
+            },
+          }).catch((err) => console.log("Failed to cache token:", err));
         }
       } catch (err) {
         console.error("Birdeye token fetch error:", err);
