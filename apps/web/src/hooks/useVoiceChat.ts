@@ -96,7 +96,9 @@ export function useVoiceChat({
       pc.ontrack = (event) => {
         const [remoteStream] = event.streams;
         if (remoteStream) {
-          console.log(`[Voice] Received remote stream from ${targetSocketId}`);
+          const audioTracks = remoteStream.getAudioTracks();
+          console.log(`[Voice] Received remote stream from ${targetSocketId}, audio tracks: ${audioTracks.length}, enabled: ${audioTracks.map(t => t.enabled).join(',')}`);
+
           setRemoteStreams((prev) => {
             const next = new Map(prev);
             next.set(targetSocketId, remoteStream);
@@ -107,15 +109,27 @@ export function useVoiceChat({
           let audio = audioElementsRef.current.get(targetSocketId);
           if (!audio) {
             audio = new Audio();
+            audio.id = `voice-audio-${targetSocketId}`;
+            // Append to document body to ensure it stays alive
+            document.body.appendChild(audio);
             audioElementsRef.current.set(targetSocketId, audio);
           }
           audio.srcObject = remoteStream;
           audio.autoplay = true;
           audio.volume = 1.0;
+          audio.muted = false;
 
           // Explicitly try to play (needed for some browsers)
           audio.play().then(() => {
-            console.log(`[Voice] Playing audio from ${targetSocketId}`);
+            // Monitor audio activity
+            const checkAudio = () => {
+              const tracks = remoteStream.getAudioTracks();
+              const trackInfo = tracks.map(t => `${t.label}:${t.enabled}:${t.muted}:${t.readyState}`).join(', ');
+              console.log(`[Voice] Audio from ${targetSocketId}: paused=${audio!.paused}, volume=${audio!.volume}, tracks=[${trackInfo}]`);
+            };
+            checkAudio();
+            // Check again after a second
+            setTimeout(checkAudio, 1000);
           }).catch((err) => {
             console.error(`[Voice] Failed to play audio from ${targetSocketId}:`, err);
           });
@@ -180,6 +194,7 @@ export function useVoiceChat({
       if (audio) {
         audio.pause();
         audio.srcObject = null;
+        audio.remove(); // Remove from DOM
         audioElementsRef.current.delete(socketId);
       }
     }
@@ -196,6 +211,7 @@ export function useVoiceChat({
     audioElementsRef.current.forEach((audio) => {
       audio.pause();
       audio.srcObject = null;
+      audio.remove(); // Remove from DOM
     });
     audioElementsRef.current.clear();
   }, []);
@@ -221,8 +237,10 @@ export function useVoiceChat({
 
     // Handle new user joining voice
     const handleVoiceUserJoined = (member: LobbyMember) => {
+      console.log(`[Voice] User ${member.odId} joined voice, waiting for their offer`);
       onVoiceMemberJoined?.(member);
-      // Wait for their offer (they are not the initiator since they joined after us)
+      // The NEW user receives voice:members and initiates connections to existing users
+      // We (existing user) just wait for their offer
     };
 
     // Handle user leaving voice

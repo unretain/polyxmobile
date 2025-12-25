@@ -181,6 +181,7 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
     };
 
     const handleInvite = (invite: LobbyInvite) => {
+      console.log("[Social] Received lobby invite:", invite);
       addInvite(invite);
       // Show toast notification if enabled
       if (notificationsEnabled) {
@@ -761,7 +762,7 @@ export function SocialPanel({ isOpen, onClose }: SocialPanelProps) {
       // Create lobby first, then invite
       socket.emit(
         "lobby:create",
-        { name: `${session?.user?.name || "User"}'s Lobby` },
+        { name: `${displayName || session?.user?.name || "User"}'s Lobby` },
         (response: { success: boolean; lobby?: any; error?: string }) => {
           if (response.success && response.lobby) {
             setCurrentLobby(response.lobby);
