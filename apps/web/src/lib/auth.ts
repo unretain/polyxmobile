@@ -154,8 +154,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   callbacks: {
     async jwt({ token, user, account, trigger }) {
+      console.log(`[Auth] JWT callback - trigger: ${trigger}, hasUser: ${!!user}, hasAccount: ${!!account}, tokenId: ${token.id}`);
+
       if (user) {
         token.id = user.id;
+        console.log(`[Auth] Set token.id from user: ${user.id}`);
       }
       if (account?.provider === "google") {
         token.provider = "google";
@@ -164,21 +167,30 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // Fetch user data on sign-in, update, or if missing from token
       // This ensures name/username changes are reflected in the session
       if (token.id && (trigger === "signIn" || trigger === "update" || !token.walletAddress)) {
-        const dbUser = await prisma.user.findUnique({
-          where: { id: token.id as string },
-          select: { walletAddress: true, name: true, username: true, image: true },
-        });
-        if (dbUser) {
-          token.walletAddress = dbUser.walletAddress ?? undefined;
-          token.name = dbUser.name ?? undefined;
-          token.username = dbUser.username ?? undefined;
-          token.picture = dbUser.image ?? undefined;
+        console.log(`[Auth] Fetching user data for: ${token.id}`);
+        try {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: token.id as string },
+            select: { walletAddress: true, name: true, username: true, image: true },
+          });
+          if (dbUser) {
+            token.walletAddress = dbUser.walletAddress ?? undefined;
+            token.name = dbUser.name ?? undefined;
+            token.username = dbUser.username ?? undefined;
+            token.picture = dbUser.image ?? undefined;
+            console.log(`[Auth] User data fetched: ${dbUser.name}, wallet: ${dbUser.walletAddress ? 'yes' : 'no'}`);
+          } else {
+            console.log(`[Auth] No user found for id: ${token.id}`);
+          }
+        } catch (error) {
+          console.error(`[Auth] Error fetching user data:`, error);
         }
       }
 
       return token;
     },
     async session({ session, token }) {
+      console.log(`[Auth] Session callback - tokenId: ${token.id}`);
       if (session.user) {
         session.user.id = token.id as string;
         session.user.name = token.name as string | undefined;
