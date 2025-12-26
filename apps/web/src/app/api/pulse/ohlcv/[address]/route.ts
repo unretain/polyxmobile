@@ -1,50 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchInternalApi } from "@/lib/config";
 
-// Solana address validation
-const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-
-// Proxy to internal API - protects Birdeye API key
+// Return empty data - API service not available
+// TODO: Re-enable when apps/api is deployed
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ address: string }> }
 ) {
-  try {
-    const { address } = await params;
+  const { address } = await params;
+  const timeframe = req.nextUrl.searchParams.get("timeframe") || "1min";
 
-    // Validate address format
-    if (!address || !SOLANA_ADDRESS_REGEX.test(address)) {
-      return NextResponse.json(
-        { error: "Invalid token address" },
-        { status: 400 }
-      );
-    }
-
-    const timeframe = req.nextUrl.searchParams.get("timeframe") || "1min";
-
-    const response = await fetchInternalApi(
-      `/api/pulse/ohlcv/${encodeURIComponent(address)}?timeframe=${timeframe}`
-    );
-
-    if (!response.ok) {
-      return NextResponse.json(
-        { error: "Failed to fetch OHLCV data" },
-        { status: response.status }
-      );
-    }
-
-    const data = await response.json();
-
-    return NextResponse.json(data, {
-      headers: {
-        "Cache-Control": "public, max-age=10",
-      },
-    });
-  } catch (error) {
-    console.error("[pulse/ohlcv] Error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
+  return NextResponse.json({
+    address,
+    timeframe,
+    data: [],
+    timestamp: Date.now(),
+    source: "disabled",
+    realtime: false,
+  }, {
+    headers: {
+      "Cache-Control": "public, max-age=30",
+    },
+  });
 }
