@@ -84,6 +84,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const email = credentials.email as string;
         const password = credentials.password as string;
 
+        // Check if this is a Phantom wallet login (email ends with @phantom)
+        const isPhantomLogin = email.endsWith("@phantom");
+
         // Find user in database
         const user = await prisma.user.findUnique({
           where: { email },
@@ -94,21 +97,37 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           // Hash password
           const passwordHash = await bcrypt.hash(password, 12);
 
-          // Generate wallet
-          const { publicKey, encryptedPrivateKey } = generateWalletForUser(WALLET_SECRET);
+          // For Phantom users, use their connected wallet address directly
+          // For regular users, generate a new wallet
+          let walletAddress: string;
+          let walletEncrypted: string | null = null;
+
+          if (isPhantomLogin) {
+            // For Phantom users, the password IS the public key
+            // They bring their own wallet, we don't generate one
+            walletAddress = password;
+            console.log(`Creating Phantom user with connected wallet ${walletAddress}`);
+          } else {
+            // Generate wallet for regular users
+            const wallet = generateWalletForUser(WALLET_SECRET);
+            walletAddress = wallet.publicKey;
+            walletEncrypted = wallet.encryptedPrivateKey;
+          }
 
           // Create new user with wallet
           const newUser = await prisma.user.create({
             data: {
               email,
               passwordHash,
-              name: email.split("@")[0],
-              walletAddress: publicKey,
-              walletEncrypted: encryptedPrivateKey,
+              name: isPhantomLogin ? `Phantom_${email.split("@")[0]}` : email.split("@")[0],
+              walletAddress,
+              walletEncrypted,
+              // Phantom users are auto-verified (no email to verify)
+              emailVerified: isPhantomLogin ? new Date() : null,
             },
           });
 
-          console.log(`Created new user ${email} with wallet ${publicKey}`);
+          console.log(`Created new user ${email} with wallet ${walletAddress}`);
 
           return {
             id: newUser.id,
@@ -154,20 +173,16 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   callbacks: {
     async jwt({ token, user, account, trigger }) {
-      console.log(`[Auth] JWT callback - trigger: ${trigger}, hasUser: ${!!user}, hasAccount: ${!!account}, tokenId: ${token.id}`);
-
       if (user) {
         token.id = user.id;
-        console.log(`[Auth] Set token.id from user: ${user.id}`);
       }
       if (account?.provider === "google") {
         token.provider = "google";
       }
 
-      // Fetch user data on sign-in, update, or if missing from token
-      // This ensures name/username changes are reflected in the session
-      if (token.id && (trigger === "signIn" || trigger === "update" || !token.walletAddress)) {
-        console.log(`[Auth] Fetching user data for: ${token.id}`);
+      // Only fetch user data on sign-in or explicit update trigger
+      // Don't fetch on every request - that's what makes things slow
+      if (token.id && (trigger === "signIn" || trigger === "update")) {
         try {
           const dbUser = await prisma.user.findUnique({
             where: { id: token.id as string },
@@ -178,9 +193,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             token.name = dbUser.name ?? undefined;
             token.username = dbUser.username ?? undefined;
             token.picture = dbUser.image ?? undefined;
-            console.log(`[Auth] User data fetched: ${dbUser.name}, wallet: ${dbUser.walletAddress ? 'yes' : 'no'}`);
-          } else {
-            console.log(`[Auth] No user found for id: ${token.id}`);
           }
         } catch (error) {
           console.error(`[Auth] Error fetching user data:`, error);
@@ -190,7 +202,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return token;
     },
     async session({ session, token }) {
-      console.log(`[Auth] Session callback - tokenId: ${token.id}`);
       if (session.user) {
         session.user.id = token.id as string;
         session.user.name = token.name as string | undefined;
