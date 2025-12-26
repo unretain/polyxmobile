@@ -238,9 +238,19 @@ class CandleCacheService {
       toTimestamp
     );
 
+    // Calculate expected number of candles for the requested range
+    const expectedCandles = Math.floor((toTimestamp - fromTimestamp) / intervalMs);
+    const hasEnoughCandles = cachedCandles.length >= expectedCandles * 0.8; // 80% threshold
+
+    // Force full fetch if we have way fewer candles than expected (indicates incomplete cache)
+    const cacheIsIncomplete = cachedCandles.length > 0 && cachedCandles.length < expectedCandles * 0.5;
+    if (cacheIsIncomplete) {
+      console.log(`[candleCache] Cache incomplete for ${tokenAddress.substring(0, 8)}... ${normalizedTf}: have ${cachedCandles.length}, expected ~${expectedCandles}`);
+    }
+
     // If we only need the live candle and we have cached data, just update that
-    // BUT only if we don't need older historical data
-    if (onlyLiveCandle && cachedCandles.length > 0 && shouldFetch && fetchFromTimestamp && !needsOlderHistoricalFetch) {
+    // BUT only if we don't need older historical data AND cache isn't incomplete
+    if (onlyLiveCandle && cachedCandles.length > 0 && shouldFetch && fetchFromTimestamp && !needsOlderHistoricalFetch && !cacheIsIncomplete) {
       try {
         const now = Date.now();
         console.log(`[candleCache] Fetching ONLY live candle for ${tokenAddress.substring(0, 8)}... ${normalizedTf}`);
@@ -269,19 +279,20 @@ class CandleCacheService {
       return cachedCandles;
     }
 
-    // Need to fetch data (either no cache, missing historical, or missing recent)
-    if (shouldFetch || needsOlderHistoricalFetch || cachedCandles.length === 0) {
+    // Need to fetch data (either no cache, missing historical, missing recent, or incomplete cache)
+    if (shouldFetch || needsOlderHistoricalFetch || cachedCandles.length === 0 || cacheIsIncomplete) {
       let fetchFrom: number;
       let fetchTo = toTimestamp;
 
       if (cachedCandles.length === 0 && !oldestCached) {
         // No cache at all - fetch full range
         fetchFrom = fromTimestamp;
-      } else if (needsOlderHistoricalFetch) {
-        // Need older data - fetch full range from requested start
-        // This will get both old historical AND fill any gaps
+      } else if (cacheIsIncomplete || needsOlderHistoricalFetch) {
+        // Cache is incomplete or we need older data - fetch full range
+        // This will get complete historical data and fill any gaps
         fetchFrom = fromTimestamp;
         fetchTo = toTimestamp;
+        console.log(`[candleCache] Full re-fetch for ${tokenAddress.substring(0, 8)}... ${normalizedTf} (incomplete: ${cacheIsIncomplete}, needsOlder: ${needsOlderHistoricalFetch})`);
       } else {
         // Need recent data - fetch from where cache ends
         fetchFrom = fetchFromTimestamp || fromTimestamp;

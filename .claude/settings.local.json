@@ -378,7 +378,9 @@
       "Bash(else echo \"No .env file in apps/web\")",
       "Bash(npx tsx:*)",
       "Bash(npx prisma migrate:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(railway logs:*)",
+      "Bash(npx railway:*)"
     ],
     "deny": [],
     "ask": []
