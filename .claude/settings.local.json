@@ -377,7 +377,8 @@
       "Bash(then grep -E \"^\\(AUTH_SECRET|NEXTAUTH_SECRET\\)=\" .env.local)",
       "Bash(else echo \"No .env file in apps/web\")",
       "Bash(npx tsx:*)",
-      "Bash(npx prisma migrate:*)"
+      "Bash(npx prisma migrate:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []
