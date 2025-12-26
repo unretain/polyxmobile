@@ -36,18 +36,37 @@ export async function middleware(request: NextRequest) {
     const secret = process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET;
     const isSecure = process.env.NODE_ENV === "production" || request.url.startsWith("https");
 
-    // Auth.js v5 uses different cookie names than next-auth v4
-    const cookieName = isSecure ? "__Secure-authjs.session-token" : "authjs.session-token";
+    // Log all cookies to debug
+    const allCookies = request.cookies.getAll();
+    const cookieNames = allCookies.map(c => c.name).join(', ');
+    console.log(`[Middleware] All cookies: ${cookieNames}`);
 
-    console.log(`[Middleware] Checking auth for protected route: ${pathname}, cookieName: ${cookieName}, isSecure: ${isSecure}`);
+    // Try multiple cookie name formats (Auth.js v5 vs next-auth v4)
+    const possibleCookieNames = isSecure
+      ? ["__Secure-authjs.session-token", "__Secure-next-auth.session-token", "authjs.session-token", "next-auth.session-token"]
+      : ["authjs.session-token", "next-auth.session-token"];
 
-    const token = await getToken({
-      req: request,
-      secret,
-      cookieName,
-    });
+    let token = null;
+    let usedCookieName = null;
 
-    console.log(`[Middleware] Token: ${token ? `exists (id: ${token.id})` : 'null'}`);
+    for (const cookieName of possibleCookieNames) {
+      const hasCookie = request.cookies.has(cookieName);
+      console.log(`[Middleware] Trying cookie ${cookieName}: ${hasCookie ? 'exists' : 'missing'}`);
+
+      if (hasCookie) {
+        token = await getToken({
+          req: request,
+          secret,
+          cookieName,
+        });
+        if (token) {
+          usedCookieName = cookieName;
+          break;
+        }
+      }
+    }
+
+    console.log(`[Middleware] Token result: ${token ? `exists (id: ${token.id}, cookie: ${usedCookieName})` : 'null'}`);
 
     // If not authenticated, redirect to landing page
     if (!token) {
