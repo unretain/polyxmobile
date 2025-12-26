@@ -11,6 +11,8 @@ const publicRoutes = ["/", "/solutions", "/tos", "/privacy", "/embed", "/api"];
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  console.log(`[Middleware] Request: ${pathname}`);
+
   // Check if this is a protected route
   const isProtectedRoute = protectedRoutes.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`)
@@ -21,8 +23,11 @@ export async function middleware(request: NextRequest) {
     (route) => pathname === route || pathname.startsWith(`${route}/`)
   );
 
+  console.log(`[Middleware] isProtected: ${isProtectedRoute}, isPublic: ${isPublicRoute}`);
+
   // If it's a public route, allow access
   if (isPublicRoute && !isProtectedRoute) {
+    console.log(`[Middleware] Allowing public route: ${pathname}`);
     return NextResponse.next();
   }
 
@@ -34,19 +39,26 @@ export async function middleware(request: NextRequest) {
     // Auth.js v5 uses different cookie names than next-auth v4
     const cookieName = isSecure ? "__Secure-authjs.session-token" : "authjs.session-token";
 
+    console.log(`[Middleware] Checking auth for protected route: ${pathname}, cookieName: ${cookieName}, isSecure: ${isSecure}`);
+
     const token = await getToken({
       req: request,
       secret,
       cookieName,
     });
 
+    console.log(`[Middleware] Token: ${token ? `exists (id: ${token.id})` : 'null'}`);
+
     // If not authenticated, redirect to landing page
     if (!token) {
       const baseUrl = process.env.NEXTAUTH_URL || process.env.AUTH_URL || request.url;
       const url = new URL("/", baseUrl);
       url.searchParams.set("redirect", pathname);
+      console.log(`[Middleware] Redirecting unauthenticated user to: ${url.toString()}`);
       return NextResponse.redirect(url);
     }
+
+    console.log(`[Middleware] Authenticated user accessing: ${pathname}`);
   }
 
   return NextResponse.next();
