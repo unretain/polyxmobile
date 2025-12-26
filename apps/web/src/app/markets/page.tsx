@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { TrendingUp, RefreshCw, ExternalLink, DollarSign, Filter, Flame } from "lucide-react";
+import { TrendingUp, RefreshCw, DollarSign, Flame } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import { ExpansiveMarketView } from "@/components/markets/ExpansiveMarketView";
 import { cn, formatNumber } from "@/lib/utils";
@@ -341,7 +341,6 @@ export default function MarketsPage() {
       {/* Category Filter */}
       <div className="flex-shrink-0 px-4">
         <div className="flex items-center gap-2 overflow-x-auto pb-2">
-          <Filter className={`h-4 w-4 flex-shrink-0 ${isDark ? 'text-white/40' : 'text-gray-400'}`} />
           {CATEGORIES.map((cat) => (
             <button
               key={cat.id}
@@ -418,20 +417,6 @@ export default function MarketsPage() {
         )}
       </div>
 
-      {/* Footer */}
-      <div className={`flex-shrink-0 flex items-center justify-between px-4 py-2 backdrop-blur-md border text-xs ${
-        isDark ? 'bg-white/5 border-white/10 text-white/50' : 'bg-black/5 border-black/10 text-gray-500'
-      }`}>
-        <span>Data from Polymarket Gamma API • Multi-outcome markets supported</span>
-        <a
-          href="https://docs.polymarket.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1 text-[#FF6B4A] hover:text-[#FF8F6B] transition-colors"
-        >
-          API Docs <ExternalLink className="h-3 w-3" />
-        </a>
-      </div>
 
       {/* Expanded Market View */}
       {expandedMarket && (
