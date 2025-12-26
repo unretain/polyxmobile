@@ -240,12 +240,15 @@ class CandleCacheService {
 
     // Calculate expected number of candles for the requested range
     const expectedCandles = Math.floor((toTimestamp - fromTimestamp) / intervalMs);
-    const hasEnoughCandles = cachedCandles.length >= expectedCandles * 0.8; // 80% threshold
 
     // Force full fetch if we have way fewer candles than expected (indicates incomplete cache)
-    const cacheIsIncomplete = cachedCandles.length > 0 && cachedCandles.length < expectedCandles * 0.5;
+    // Use 50% threshold - if we have less than half what we expect, cache is incomplete
+    const cacheIsIncomplete = cachedCandles.length < expectedCandles * 0.5;
+
+    console.log(`[candleCache] ${tokenAddress.substring(0, 8)}... ${normalizedTf}: have ${cachedCandles.length} candles, expected ~${expectedCandles}, incomplete: ${cacheIsIncomplete}, shouldFetch: ${shouldFetch}, onlyLive: ${onlyLiveCandle}`);
+
     if (cacheIsIncomplete) {
-      console.log(`[candleCache] Cache incomplete for ${tokenAddress.substring(0, 8)}... ${normalizedTf}: have ${cachedCandles.length}, expected ~${expectedCandles}`);
+      console.log(`[candleCache] Cache incomplete for ${tokenAddress.substring(0, 8)}... ${normalizedTf}: have ${cachedCandles.length}, need ${Math.floor(expectedCandles * 0.5)}+`);
     }
 
     // If we only need the live candle and we have cached data, just update that
@@ -323,7 +326,12 @@ class CandleCacheService {
     }
 
     // Cache is complete and fresh - serve directly
-    console.log(`[candleCache] Serving ${tokenAddress.substring(0, 8)}... ${normalizedTf} from cache (${cachedCandles.length} candles)`);
+    // But double-check we actually have enough candles!
+    if (cacheIsIncomplete) {
+      console.log(`[candleCache] WARNING: Serving incomplete cache for ${tokenAddress.substring(0, 8)}... ${normalizedTf} (${cachedCandles.length}/${expectedCandles} candles) - this shouldn't happen!`);
+    } else {
+      console.log(`[candleCache] Serving ${tokenAddress.substring(0, 8)}... ${normalizedTf} from cache (${cachedCandles.length} candles)`);
+    }
     return cachedCandles;
   }
 }
