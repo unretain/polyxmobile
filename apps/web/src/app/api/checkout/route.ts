@@ -16,6 +16,22 @@ const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY, {
   apiVersion: "2025-11-17.clover",
 }) : null;
 
+// Check if email is a valid format (not a fake wallet-generated email)
+function isValidEmail(email: string): boolean {
+  // Must have @ and a real domain (not @phantom, @solana, etc.)
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) return false;
+
+  // Reject fake wallet-generated emails
+  const fakeDomains = ['phantom', 'solana', 'wallet', 'solflare'];
+  const domain = email.split('@')[1]?.toLowerCase() || '';
+  if (fakeDomains.some(fake => domain === fake || domain.startsWith(fake + '.'))) {
+    return false;
+  }
+
+  return true;
+}
+
 export async function POST(req: NextRequest) {
   let plan: string | undefined;
   try {
@@ -99,10 +115,13 @@ export async function POST(req: NextRequest) {
 
     // Create Stripe checkout session for new subscriptions
     // Use subscription mode for recurring payments (Pro/Business plans)
+    // For wallet users with fake emails, let Stripe collect a real email during checkout
+    const hasValidEmail = isValidEmail(email);
+
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       payment_method_types: ["card"],
-      customer_email: email,
+      ...(hasValidEmail ? { customer_email: email } : {}),
       line_items: [
         {
           price: priceId,
@@ -113,7 +132,7 @@ export async function POST(req: NextRequest) {
       cancel_url: cancelUrl || `${APP_URL}/solutions?canceled=true`,
       metadata: {
         plan,
-        email,
+        walletEmail: email, // Store original email/wallet identifier
       },
       allow_promotion_codes: true,
     });
