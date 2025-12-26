@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { TrendingUp, RefreshCw, DollarSign, Flame } from "lucide-react";
+import { TrendingUp, RefreshCw, ExternalLink, DollarSign, Flame } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import { ExpansiveMarketView } from "@/components/markets/ExpansiveMarketView";
 import { cn, formatNumber } from "@/lib/utils";
