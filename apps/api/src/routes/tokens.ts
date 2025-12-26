@@ -26,6 +26,7 @@ const ohlcvQuerySchema = z.object({
   from: z.coerce.number().optional(),
   to: z.coerce.number().optional(),
   limit: z.coerce.number().min(1).max(1000).default(500),
+  cacheOnly: z.coerce.boolean().optional().default(false), // If true, only read from DB cache, never fetch from Birdeye
 });
 
 // Helper to aggregate daily candles into weekly
@@ -277,6 +278,10 @@ async function syncDashboardTokens() {
     if (!metadataSynced) {
       metadataSynced = true;
       console.log(`✅ Dashboard metadata synced for ${DASHBOARD_TOKENS.length} tokens`);
+
+      // On first sync, also populate OHLCV cache for all dashboard tokens
+      // This runs in background so dashboard loads instantly
+      syncDashboardOHLCV().catch(console.error);
     }
 
     if (added > 0) {
@@ -287,6 +292,45 @@ async function syncDashboardTokens() {
     console.error("Error syncing dashboard tokens:", error);
     throw error;
   }
+}
+
+// Background sync for OHLCV data - populates cache so dashboard loads instantly
+async function syncDashboardOHLCV() {
+  console.log("📊 Starting background OHLCV cache population...");
+
+  const now = Date.now();
+  const fromMs = now - 24 * 60 * 60 * 1000; // Last 24 hours
+
+  for (const token of DASHBOARD_TOKENS) {
+    try {
+      // Check if we already have enough cached data
+      const cached = await candleCacheService.getCachedCandles(token.address, "1m", fromMs, now);
+      const expectedCandles = Math.floor((now - fromMs) / (60 * 1000)); // 1m = 60000ms
+
+      if (cached.length < expectedCandles * 0.5) {
+        console.log(`[OHLCV-Sync] ${token.symbol}: Only ${cached.length}/${expectedCandles} candles cached, fetching...`);
+
+        // Fetch from Birdeye and cache
+        const fromSec = Math.floor(fromMs / 1000);
+        const toSec = Math.floor(now / 1000);
+        const candles = await birdeyeService.getOHLCV(token.address, "1m", { from: fromSec, to: toSec });
+
+        if (candles.length > 0) {
+          await candleCacheService.storeCandles(token.address, "1m", candles);
+          console.log(`[OHLCV-Sync] ${token.symbol}: Cached ${candles.length} candles`);
+        }
+
+        // Small delay between tokens to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } else {
+        console.log(`[OHLCV-Sync] ${token.symbol}: Cache OK (${cached.length} candles)`);
+      }
+    } catch (err) {
+      console.warn(`[OHLCV-Sync] ${token.symbol} failed:`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  console.log("✅ OHLCV cache population complete");
 }
 
 // GET /api/tokens - List all tokens from DATABASE
@@ -412,10 +456,10 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
   try {
     const { address } = req.params;
     const query = ohlcvQuerySchema.parse(req.query);
-    const { timeframe, from, to, limit } = query;
+    const { timeframe, from, to, limit, cacheOnly } = query;
 
     // NOTE: No Redis cache here - candleCacheService handles DB caching
-    // Redis was causing stale data issues when DB had fresh candles
+    // cacheOnly=true means only read from DB, never fetch from Birdeye (for dashboard previews)
 
     let ohlcv;
 
@@ -483,52 +527,56 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
       }
     } else {
       // Use Birdeye for main dashboard tokens (established tokens with history)
-      // Pulse tokens use /api/pulse/ohlcv endpoint which goes to PumpPortal
       // Now with database caching to reduce Birdeye API calls
       const now = Date.now();
       const toMs = (to ? to * 1000 : now);
 
       // If no 'from' provided, calculate a sensible default based on timeframe
-      // This ensures we fetch enough historical data for the chart
       let fromMs: number;
       if (from && from > 0) {
         fromMs = from * 1000;
       } else {
-        // Default time ranges when 'from' not specified (for dashboard preview cards)
+        // Default time ranges when 'from' not specified
         const defaultRanges: Record<string, number> = {
           "1m": 24 * 60 * 60 * 1000,        // 24 hours for 1m candles
           "5m": 3 * 24 * 60 * 60 * 1000,    // 3 days for 5m candles
           "15m": 7 * 24 * 60 * 60 * 1000,   // 7 days for 15m candles
-          "1h": 365 * 24 * 60 * 60 * 1000,  // 1 year for 1h candles (dashboard uses this)
+          "1h": 365 * 24 * 60 * 60 * 1000,  // 1 year for 1h candles
           "4h": 365 * 24 * 60 * 60 * 1000,  // 1 year for 4h candles
           "1d": 3 * 365 * 24 * 60 * 60 * 1000, // 3 years for 1d candles
         };
-        const range = defaultRanges[timeframe] || 30 * 24 * 60 * 60 * 1000; // Default 30 days
+        const range = defaultRanges[timeframe] || 30 * 24 * 60 * 60 * 1000;
         fromMs = now - range;
       }
 
-      try {
-        ohlcv = await candleCacheService.getCandles(
-          address,
-          timeframe,
-          fromMs,
-          toMs,
-          async (fetchFromMs, fetchToMs) => {
-            // Convert back to seconds for Birdeye API
-            const fetchFromSec = Math.floor(fetchFromMs / 1000);
-            const fetchToSec = Math.floor(fetchToMs / 1000);
-            console.log(`[OHLCV] Fetching from Birdeye: ${address.substring(0, 8)}... ${timeframe} ${new Date(fetchFromMs).toISOString()} to ${new Date(fetchToMs).toISOString()}`);
-            return birdeyeService.getOHLCV(address, timeframe, {
-              from: fetchFromSec,
-              to: fetchToSec,
-              limit,
-            });
-          }
-        );
-      } catch (birdeyeError) {
-        // Failed - return empty array instead of 500
-        console.warn(`OHLCV failed for ${address}:`, birdeyeError instanceof Error ? birdeyeError.message : birdeyeError);
-        ohlcv = [];
+      // cacheOnly mode: Just read from DB, don't fetch from Birdeye
+      // Used for dashboard previews - instant response, no API calls
+      if (cacheOnly) {
+        ohlcv = await candleCacheService.getCachedCandles(address, timeframe, fromMs, toMs);
+        console.log(`[OHLCV] Cache-only: ${address.substring(0, 8)}... ${timeframe} - ${ohlcv.length} candles from DB`);
+      } else {
+        // Full mode: Check cache, fetch from Birdeye if needed
+        try {
+          ohlcv = await candleCacheService.getCandles(
+            address,
+            timeframe,
+            fromMs,
+            toMs,
+            async (fetchFromMs, fetchToMs) => {
+              const fetchFromSec = Math.floor(fetchFromMs / 1000);
+              const fetchToSec = Math.floor(fetchToMs / 1000);
+              console.log(`[OHLCV] Fetching from Birdeye: ${address.substring(0, 8)}... ${timeframe}`);
+              return birdeyeService.getOHLCV(address, timeframe, {
+                from: fetchFromSec,
+                to: fetchToSec,
+                limit,
+              });
+            }
+          );
+        } catch (birdeyeError) {
+          console.warn(`OHLCV failed for ${address}:`, birdeyeError instanceof Error ? birdeyeError.message : birdeyeError);
+          ohlcv = [];
+        }
       }
     }
 
