@@ -62,12 +62,12 @@ const BIRDEYE_LINE_CONFIG: Record<string, { interval: string; seconds: number }>
 };
 
 const BIRDEYE_CANDLE_CONFIG: Record<string, { interval: string; seconds: number }> = {
-  "1m": { interval: "1m", seconds: 7200 },        // 1 min candles, 2 hours of data
-  "5m": { interval: "5m", seconds: 36000 },       // 5 min candles, 10 hours of data
-  "15m": { interval: "15m", seconds: 86400 },     // 15 min candles, 24 hours of data
-  "1h": { interval: "1h", seconds: 86400 * 5 },   // 1 hour candles, 5 days of data
-  "4h": { interval: "4h", seconds: 86400 * 20 },  // 4 hour candles, 20 days of data
-  "1d": { interval: "1d", seconds: 86400 * 180 }, // 1 day candles, 6 months of data
+  "1m": { interval: "1m", seconds: 86400 },       // 1 min candles, 24 hours of data
+  "5m": { interval: "5m", seconds: 86400 * 3 },   // 5 min candles, 3 days of data
+  "15m": { interval: "15m", seconds: 86400 * 7 }, // 15 min candles, 7 days of data
+  "1h": { interval: "1h", seconds: 86400 * 30 },  // 1 hour candles, 30 days of data
+  "4h": { interval: "4h", seconds: 86400 * 90 },  // 4 hour candles, 90 days of data
+  "1d": { interval: "1d", seconds: 86400 * 365 }, // 1 day candles, 1 year of data
   "1w": { interval: "1d", seconds: 86400 * 365 * 2 }, // Daily candles aggregated (Birdeye doesn't support 1w directly)
   "1M": { interval: "1d", seconds: 86400 * 365 * 10 }, // Daily candles for 10 years (monthly aggregated)
 };
