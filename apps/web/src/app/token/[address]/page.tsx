@@ -443,11 +443,9 @@ export default function TokenPage() {
 
       setTrades((prev) => [newTrade, ...prev].slice(0, 50));
 
-      // Update token market cap if we have pulseToken
-      if (pulseToken) {
-        const marketCapUsd = data.marketCapSol * solPrice;
-        setPulseToken({ ...pulseToken, marketCap: marketCapUsd });
-      }
+      // Update token market cap using functional update to avoid stale closure
+      const marketCapUsd = data.marketCapSol * solPrice;
+      setPulseToken((prev) => prev ? { ...prev, marketCap: marketCapUsd } : null);
     });
 
     // LIVE: Handle real-time OHLCV candle updates (1-second candles)
@@ -479,7 +477,9 @@ export default function TokenPage() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [address, fromPulse, chartPeriod, pulseToken]);
+    // NOTE: Do NOT include pulseToken in deps - it changes every second from polling
+    // which would cause reconnection loop. We access it via closure in event handlers.
+  }, [address, fromPulse, chartPeriod]);
 
   // Load chart period from localStorage, with source-specific defaults
   useEffect(() => {

@@ -83,7 +83,10 @@ export async function POST(req: NextRequest) {
         console.log("Payment mode:", session.mode);
 
         // Extract customer info
-        const email = session.customer_email || session.metadata?.email;
+        // For wallet users, Stripe collects real email during checkout (customer_email)
+        // walletEmail contains the original wallet identifier for reference
+        const email = session.customer_email || session.metadata?.walletEmail || session.metadata?.email;
+        const walletEmail = session.metadata?.walletEmail;
         const plan = session.metadata?.plan || "PRO";
         const stripeCustomerId = session.customer as string;
         // For one-time payments, there's no subscription ID
@@ -94,24 +97,39 @@ export async function POST(req: NextRequest) {
           break;
         }
 
-        console.log(`New ${session.mode === "payment" ? "purchase" : "subscription"}: ${email} - Plan: ${plan}`);
+        console.log(`New ${session.mode === "payment" ? "purchase" : "subscription"}: ${email} - Plan: ${plan}${walletEmail ? ` (wallet: ${walletEmail})` : ''}`);
 
         // Use transaction with serializable isolation to prevent race conditions
         await prisma.$transaction(async (tx) => {
           // Find user by email (if they have an account)
-          const user = await tx.user.findUnique({
+          // For wallet users, also try to find by their wallet-generated email
+          let user = await tx.user.findUnique({
             where: { email },
           });
 
-          // Check if subscription already exists
-          const existing = await tx.subscription.findUnique({
+          // If not found and we have a wallet email, try that
+          if (!user && walletEmail && walletEmail !== email) {
+            user = await tx.user.findUnique({
+              where: { email: walletEmail },
+            });
+          }
+
+          // Check if subscription already exists (by real email or wallet email)
+          let existing = await tx.subscription.findUnique({
             where: { email },
           });
+
+          // Also check by wallet email if different
+          if (!existing && walletEmail && walletEmail !== email) {
+            existing = await tx.subscription.findUnique({
+              where: { email: walletEmail },
+            });
+          }
 
           if (existing) {
             // Update existing subscription
             await tx.subscription.update({
-              where: { email },
+              where: { email: existing.email },
               data: {
                 plan: mapPlan(plan),
                 status: "ACTIVE",
