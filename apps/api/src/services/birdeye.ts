@@ -58,7 +58,8 @@ class BirdeyeService {
     }
   }
 
-  // Get OHLCV data
+  // Get OHLCV data with automatic chunked fetching for large time ranges
+  // Birdeye API returns limited candles per request, so we chunk requests
   async getOHLCV(
     address: string,
     timeframe: Timeframe = "1h",
@@ -71,7 +72,6 @@ class BirdeyeService {
 
     try {
       // Convert timeframe to Birdeye format
-      // Note: Birdeye doesn't support 1w/1M directly - we aggregate from 1d in the route
       const typeMap: Record<Timeframe, string> = {
         "1m": "1m",
         "5m": "5m",
@@ -79,64 +79,85 @@ class BirdeyeService {
         "1h": "1H",
         "4h": "4H",
         "1d": "1D",
-        "1w": "1D", // Fallback to daily (aggregation handled elsewhere)
-        "1M": "1D", // Fallback to daily (aggregation handled elsewhere)
+        "1w": "1D",
+        "1M": "1D",
       };
 
-      // Use provided from/to or calculate from limit
       const to = options?.to ?? Math.floor(Date.now() / 1000);
       const limit = options?.limit ?? 100;
       const from = options?.from ?? (to - this.getTimeframeSeconds(timeframe) * limit);
 
-      const response = await fetch(
-        `${BIRDEYE_API_URL}/defi/ohlcv?address=${address}&type=${typeMap[timeframe]}&time_from=${from}&time_to=${to}`,
-        { headers: this.getHeaders() }
-      );
+      // Birdeye typically returns ~1000 candles max per request
+      // Calculate how many candles we need based on the time range
+      const timeframeSeconds = this.getTimeframeSeconds(timeframe);
+      const totalSecondsRequested = to - from;
+      const estimatedCandlesNeeded = Math.ceil(totalSecondsRequested / timeframeSeconds);
 
-      if (!response.ok) {
-        throw new Error(`Birdeye OHLCV API error: ${response.status}`);
+      // If we need more than ~500 candles, use chunked fetching
+      // Birdeye seems to limit around 1000 per request, but we'll be conservative
+      const CHUNK_SIZE_CANDLES = 500;
+      const CHUNK_SIZE_SECONDS = CHUNK_SIZE_CANDLES * timeframeSeconds;
+
+      let allCandles: OHLCV[] = [];
+
+      if (estimatedCandlesNeeded <= CHUNK_SIZE_CANDLES) {
+        // Small request - single fetch
+        allCandles = await this.fetchOHLCVChunk(address, typeMap[timeframe], from, to);
+      } else {
+        // Large request - chunked fetching from oldest to newest
+        console.log(`📊 Birdeye chunked fetch: ${address.substring(0, 8)}... ${timeframe} needs ~${estimatedCandlesNeeded} candles, using chunks`);
+
+        let currentFrom = from;
+        let chunkCount = 0;
+        const maxChunks = 20; // Safety limit to prevent infinite loops
+
+        while (currentFrom < to && chunkCount < maxChunks) {
+          const currentTo = Math.min(currentFrom + CHUNK_SIZE_SECONDS, to);
+
+          try {
+            const chunk = await this.fetchOHLCVChunk(address, typeMap[timeframe], currentFrom, currentTo);
+
+            if (chunk.length === 0) {
+              // No data in this chunk, move forward
+              currentFrom = currentTo;
+              chunkCount++;
+              continue;
+            }
+
+            allCandles.push(...chunk);
+
+            // Move to next chunk (use last candle timestamp + 1 interval to avoid duplicates)
+            const lastTimestamp = chunk[chunk.length - 1].timestamp / 1000; // Convert back to seconds
+            currentFrom = Math.max(currentTo, lastTimestamp + timeframeSeconds);
+            chunkCount++;
+
+            // Small delay to be nice to the API
+            if (chunkCount < maxChunks && currentFrom < to) {
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+          } catch (chunkError) {
+            console.warn(`Chunk ${chunkCount} failed, continuing...`, chunkError);
+            currentFrom = currentTo;
+            chunkCount++;
+          }
+        }
+
+        console.log(`📊 Birdeye chunked fetch complete: ${chunkCount} chunks, ${allCandles.length} total candles`);
       }
 
-      const data = await response.json();
-      if (!data.success || !data.data?.items) {
-        throw new Error("No OHLCV data returned from Birdeye");
+      // Deduplicate by timestamp
+      const uniqueByTimestamp = new Map<number, OHLCV>();
+      for (const candle of allCandles) {
+        uniqueByTimestamp.set(candle.timestamp, candle);
       }
+      let sorted = Array.from(uniqueByTimestamp.values()).sort((a, b) => a.timestamp - b.timestamp);
 
-      // Map, validate, and sort by timestamp to ensure chronological order
-      // Filter out invalid data points (null, NaN, 0 prices, etc.)
-      const ohlcv = data.data.items
-        .map((item: BirdeyeOHLCVData) => ({
-          timestamp: item.unixTime * 1000,
-          open: item.o,
-          high: item.h,
-          low: item.l,
-          close: item.c,
-          volume: item.v || 0,
-        }))
-        .filter((candle: OHLCV) => {
-          // Filter out invalid candles
-          const isValid =
-            candle.timestamp > 0 &&
-            isFinite(candle.open) && candle.open > 0 &&
-            isFinite(candle.high) && candle.high > 0 &&
-            isFinite(candle.low) && candle.low > 0 &&
-            isFinite(candle.close) && candle.close > 0 &&
-            candle.high >= candle.low && // High must be >= Low
-            candle.high >= candle.open && candle.high >= candle.close && // High must be highest
-            candle.low <= candle.open && candle.low <= candle.close; // Low must be lowest
-          return isValid;
-        });
-
-      // Sort by timestamp ascending (oldest first, newest last)
-      let sorted = ohlcv.sort((a: OHLCV, b: OHLCV) => a.timestamp - b.timestamp);
-
-      // Filter out extreme price outliers (likely bad data from Birdeye)
-      // If a candle's high is more than 100x the median price, it's probably bad data
+      // Filter out extreme price outliers
       if (sorted.length > 5) {
         const closePrices = sorted.map((c: OHLCV) => c.close).sort((a: number, b: number) => a - b);
         const medianPrice = closePrices[Math.floor(closePrices.length / 2)];
-        const maxReasonablePrice = medianPrice * 100; // 100x median is likely bad data
-        const minReasonablePrice = medianPrice / 100; // 1/100 of median is also suspicious
+        const maxReasonablePrice = medianPrice * 100;
+        const minReasonablePrice = medianPrice / 100;
 
         const beforeFilter = sorted.length;
         sorted = sorted.filter((candle: OHLCV) =>
@@ -145,17 +166,62 @@ class BirdeyeService {
         );
 
         if (sorted.length < beforeFilter) {
-          console.log(`⚠️ Filtered ${beforeFilter - sorted.length} outlier candles (median: $${medianPrice.toFixed(2)}, max allowed: $${maxReasonablePrice.toFixed(2)})`);
+          console.log(`⚠️ Filtered ${beforeFilter - sorted.length} outlier candles`);
         }
       }
 
-      console.log(`📊 Birdeye OHLCV: ${address} ${timeframe} - ${data.data.items.length} raw, ${sorted.length} valid candles`);
+      console.log(`📊 Birdeye OHLCV: ${address.substring(0, 8)}... ${timeframe} - ${sorted.length} valid candles`);
 
       return sorted;
     } catch (error) {
       console.error("Error fetching Birdeye OHLCV:", error);
       throw error;
     }
+  }
+
+  // Fetch a single chunk of OHLCV data
+  private async fetchOHLCVChunk(
+    address: string,
+    birdeyeType: string,
+    from: number,
+    to: number
+  ): Promise<OHLCV[]> {
+    const response = await fetch(
+      `${BIRDEYE_API_URL}/defi/ohlcv?address=${address}&type=${birdeyeType}&time_from=${from}&time_to=${to}`,
+      { headers: this.getHeaders() }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Birdeye OHLCV API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (!data.success || !data.data?.items) {
+      return [];
+    }
+
+    // Map and validate candles
+    return data.data.items
+      .map((item: BirdeyeOHLCVData) => ({
+        timestamp: item.unixTime * 1000,
+        open: item.o,
+        high: item.h,
+        low: item.l,
+        close: item.c,
+        volume: item.v || 0,
+      }))
+      .filter((candle: OHLCV) => {
+        const isValid =
+          candle.timestamp > 0 &&
+          isFinite(candle.open) && candle.open > 0 &&
+          isFinite(candle.high) && candle.high > 0 &&
+          isFinite(candle.low) && candle.low > 0 &&
+          isFinite(candle.close) && candle.close > 0 &&
+          candle.high >= candle.low &&
+          candle.high >= candle.open && candle.high >= candle.close &&
+          candle.low <= candle.open && candle.low <= candle.close;
+        return isValid;
+      });
   }
 
   // Get price for multiple tokens
