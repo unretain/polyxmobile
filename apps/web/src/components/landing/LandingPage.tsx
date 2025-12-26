@@ -659,7 +659,7 @@ export function LandingPage() {
               {/* Docs Card with iOS cylinder rotation */}
               <Link
                 href="/docs"
-                className={`group rounded-2xl border py-4 md:py-6 px-3 md:px-5 card-shine hover:scale-[1.02] transition-all flex items-center justify-between relative overflow-hidden ${
+                className={`group rounded-2xl border py-4 md:py-6 px-3 md:px-5 card-shine hover:scale-[1.02] transition-all flex items-center justify-center relative overflow-hidden ${
                   isDark ? 'bg-[#1a1a1a] hover:bg-[#252525] border-transparent' : 'bg-white hover:bg-gray-100 border-transparent'
                 }`}
               >
@@ -690,7 +690,7 @@ export function LandingPage() {
               {/* Trade Markets Card with iOS cylinder rotation - no arrow */}
               <Link
                 href="/markets"
-                className={`group rounded-2xl border py-4 md:py-6 px-3 md:px-5 card-shine hover:scale-[1.02] transition-all flex items-center relative overflow-hidden ${
+                className={`group rounded-2xl border py-4 md:py-6 px-3 md:px-5 card-shine hover:scale-[1.02] transition-all flex items-center justify-center relative overflow-hidden ${
                   isDark ? 'bg-[#1a1a1a] hover:bg-[#252525] border-transparent' : 'bg-white hover:bg-gray-100 border-transparent'
                 }`}
               >
