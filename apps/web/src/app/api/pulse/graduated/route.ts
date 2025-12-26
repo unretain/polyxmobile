@@ -1,17 +1,30 @@
 import { NextResponse } from "next/server";
+import { fetchInternalApi } from "@/lib/config";
 
-// Return empty data - API service not available
-// TODO: Re-enable when apps/api is deployed
+// Proxy to internal API - protects Moralis API key
 export async function GET() {
-  return NextResponse.json({
-    data: [],
-    total: 0,
-    timestamp: Date.now(),
-    sources: [],
-    realtime: false,
-  }, {
-    headers: {
-      "Cache-Control": "public, max-age=30",
-    },
-  });
+  try {
+    const response = await fetchInternalApi("/api/pulse/graduated");
+
+    if (!response.ok) {
+      return NextResponse.json(
+        { error: "Failed to fetch graduated pairs" },
+        { status: response.status }
+      );
+    }
+
+    const data = await response.json();
+
+    return NextResponse.json(data, {
+      headers: {
+        "Cache-Control": "public, max-age=5",
+      },
+    });
+  } catch (error) {
+    console.error("[pulse/graduated] Error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }
