@@ -1,174 +1,90 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getJupiterService, SOL_MINT } from "@/lib/jupiter";
-import { config } from "@/lib/config";
 import { TradeStatus } from "@prisma/client";
 
 // GET /api/trading/balance
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    console.log("[balance] Request received");
-    console.log("[balance] RPC URL:", config.solanaRpcUrl ? config.solanaRpcUrl.substring(0, 30) + "..." : "NOT SET - using public");
-
     const session = await auth();
 
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
     }
 
-    // Get user wallet - first try by session ID
-    let user = await prisma.user.findUnique({
+    // Get user wallet
+    const user = await prisma.user.findUnique({
       where: { id: session.user.id },
-      select: {
-        id: true,
-        walletAddress: true,
-        email: true,
-      },
+      select: { walletAddress: true },
     });
 
-    // SECURITY: Don't log sensitive user info
-    console.log("[balance] User lookup:", { found: !!user, hasWallet: !!user?.walletAddress });
-
-    // If not found by ID, try by email (session might have stale ID)
-    if (!user && session.user.email) {
-      user = await prisma.user.findUnique({
-        where: { email: session.user.email },
-        select: {
-          id: true,
-          walletAddress: true,
-          email: true,
-        },
-      });
-      console.log("[balance] Fallback lookup:", { found: !!user, hasWallet: !!user?.walletAddress });
-    }
-
-    if (!user) {
-      console.error("[balance] User not found for session:", session.user.id);
-      return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
+    if (!user?.walletAddress) {
+      return NextResponse.json({ error: "No wallet found" }, { status: 400 });
     }
 
     const walletAddress = user.walletAddress;
-    if (!walletAddress) {
-      console.error("[balance] User has no wallet:", user.id);
-      return NextResponse.json(
-        { error: "No wallet found for user" },
-        { status: 400 }
-      );
-    }
-    console.log("[balance] Fetching for wallet:", walletAddress.substring(0, 8) + "...");
 
-    // Always fetch fresh data from RPC - no caching for trading balances
+    // Fetch balance data from RPC
     const jupiter = getJupiterService();
     const [solBalance, tokenAccounts] = await Promise.all([
       jupiter.getSolBalance(walletAddress),
       jupiter.getTokenAccounts(walletAddress),
     ]);
 
-    console.log("[balance] Fresh RPC data - SOL:", solBalance / 1e9, "Token accounts:", tokenAccounts.length);
-    // Log all token accounts for debugging
-    tokenAccounts.forEach((t, i) => {
-      console.log(`[balance] Token ${i}: mint=${t.mint.substring(0, 8)}... balance=${t.balance} decimals=${t.decimals}`);
-    });
-
     // Format SOL balance
     const solUiBalance = solBalance / 1e9; // Convert lamports to SOL
 
-    // Format token balances (before prices)
+    // Format token balances
     let tokensWithBalance = tokenAccounts
-      .filter((t) => Number(t.balance) > 0) // Only tokens with balance
+      .filter((t) => Number(t.balance) > 0)
       .map((t) => ({
         mint: t.mint,
         balance: t.balance,
         uiBalance: Number(t.balance) / Math.pow(10, t.decimals),
         decimals: t.decimals,
       }));
-    console.log("[balance] Tokens with balance from RPC:", tokensWithBalance.length);
 
     // FALLBACK: If RPC returns no tokens, calculate from trade history
     if (tokensWithBalance.length === 0) {
-      console.log("[balance] No tokens from RPC, falling back to trade history...");
-
       const trades = await prisma.trade.findMany({
-        where: {
-          userId: session.user.id,
-          status: TradeStatus.SUCCESS,
-        },
+        where: { userId: session.user.id, status: TradeStatus.SUCCESS },
         orderBy: { confirmedAt: "asc" },
       });
 
-      // Calculate token balances from trade history
       const tokenBalances = new Map<string, { balance: number; symbol: string }>();
-
       for (const trade of trades) {
         const isBuy = trade.inputMint === SOL_MINT;
         const tokenMint = isBuy ? trade.outputMint : trade.inputMint;
         const tokenSymbol = isBuy ? trade.outputSymbol : trade.inputSymbol;
-
-        // Most pump.fun tokens have 6 decimals
-        const tokenAmount = isBuy
-          ? Number(trade.amountOut) / 1e6
-          : Number(trade.amountIn) / 1e6;
-
+        const tokenAmount = isBuy ? Number(trade.amountOut) / 1e6 : Number(trade.amountIn) / 1e6;
         const current = tokenBalances.get(tokenMint) || { balance: 0, symbol: tokenSymbol };
-
-        if (isBuy) {
-          current.balance += tokenAmount;
-        } else {
-          current.balance -= tokenAmount;
-        }
-
+        current.balance += isBuy ? tokenAmount : -tokenAmount;
         tokenBalances.set(tokenMint, current);
       }
 
-      // Convert to tokens array, only including positive balances
       tokensWithBalance = Array.from(tokenBalances.entries())
         .filter(([, data]) => data.balance > 0.000001)
         .map(([mint, data]) => ({
           mint,
-          balance: Math.floor(data.balance * 1e6).toString(), // Convert back to raw amount
+          balance: Math.floor(data.balance * 1e6).toString(),
           uiBalance: data.balance,
-          decimals: 6, // Assume 6 decimals for pump.fun tokens
+          decimals: 6,
         }));
-
-      console.log("[balance] Tokens from trade history:", tokensWithBalance.length);
-      tokensWithBalance.forEach((t, i) => {
-        console.log(`[balance] Trade history token ${i}: mint=${t.mint.substring(0, 8)}... uiBalance=${t.uiBalance}`);
-      });
     }
 
-    // Get SOL price from database cache (updated by /api/prices/update)
-    let solPriceUsd: number | null = null;
-    const priceCache = await prisma.priceCache.findUnique({
-      where: { symbol: "SOL" },
-    });
+    // Get SOL price from database cache
+    const priceCache = await prisma.priceCache.findUnique({ where: { symbol: "SOL" } });
+    const solPriceUsd = priceCache?.priceUsd ?? null;
 
-    if (priceCache) {
-      // Check if price is stale (older than 5 minutes)
-      const ageMs = Date.now() - priceCache.updatedAt.getTime();
-      const isStale = ageMs > 5 * 60 * 1000;
-      solPriceUsd = priceCache.priceUsd;
-      console.log("[balance] SOL price from DB:", solPriceUsd, isStale ? "(stale)" : "");
-    } else {
-      console.warn("[balance] No SOL price in database - call /api/prices/update first");
-    }
-
-    // Get token prices from Jupiter (for non-SOL tokens only)
+    // Get token prices from Jupiter
     let prices = new Map<string, number>();
     const tokenMints = tokensWithBalance.map((t) => t.mint);
     if (tokenMints.length > 0) {
       try {
-        const jupiterForPrices = getJupiterService();
-        prices = await jupiterForPrices.getTokenPrices(tokenMints);
-        console.log("[balance] Token prices from Jupiter:", prices.size);
-      } catch (e) {
-        console.warn("[balance] Jupiter token price API failed:", e);
+        prices = await getJupiterService().getTokenPrices(tokenMints);
+      } catch {
+        // Silently fail - prices are optional
       }
     }
 
@@ -202,16 +118,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error("Balance error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Failed to get balance";
-    const errorStack = error instanceof Error ? error.stack : undefined;
-    console.error("Balance error stack:", errorStack);
-    return NextResponse.json(
-      {
-        error: errorMessage,
-        // Include debug info in non-production
-        ...(process.env.NODE_ENV !== "production" && { stack: errorStack }),
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to get balance" }, { status: 500 });
   }
 }
