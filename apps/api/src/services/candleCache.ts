@@ -24,14 +24,14 @@ const TIMEFRAME_MS: Record<string, number> = {
 // How often to refresh the CURRENT (live) candle only
 // Historical candles NEVER need refreshing - they're immutable
 const LIVE_CANDLE_REFRESH_MS: Record<string, number> = {
-  "1min": 10 * 1000,    // Refresh live 1m candle every 10s
-  "1m": 10 * 1000,
-  "5min": 30 * 1000,    // Refresh live 5m candle every 30s
-  "5m": 30 * 1000,
-  "15m": 60 * 1000,     // Refresh live 15m candle every 60s
-  "1h": 60 * 1000,      // Refresh live 1h candle every 60s
-  "4h": 2 * 60 * 1000,  // Refresh live 4h candle every 2m
-  "1d": 5 * 60 * 1000,  // Refresh live 1d candle every 5m
+  "1min": 30 * 1000,    // Refresh live 1m candle every 30s
+  "1m": 30 * 1000,
+  "5min": 60 * 1000,    // Refresh live 5m candle every 60s
+  "5m": 60 * 1000,
+  "15m": 2 * 60 * 1000, // Refresh live 15m candle every 2m
+  "1h": 5 * 60 * 1000,  // Refresh live 1h candle every 5m
+  "4h": 5 * 60 * 1000,  // Refresh live 4h candle every 5m
+  "1d": 10 * 60 * 1000, // Refresh live 1d candle every 10m
 };
 
 // Normalize timeframe names
@@ -239,7 +239,8 @@ class CandleCacheService {
     );
 
     // If we only need the live candle and we have cached data, just update that
-    if (onlyLiveCandle && cachedCandles.length > 0 && shouldFetch && fetchFromTimestamp) {
+    // BUT only if we don't need older historical data
+    if (onlyLiveCandle && cachedCandles.length > 0 && shouldFetch && fetchFromTimestamp && !needsOlderHistoricalFetch) {
       try {
         const now = Date.now();
         console.log(`[candleCache] Fetching ONLY live candle for ${tokenAddress.substring(0, 8)}... ${normalizedTf}`);
@@ -276,10 +277,11 @@ class CandleCacheService {
       if (cachedCandles.length === 0 && !oldestCached) {
         // No cache at all - fetch full range
         fetchFrom = fromTimestamp;
-      } else if (needsOlderHistoricalFetch && oldestCached) {
-        // Need older data - fetch from requested start to oldest cached
+      } else if (needsOlderHistoricalFetch) {
+        // Need older data - fetch full range from requested start
+        // This will get both old historical AND fill any gaps
         fetchFrom = fromTimestamp;
-        fetchTo = oldestCached - 1;
+        fetchTo = toTimestamp;
       } else {
         // Need recent data - fetch from where cache ends
         fetchFrom = fetchFromTimestamp || fromTimestamp;

@@ -489,8 +489,27 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
       // Use Birdeye for main dashboard tokens (established tokens with history)
       // Pulse tokens use /api/pulse/ohlcv endpoint which goes to PumpPortal
       // Now with database caching to reduce Birdeye API calls
-      const fromMs = (from || 0) * 1000;
-      const toMs = (to || Math.floor(Date.now() / 1000)) * 1000;
+      const now = Date.now();
+      const toMs = (to ? to * 1000 : now);
+
+      // If no 'from' provided, calculate a sensible default based on timeframe
+      // This ensures we fetch enough historical data for the chart
+      let fromMs: number;
+      if (from && from > 0) {
+        fromMs = from * 1000;
+      } else {
+        // Default time ranges when 'from' not specified (for dashboard preview cards)
+        const defaultRanges: Record<string, number> = {
+          "1m": 24 * 60 * 60 * 1000,        // 24 hours for 1m candles
+          "5m": 3 * 24 * 60 * 60 * 1000,    // 3 days for 5m candles
+          "15m": 7 * 24 * 60 * 60 * 1000,   // 7 days for 15m candles
+          "1h": 365 * 24 * 60 * 60 * 1000,  // 1 year for 1h candles (dashboard uses this)
+          "4h": 365 * 24 * 60 * 60 * 1000,  // 1 year for 4h candles
+          "1d": 3 * 365 * 24 * 60 * 60 * 1000, // 3 years for 1d candles
+        };
+        const range = defaultRanges[timeframe] || 30 * 24 * 60 * 60 * 1000; // Default 30 days
+        fromMs = now - range;
+      }
 
       try {
         ohlcv = await candleCacheService.getCandles(
