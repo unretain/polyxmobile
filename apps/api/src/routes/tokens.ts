@@ -414,12 +414,8 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
     const query = ohlcvQuerySchema.parse(req.query);
     const { timeframe, from, to, limit } = query;
 
-    // Try cache first
-    const cacheKey = `ohlcv:${address}:${timeframe}:${from}:${to}:${limit}`;
-    const cached = await cache.get(cacheKey);
-    if (cached) {
-      return res.json(JSON.parse(cached));
-    }
+    // NOTE: No Redis cache here - candleCacheService handles DB caching
+    // Redis was causing stale data issues when DB had fresh candles
 
     let ohlcv;
 
@@ -536,14 +532,7 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
       }
     }
 
-    // Cache OHLCV data - longer for historical, shorter for real-time
-    // Weekly/monthly: 5 min, daily/hourly: 2 min, minute data: 30 sec
-    const isPumpPortalData = ohlcv?.length > 0 && ohlcv[0]?.timestamp > Date.now() - 300000;
-    const cacheDuration = (timeframe === "1w" || timeframe === "1M") ? 300
-      : (timeframe === "1d" || timeframe === "4h" || timeframe === "1h") ? 120
-      : (isPumpPortalData ? 5 : 30);
-    await cache.set(cacheKey, JSON.stringify(ohlcv), cacheDuration);
-
+    // NOTE: No Redis caching - DB candleCacheService handles it
     res.json(ohlcv);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
