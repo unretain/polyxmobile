@@ -38,6 +38,7 @@ export function useVoiceChat({
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [localStreamReady, setLocalStreamReady] = useState(false);
   const pendingMembersRef = useRef<LobbyMember[]>([]);
+  const pendingOffersRef = useRef<Map<string, RTCSessionDescriptionInit>>(new Map());
 
   // Get local audio stream
   const startLocalStream = useCallback(async () => {
@@ -70,6 +71,7 @@ export function useVoiceChat({
     }
     setLocalStreamReady(false);
     pendingMembersRef.current = [];
+    pendingOffersRef.current.clear();
   }, []);
 
   // Create peer connection for a remote user
@@ -257,6 +259,13 @@ export function useVoiceChat({
       fromSocketId: string;
       offer: RTCSessionDescriptionInit;
     }) => {
+      // If stream not ready, queue the offer for later
+      if (!localStreamRef.current) {
+        console.log(`[Voice] Stream not ready, queuing offer from ${fromSocketId}`);
+        pendingOffersRef.current.set(fromSocketId, offer);
+        return;
+      }
+
       // Create peer connection for the offerer
       const pc = createPeerConnection(fromSocketId, false);
       if (!pc) return;
@@ -343,16 +352,42 @@ export function useVoiceChat({
     };
   }, [inVoice, startLocalStream, stopLocalStream, closeAllPeerConnections]);
 
-  // Process pending members when stream becomes ready
+  // Process pending members and offers when stream becomes ready
   useEffect(() => {
-    if (localStreamReady && pendingMembersRef.current.length > 0) {
+    if (!localStreamReady || !socket) return;
+
+    // Process pending members (we initiate connection to them)
+    if (pendingMembersRef.current.length > 0) {
       console.log(`[Voice] Stream ready, connecting to ${pendingMembersRef.current.length} pending members`);
       for (const member of pendingMembersRef.current) {
         createPeerConnection(member.odId, true);
       }
       pendingMembersRef.current = [];
     }
-  }, [localStreamReady, createPeerConnection]);
+
+    // Process pending offers (respond to their connection requests)
+    if (pendingOffersRef.current.size > 0) {
+      console.log(`[Voice] Stream ready, processing ${pendingOffersRef.current.size} pending offers`);
+      pendingOffersRef.current.forEach(async (offer, fromSocketId) => {
+        const pc = createPeerConnection(fromSocketId, false);
+        if (!pc) return;
+
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(offer));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+
+          socket.emit("voice:answer", {
+            targetSocketId: fromSocketId,
+            answer: pc.localDescription,
+          });
+        } catch (error) {
+          console.error("Failed to handle queued offer:", error);
+        }
+      });
+      pendingOffersRef.current.clear();
+    }
+  }, [localStreamReady, socket, createPeerConnection]);
 
   // Toggle mute
   const toggleMute = useCallback(() => {
