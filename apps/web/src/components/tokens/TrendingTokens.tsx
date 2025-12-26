@@ -63,10 +63,9 @@ function TrendingTokenCard({ token, index, isVisible }: { token: Token; index: n
       setIsLoadingOhlcv(true);
       setHasFetched(true);
       try {
-        const to = Math.floor(Date.now() / 1000);
-        const from = to - 3600; // 1 hour of data
+        // Fetch recent 1-minute candles for the preview chart (last 60 candles)
         const response = await fetch(
-          `/api/tokens/${token.address}/ohlcv?timeframe=1m&from=${from}&to=${to}&limit=60`
+          `/api/tokens/${token.address}/ohlcv?timeframe=1m&limit=60`
         );
         if (response.ok) {
           const data = await response.json();
