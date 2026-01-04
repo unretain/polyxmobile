@@ -68,8 +68,8 @@ const BIRDEYE_CANDLE_CONFIG: Record<string, { interval: string; seconds: number 
   "1h": { interval: "1h", seconds: 86400 * 30 },  // 1 hour candles, 30 days of data
   "4h": { interval: "4h", seconds: 86400 * 90 },  // 4 hour candles, 90 days of data
   "1d": { interval: "1d", seconds: 86400 * 365 }, // 1 day candles, 1 year of data
-  "1w": { interval: "1d", seconds: 86400 * 365 * 2 }, // Daily candles aggregated (Birdeye doesn't support 1w directly)
-  "1M": { interval: "1d", seconds: 86400 * 365 * 10 }, // Daily candles for 10 years (monthly aggregated)
+  "1w": { interval: "1w", seconds: 86400 * 365 * 5 }, // Weekly candles from DB cache (pre-aggregated from daily)
+  "1M": { interval: "1M", seconds: 86400 * 365 * 10 }, // Monthly candles from DB cache (pre-aggregated from daily)
 };
 
 // ============================================================================

@@ -380,7 +380,8 @@
       "Bash(npx prisma migrate:*)",
       "Bash(git checkout:*)",
       "Bash(railway logs:*)",
-      "Bash(npx railway:*)"
+      "Bash(npx railway:*)",
+      "Bash(npx ts-node:*)"
     ],
     "deny": [],
     "ask": []
