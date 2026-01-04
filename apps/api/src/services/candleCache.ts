@@ -19,6 +19,8 @@ const TIMEFRAME_MS: Record<string, number> = {
   "1h": 60 * 60 * 1000,
   "4h": 4 * 60 * 60 * 1000,
   "1d": 24 * 60 * 60 * 1000,
+  "1w": 7 * 24 * 60 * 60 * 1000,
+  "1M": 30 * 24 * 60 * 60 * 1000, // Approximate month
 };
 
 // How often to refresh the CURRENT (live) candle only
