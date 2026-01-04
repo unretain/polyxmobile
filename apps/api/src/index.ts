@@ -70,7 +70,6 @@ httpServer.listen(PORT, () => {
 
   // Start background Pulse sync (every 5 seconds)
   // Syncs token data from Moralis to DB for enriched metadata (logos, market cap)
-  // Real-time updates still come via PumpPortal WebSocket
   pulseSyncService.start();
   console.log(`📊 Pulse background sync started`);
 
