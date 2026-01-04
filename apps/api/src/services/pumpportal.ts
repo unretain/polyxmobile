@@ -666,6 +666,11 @@ class PumpPortalService extends EventEmitter {
     tokenAmount: number,
     timestamp: number
   ): Promise<void> {
+    // Skip trades without signature - can't store without txHash
+    if (!trade.signature) {
+      return;
+    }
+
     try {
       await prisma.tokenSwap.create({
         data: {
