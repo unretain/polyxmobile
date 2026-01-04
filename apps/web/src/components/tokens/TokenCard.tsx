@@ -79,10 +79,11 @@ export function TokenCard({ token }: TokenCardProps) {
       setIsLoadingOhlcv(true);
       setDataFetched(true);
       try {
-        // Fetch 4-hour candles for the preview chart
-        // cacheOnly=true means only read from DB cache, no Birdeye API calls
+        // Fetch 4-hour candles for the preview chart (90 days of data)
+        const now = Math.floor(Date.now() / 1000);
+        const from = now - (90 * 24 * 60 * 60); // 90 days
         const response = await fetch(
-          `/api/tokens/${token.address}/ohlcv?timeframe=4h&limit=100&cacheOnly=true`
+          `/api/tokens/${token.address}/ohlcv?timeframe=4h&from=${from}&to=${now}&limit=500`
         );
         if (response.ok) {
           const data = await response.json();
