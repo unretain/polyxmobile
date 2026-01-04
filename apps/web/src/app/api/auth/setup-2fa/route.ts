@@ -2,19 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import crypto from "crypto";
 
-// SECURITY: Get encryption key from environment
-const ENCRYPTION_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
-
-if (!ENCRYPTION_SECRET && process.env.NODE_ENV === "production") {
-  throw new Error("AUTH_SECRET or NEXTAUTH_SECRET must be set in production");
+// SECURITY: Lazy evaluation to avoid build-time errors
+function getEncryptionKey(): Buffer {
+  const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+  if (!secret && process.env.NODE_ENV === "production") {
+    throw new Error("AUTH_SECRET or NEXTAUTH_SECRET must be set in production");
+  }
+  return crypto.createHash("sha256").update(secret || "dev-only-secret").digest();
 }
-
-const ENCRYPTION_KEY = ENCRYPTION_SECRET
-  ? crypto.createHash("sha256").update(ENCRYPTION_SECRET).digest()
-  : crypto.createHash("sha256").update("dev-only-secret").digest();
 
 // Encrypt 2FA secret before storing
 function encrypt2FASecret(secret: string): string {
+  const ENCRYPTION_KEY = getEncryptionKey();
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv("aes-256-gcm", ENCRYPTION_KEY, iv);
   let encrypted = cipher.update(secret, "utf8", "hex");
