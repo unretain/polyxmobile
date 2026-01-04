@@ -278,13 +278,7 @@ async function syncDashboardTokens() {
     if (!metadataSynced) {
       metadataSynced = true;
       console.log(`✅ Dashboard metadata synced for ${DASHBOARD_TOKENS.length} tokens`);
-
-      // On first sync, also populate OHLCV cache for all dashboard tokens
-      // Use setImmediate to ensure this doesn't block the event loop during startup
-      // This allows the health check to respond before sync starts
-      setImmediate(() => {
-        syncDashboardOHLCV().catch(console.error);
-      });
+      // OHLCV data is synced manually - don't auto-sync on startup
     }
 
     if (added > 0) {
