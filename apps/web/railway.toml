@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "cd apps/web && npm install && npx prisma generate && npx prisma db push && npm run build"
+buildCommand = "cd apps/web && npm install && npx prisma generate && npm run build"
 
 [deploy]
 startCommand = "cd apps/web && npm run start"
