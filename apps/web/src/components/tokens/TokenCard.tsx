@@ -79,11 +79,13 @@ export function TokenCard({ token }: TokenCardProps) {
       setIsLoadingOhlcv(true);
       setDataFetched(true);
       try {
-        // Fetch 4-hour candles for the preview chart (90 days of data)
+        // Fetch daily candles from DB cache only (instant, no API calls)
+        // Background sync keeps 1d candles populated for all dashboard tokens
+        // 1d over 1 year shows clear trend in mini preview
         const now = Math.floor(Date.now() / 1000);
-        const from = now - (90 * 24 * 60 * 60); // 90 days
+        const from = now - (365 * 24 * 60 * 60); // 1 year
         const response = await fetch(
-          `/api/tokens/${token.address}/ohlcv?timeframe=4h&from=${from}&to=${now}&limit=500`
+          `/api/tokens/${token.address}/ohlcv?timeframe=1d&from=${from}&to=${now}&limit=365&cacheOnly=true`
         );
         if (response.ok) {
           const data = await response.json();

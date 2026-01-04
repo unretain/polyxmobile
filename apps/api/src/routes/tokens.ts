@@ -369,6 +369,47 @@ async function syncHistoricalOHLCV() {
   }
 
   console.log("✅ Historical OHLCV sync complete");
+
+  // Now aggregate and cache 1w and 1M candles from the daily data we just synced
+  await syncAggregatedCandles();
+}
+
+// Aggregate daily candles into 1w and 1M and store in cache
+async function syncAggregatedCandles() {
+  console.log("📊 [OHLCV-Sync] Aggregating 1w and 1M candles from daily...");
+  const now = Date.now();
+  const tenYearsMs = 10 * 365 * 24 * 60 * 60 * 1000;
+  const fromMs = now - tenYearsMs;
+
+  for (const token of DASHBOARD_TOKENS) {
+    try {
+      // Get all daily candles from cache
+      const dailyCandles = await candleCacheService.getCachedCandles(token.address, "1d", fromMs, now);
+
+      if (dailyCandles.length === 0) {
+        console.log(`[OHLCV-Sync] ${token.symbol}: No daily candles to aggregate`);
+        continue;
+      }
+
+      // Aggregate to weekly
+      const weeklyCandles = aggregateToWeekly(dailyCandles);
+      if (weeklyCandles.length > 0) {
+        await candleCacheService.storeCandles(token.address, "1w", weeklyCandles);
+        console.log(`[OHLCV-Sync] ${token.symbol} 1w: Cached ${weeklyCandles.length} candles`);
+      }
+
+      // Aggregate to monthly
+      const monthlyCandles = aggregateToMonthly(dailyCandles);
+      if (monthlyCandles.length > 0) {
+        await candleCacheService.storeCandles(token.address, "1M", monthlyCandles);
+        console.log(`[OHLCV-Sync] ${token.symbol} 1M: Cached ${monthlyCandles.length} candles`);
+      }
+    } catch (err) {
+      console.warn(`[OHLCV-Sync] ${token.symbol} aggregation failed:`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  console.log("✅ Aggregated candles (1w, 1M) sync complete");
 }
 
 // Periodic refresh of LIVE candles only (every 5 min)
@@ -540,43 +581,70 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
     if (timeframe === "1s") {
       ohlcv = [];
     }
-    // For weekly timeframe, first check DB cache (pre-aggregated), then fall back to aggregating daily candles
+    // For weekly timeframe, use smart caching - only fetch new daily candles and aggregate
     else if (timeframe === "1w") {
       const now = Date.now();
       const toMs = to ? to * 1000 : now;
-      const fromMs = from && from > 0 ? from * 1000 : now - (10 * 365 * 24 * 60 * 60 * 1000); // 10 years default (same as 1M)
+      const fromMs = from && from > 0 ? from * 1000 : now - (10 * 365 * 24 * 60 * 60 * 1000); // 10 years default
 
       console.log(`[OHLCV] 1w request for ${address.substring(0, 8)}...: from=${from} (${new Date(fromMs).toISOString()}), to=${to} (${new Date(toMs).toISOString()})`);
 
-      // First try to get pre-aggregated weekly candles from DB cache
+      // Get cached weekly candles
       const cachedWeekly = await candleCacheService.getCachedCandles(address, "1w", fromMs, toMs);
 
-      console.log(`[OHLCV] 1w cache query returned ${cachedWeekly.length} candles for ${address.substring(0, 8)}...`);
-      if (cachedWeekly.length > 0) {
-        console.log(`[OHLCV] 1w first candle: ${new Date(cachedWeekly[0].timestamp).toISOString()}, last: ${new Date(cachedWeekly[cachedWeekly.length-1].timestamp).toISOString()}`);
-      }
+      // Find the latest cached candle timestamp
+      const latestCached = cachedWeekly.length > 0
+        ? cachedWeekly[cachedWeekly.length - 1].timestamp
+        : null;
 
-      if (cachedWeekly.length > 0) {
-        console.log(`[OHLCV] Serving ${address.substring(0, 8)}... 1w from DB cache (${cachedWeekly.length} candles)`);
-        ohlcv = cachedWeekly;
-      } else {
-        // Fallback: fetch daily candles and aggregate to weekly
-        console.log(`[OHLCV] No 1w cache for ${address.substring(0, 8)}..., aggregating from daily`);
-        // Use 10 years of daily data for proper weekly aggregation (same as 1M)
-        const requestFrom = from && from > 0 ? from : Math.floor(now / 1000) - (10 * 365 * 86400);
-        const requestTo = to || Math.floor(now / 1000);
+      console.log(`[OHLCV] 1w cache: ${cachedWeekly.length} candles, latest: ${latestCached ? new Date(latestCached).toISOString() : 'none'}`);
+
+      // Check if we need to fetch new data
+      // Weekly candles: only fetch if latest cached is older than 1 week ago
+      const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
+      const needsFresh = !latestCached || (now - latestCached > oneWeekMs);
+
+      if (needsFresh) {
+        // Fetch daily candles from where we left off (or full history if no cache)
+        const fetchFromSec = latestCached
+          ? Math.floor(latestCached / 1000) - (7 * 86400) // Overlap by 1 week to ensure complete week
+          : (from && from > 0 ? from : Math.floor(now / 1000) - (10 * 365 * 86400));
+        const fetchToSec = to || Math.floor(now / 1000);
+
+        console.log(`[OHLCV] 1w fetching daily from ${new Date(fetchFromSec * 1000).toISOString()}`);
 
         const dailyCandles = await birdeyeService.getOHLCV(address, "1d", {
-          from: requestFrom,
-          to: requestTo,
-          limit: 2000, // Need ~1825 days for 5 years
+          from: fetchFromSec,
+          to: fetchToSec,
+          limit: 2000,
         });
 
         const uniqueCandles = Array.from(
           new Map((dailyCandles || []).map(c => [c.timestamp, c])).values()
         ).sort((a, b) => a.timestamp - b.timestamp);
 
-        ohlcv = aggregateToWeekly(uniqueCandles);
+        const newWeeklyCandles = aggregateToWeekly(uniqueCandles);
+
+        if (newWeeklyCandles.length > 0) {
+          // Store new weekly candles to DB (async, don't block response)
+          candleCacheService.storeCandles(address, "1w", newWeeklyCandles).catch((e) =>
+            console.error("[OHLCV] Failed to store 1w candles:", e)
+          );
+          console.log(`[OHLCV] 1w stored ${newWeeklyCandles.length} candles to DB cache`);
+
+          // Merge cached + new, deduplicate by timestamp
+          const allCandles = [...cachedWeekly, ...newWeeklyCandles];
+          const uniqueByTimestamp = new Map<number, typeof allCandles[0]>();
+          for (const c of allCandles) {
+            uniqueByTimestamp.set(c.timestamp, c);
+          }
+          ohlcv = Array.from(uniqueByTimestamp.values()).sort((a, b) => a.timestamp - b.timestamp);
+        } else {
+          ohlcv = cachedWeekly;
+        }
+      } else {
+        console.log(`[OHLCV] Serving ${address.substring(0, 8)}... 1w from DB cache (${cachedWeekly.length} candles)`);
+        ohlcv = cachedWeekly;
       }
 
       // Apply limit if specified
@@ -584,40 +652,70 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
         ohlcv = ohlcv.slice(-limit);
       }
     }
-    // For monthly timeframe, first check DB cache (pre-aggregated), then fall back to aggregating daily candles
+    // For monthly timeframe, use smart caching - only fetch new daily candles and aggregate
     else if (timeframe === "1M") {
       const now = Date.now();
       const toMs = to ? to * 1000 : now;
-      const fromMs = from && from > 0 ? from * 1000 : now - (5 * 365 * 24 * 60 * 60 * 1000); // 5 years default
+      const fromMs = from && from > 0 ? from * 1000 : now - (10 * 365 * 24 * 60 * 60 * 1000); // 10 years default
 
       console.log(`[OHLCV] 1M request for ${address.substring(0, 8)}...: from=${from} (${new Date(fromMs).toISOString()}), to=${to} (${new Date(toMs).toISOString()})`);
 
-      // First try to get pre-aggregated monthly candles from DB cache
+      // Get cached monthly candles
       const cachedMonthly = await candleCacheService.getCachedCandles(address, "1M", fromMs, toMs);
 
-      console.log(`[OHLCV] 1M cache query returned ${cachedMonthly.length} candles for ${address.substring(0, 8)}...`);
-      if (cachedMonthly.length > 0) {
-        console.log(`[OHLCV] 1M first candle: ${new Date(cachedMonthly[0].timestamp).toISOString()}, last: ${new Date(cachedMonthly[cachedMonthly.length-1].timestamp).toISOString()}`);
-      }
+      // Find the latest cached candle timestamp
+      const latestCached = cachedMonthly.length > 0
+        ? cachedMonthly[cachedMonthly.length - 1].timestamp
+        : null;
 
-      if (cachedMonthly.length > 0) {
-        console.log(`[OHLCV] Serving ${address.substring(0, 8)}... 1M from DB cache (${cachedMonthly.length} candles)`);
-        ohlcv = cachedMonthly;
-      } else {
-        // Fallback: fetch daily candles and aggregate to monthly
-        console.log(`[OHLCV] No 1M cache for ${address.substring(0, 8)}..., aggregating from daily`);
-        // Use 10 years of daily data for proper monthly aggregation
-        const requestFrom = from && from > 0 ? from : Math.floor(now / 1000) - (10 * 365 * 86400);
-        const requestTo = to || Math.floor(now / 1000);
+      console.log(`[OHLCV] 1M cache: ${cachedMonthly.length} candles, latest: ${latestCached ? new Date(latestCached).toISOString() : 'none'}`);
+
+      // Check if we need to fetch new data
+      // Monthly candles: only fetch if latest cached is older than 1 month ago
+      const oneMonthMs = 30 * 24 * 60 * 60 * 1000;
+      const needsFresh = !latestCached || (now - latestCached > oneMonthMs);
+
+      if (needsFresh) {
+        // Fetch daily candles from where we left off (or full history if no cache)
+        const fetchFromSec = latestCached
+          ? Math.floor(latestCached / 1000) - (30 * 86400) // Overlap by 1 month to ensure complete month
+          : (from && from > 0 ? from : Math.floor(now / 1000) - (10 * 365 * 86400));
+        const fetchToSec = to || Math.floor(now / 1000);
+
+        console.log(`[OHLCV] 1M fetching daily from ${new Date(fetchFromSec * 1000).toISOString()}`);
 
         const dailyCandles = await birdeyeService.getOHLCV(address, "1d", {
-          from: requestFrom,
-          to: requestTo,
-          limit: 2000, // Need ~1825 days for 5 years
+          from: fetchFromSec,
+          to: fetchToSec,
+          limit: 2000,
         });
 
-        const uniqueCandles = (dailyCandles || []).sort((a: any, b: any) => a.timestamp - b.timestamp);
-        ohlcv = aggregateToMonthly(uniqueCandles);
+        const uniqueCandles = Array.from(
+          new Map((dailyCandles || []).map(c => [c.timestamp, c])).values()
+        ).sort((a, b) => a.timestamp - b.timestamp);
+
+        const newMonthlyCandles = aggregateToMonthly(uniqueCandles);
+
+        if (newMonthlyCandles.length > 0) {
+          // Store new monthly candles to DB (async, don't block response)
+          candleCacheService.storeCandles(address, "1M", newMonthlyCandles).catch((e) =>
+            console.error("[OHLCV] Failed to store 1M candles:", e)
+          );
+          console.log(`[OHLCV] 1M stored ${newMonthlyCandles.length} candles to DB cache`);
+
+          // Merge cached + new, deduplicate by timestamp
+          const allCandles = [...cachedMonthly, ...newMonthlyCandles];
+          const uniqueByTimestamp = new Map<number, typeof allCandles[0]>();
+          for (const c of allCandles) {
+            uniqueByTimestamp.set(c.timestamp, c);
+          }
+          ohlcv = Array.from(uniqueByTimestamp.values()).sort((a, b) => a.timestamp - b.timestamp);
+        } else {
+          ohlcv = cachedMonthly;
+        }
+      } else {
+        console.log(`[OHLCV] Serving ${address.substring(0, 8)}... 1M from DB cache (${cachedMonthly.length} candles)`);
+        ohlcv = cachedMonthly;
       }
 
       // Apply limit if specified
