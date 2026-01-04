@@ -1,6 +1,5 @@
 import { prisma } from "../lib/prisma";
 import { moralisService } from "./moralis";
-import { pumpPortalService } from "./pumpportal";
 import { swapSyncService } from "./swapSync";
 import { PulseCategory } from "@prisma/client";
 
@@ -79,33 +78,17 @@ function mapTokenData(token: any): PulseTokenData {
   };
 }
 
-// Sync new pairs from Moralis + PumpPortal
+// Sync new pairs from Moralis only
 async function syncNewPairs(): Promise<number> {
   let tokens: PulseTokenData[] = [];
 
-  // Get from Moralis (primary source)
+  // Get from Moralis
   try {
     const moralisTokens = await moralisService.getNewPulsePairs(50);
     tokens = moralisTokens.map(mapTokenData);
     console.log(`[PulseSync] Got ${tokens.length} new tokens from Moralis`);
   } catch (err) {
     console.error("[PulseSync] Moralis new pairs error:", err);
-  }
-
-  // Supplement with PumpPortal real-time tokens
-  try {
-    const realtimeTokens = pumpPortalService.getRecentNewTokens();
-    const existingAddresses = new Set(tokens.map(t => t.address));
-    const newRealtimeTokens = realtimeTokens
-      .filter((t: any) => !existingAddresses.has(t.address))
-      .map(mapTokenData);
-
-    if (newRealtimeTokens.length > 0) {
-      tokens = [...newRealtimeTokens, ...tokens];
-      console.log(`[PulseSync] Added ${newRealtimeTokens.length} real-time tokens from PumpPortal`);
-    }
-  } catch (err) {
-    console.error("[PulseSync] PumpPortal error:", err);
   }
 
   // Upsert to database with throttling
@@ -247,38 +230,10 @@ async function syncGraduatedPairs(): Promise<number> {
       liquidity: parseFloat(t.liquidity || "0"),
       graduatedAt: t.graduatedAt ? new Date(t.graduatedAt).getTime() : Date.now(),
     }));
-    console.log(`[PulseSync] Got ${tokens.length} graduated tokens from Moralis (no enrichment)`);
+    console.log(`[PulseSync] Got ${tokens.length} graduated tokens from Moralis`);
   } catch (err) {
     console.error("[PulseSync] Moralis graduated error:", err);
   }
-
-  // Supplement with PumpPortal real-time migrated tokens (these have live MC/volume)
-  try {
-    const realtimeTokens = pumpPortalService.getMigratedTokens();
-    const existingAddresses = new Set(tokens.map(t => t.address));
-    const newMigratedTokens = realtimeTokens
-      .filter((t: any) => !existingAddresses.has(t.address) && t.marketCap > 0)
-      .map(mapTokenData);
-
-    if (newMigratedTokens.length > 0) {
-      tokens = [...newMigratedTokens, ...tokens];
-      console.log(`[PulseSync] Added ${newMigratedTokens.length} migrated tokens from PumpPortal (with live data)`);
-    }
-
-    // Also update MC/volume for existing tokens if PumpPortal has better data
-    for (const rt of realtimeTokens as any[]) {
-      const idx = tokens.findIndex(t => t.address === rt.address);
-      if (idx !== -1 && rt.marketCap > 0) {
-        tokens[idx].marketCap = rt.marketCap || tokens[idx].marketCap;
-        tokens[idx].volume24h = rt.volume24h || tokens[idx].volume24h;
-        tokens[idx].price = rt.price || tokens[idx].price;
-      }
-    }
-  } catch (err) {
-    console.error("[PulseSync] PumpPortal migrated error:", err);
-  }
-
-  // NO MORE ENRICHMENT - removed the getTokenData calls that were causing rate limits
 
   // Upsert to database with throttling
   const validTokens = tokens.filter(t => t.address && t.symbol && t.symbol !== "???");
