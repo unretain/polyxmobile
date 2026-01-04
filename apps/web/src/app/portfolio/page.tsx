@@ -22,8 +22,6 @@ import {
   Video,
   Image as ImageIcon,
 } from "lucide-react";
-import fixWebmDuration from "fix-webm-duration";
-
 
 interface DailyPnL {
   date: string;
@@ -124,6 +122,7 @@ export default function PortfolioPage() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [customBgImage, setCustomBgImage] = useState<string | null>(null);
   const [customBgVideo, setCustomBgVideo] = useState<string | null>(null);
+  const [customBgVideoFile, setCustomBgVideoFile] = useState<File | null>(null); // Keep file for server upload
   const [bgType, setBgType] = useState<"default" | "image" | "video">("default");
   const [isGeneratingCard, setIsGeneratingCard] = useState(false);
   const shareCardRef = useRef<HTMLDivElement>(null);
@@ -1189,6 +1188,7 @@ export default function PortfolioPage() {
                             }
                             const url = URL.createObjectURL(file);
                             setCustomBgVideo(url);
+                            setCustomBgVideoFile(file); // Keep file for server upload
                             setBgType("video");
                           }
                         }}
@@ -1200,54 +1200,16 @@ export default function PortfolioPage() {
                 <div className="flex items-center gap-3">
 
                   {bgType === "video" ? (
-                    /* Video Export with audio */
+                    /* Video Export - Server-side FFmpeg processing */
                     <button
                       onClick={async () => {
-                        if (!shareCardRef.current || !videoRef.current) return;
+                        if (!customBgVideoFile) {
+                          showToast('No video selected', 'error');
+                          return;
+                        }
                         setIsGeneratingCard(true);
                         try {
-                          const video = videoRef.current;
-                          console.log('EXPORT: start');
-
-                          // Use native video resolution for quality, then scale for output
-                          const videoW = video.videoWidth || 1920;
-                          const videoH = video.videoHeight || 1080;
-
-                          // Output at 1080p maintaining aspect ratio, or native if smaller
-                          const maxW = 1920;
-                          const maxH = 1080;
-                          const scale = Math.min(maxW / videoW, maxH / videoH, 1);
-                          const outW = Math.round(videoW * scale);
-                          const outH = Math.round(videoH * scale);
-
-                          console.log('EXPORT: video=' + videoW + 'x' + videoH + ' output=' + outW + 'x' + outH);
-
-                          // Reset video to start
-                          video.currentTime = 0;
-                          video.muted = false;
-
-                          await new Promise<void>((resolve) => {
-                            const onSeeked = () => {
-                              video.removeEventListener('seeked', onSeeked);
-                              resolve();
-                            };
-                            if (video.currentTime === 0 && video.readyState >= 2) {
-                              resolve();
-                            } else {
-                              video.addEventListener('seeked', onSeeked);
-                            }
-                          });
-
-                          // Create high-quality canvas
-                          const canvas = document.createElement('canvas');
-                          canvas.width = outW;
-                          canvas.height = outH;
-                          const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
-                          if (!ctx) { console.log('EXPORT: NO CTX'); return; }
-
-                          // Pre-compute overlay text
-                          const padX = Math.round(outW * 0.044);
-                          const padY = Math.round(outH * 0.067);
+                          // Prepare overlay data
                           const periodLabel = selectedDayForShare
                             ? new Date(selectedDayForShare.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
                             : viewMode === "calendar"
@@ -1263,146 +1225,48 @@ export default function PortfolioPage() {
                           const trades = selectedDayForShare?.trades ?? pnlData?.summary.totalTrades ?? 0;
                           const winRate = ((pnlData?.summary.winRate || 0) * 100).toFixed(0);
                           const statsText = selectedDayForShare
-                            ? `${trades} trade${trades !== 1 ? 's' : ''} • ${(selectedDayForShare.volume || 0).toFixed(4)} SOL volume`
-                            : `${trades} trades • ${winRate}% win rate`;
+                            ? `${trades} trade${trades !== 1 ? 's' : ''} - ${(selectedDayForShare.volume || 0).toFixed(4)} SOL volume`
+                            : `${trades} trades - ${winRate}% win rate`;
                           const dateStr = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
-                          // Scale fonts based on output size
-                          const fontScale = outH / 480;
-                          const logoSize = Math.round(32 * fontScale);
-                          const periodSize = Math.round(18 * fontScale);
-                          const pnlSize = Math.round(56 * fontScale);
-                          const statsSize = Math.round(18 * fontScale);
+                          // Create form data with video + overlay info
+                          const formData = new FormData();
+                          formData.append('video', customBgVideoFile);
+                          formData.append('data', JSON.stringify({
+                            periodLabel,
+                            pnlValue: pnlText,
+                            pnlIsPositive: isPos,
+                            statsText,
+                            dateText: dateStr,
+                          }));
 
-                          // Draw frame function using requestVideoFrameCallback for sync
-                          const drawOverlay = () => {
-                            // Draw video frame
-                            ctx.drawImage(video, 0, 0, outW, outH);
+                          showToast('Processing video...', 'info');
 
-                            // Semi-transparent overlay
-                            ctx.fillStyle = 'rgba(0,0,0,0.30)';
-                            ctx.fillRect(0, 0, outW, outH);
-
-                            // Logo top-left
-                            ctx.font = `bold ${logoSize}px Arial`;
-                            ctx.textAlign = 'left';
-                            ctx.textBaseline = 'top';
-                            ctx.fillStyle = 'white';
-                            ctx.fillText('[poly', padX, padY);
-                            ctx.fillStyle = '#FF6B4A';
-                            ctx.fillText('x', padX + ctx.measureText('[poly').width, padY);
-                            ctx.fillStyle = 'white';
-                            ctx.fillText(']', padX + ctx.measureText('[polyx').width, padY);
-
-                            // Center text
-                            ctx.textAlign = 'center';
-                            ctx.textBaseline = 'middle';
-                            ctx.font = `${periodSize}px Arial`;
-                            ctx.fillStyle = 'rgba(255,255,255,0.8)';
-                            ctx.fillText(`${periodLabel} PnL`, outW / 2, outH * 0.4);
-                            ctx.font = `bold ${pnlSize}px Arial`;
-                            ctx.fillStyle = isPos ? '#4ade80' : '#f87171';
-                            ctx.fillText(pnlText, outW / 2, outH * 0.52);
-                            ctx.font = `${statsSize}px Arial`;
-                            ctx.fillStyle = 'rgba(255,255,255,0.6)';
-                            ctx.fillText(statsText, outW / 2, outH * 0.65);
-
-                            // Footer
-                            ctx.textBaseline = 'bottom';
-                            ctx.textAlign = 'left';
-                            ctx.fillText(dateStr, padX, outH - padY);
-                            ctx.textAlign = 'right';
-                            ctx.fillText('polyx.trade', outW - padX, outH - padY);
-                          };
-
-                          // 1. Start video playing first
-                          await video.play();
-                          console.log('EXPORT: video playing');
-
-                          // 2. Draw first frame
-                          drawOverlay();
-
-                          // 3. Use setInterval for consistent frame rate (requestAnimationFrame gets throttled)
-                          const frameInterval = setInterval(() => {
-                            drawOverlay();
-                          }, 1000 / 30); // 30 fps
-
-                          await new Promise(r => setTimeout(r, 100));
-
-                          // 4. Now create the stream from canvas that has content
-                          const canvasStream = canvas.captureStream(30);
-                          console.log('EXPORT: canvas stream created');
-
-                          // 5. Add audio from video
-                          let stream: MediaStream = canvasStream;
-                          try {
-                            const vidStream = (video as any).captureStream?.();
-                            if (vidStream?.getAudioTracks()?.length) {
-                              stream = new MediaStream([...canvasStream.getVideoTracks(), ...vidStream.getAudioTracks()]);
-                              console.log('EXPORT: audio added');
-                            }
-                          } catch (e) { console.log('EXPORT: no audio'); }
-
-                          // 6. Create recorder
-                          const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
-                            ? 'video/webm;codecs=vp9,opus'
-                            : 'video/webm;codecs=vp8,opus';
-                          console.log('EXPORT: using ' + mimeType);
-
-                          const chunks: Blob[] = [];
-                          const recorder = new MediaRecorder(stream, {
-                            mimeType,
-                            videoBitsPerSecond: 8000000
+                          // Send to server for FFmpeg processing
+                          const response = await fetch('/api/video/pnl-card', {
+                            method: 'POST',
+                            body: formData,
                           });
 
-                          // 7. Setup handlers BEFORE start
-                          recorder.ondataavailable = (e) => {
-                            console.log('EXPORT: chunk ' + e.data.size);
-                            chunks.push(e.data);
-                          };
+                          if (!response.ok) {
+                            const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+                            throw new Error(error.error || 'Video processing failed');
+                          }
 
-                          const startTime = Date.now();
+                          // Download the processed video
+                          const blob = await response.blob();
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `polyx-pnl-${Date.now()}.mp4`;
+                          a.click();
+                          URL.revokeObjectURL(url);
 
-                          recorder.onstop = async () => {
-                            clearInterval(frameInterval);
-                            video.pause();
-
-                            const duration = Date.now() - startTime;
-                            console.log('EXPORT: stopped, chunks=' + chunks.length);
-
-                            const blob = new Blob(chunks, { type: 'video/webm' });
-                            console.log('EXPORT: blob size=' + blob.size);
-
-                            if (blob.size < 1000) {
-                              showToast('Recording failed', 'error');
-                              setIsGeneratingCard(false);
-                              return;
-                            }
-
-                            const fixedBlob = await fixWebmDuration(blob, duration);
-
-                            const a = document.createElement('a');
-                            a.href = URL.createObjectURL(fixedBlob);
-                            a.download = `polyx-pnl-${Date.now()}.webm`;
-                            a.click();
-                            showToast('Video downloaded!', 'success');
-                            setIsGeneratingCard(false);
-                          };
-
-                          // 8. Start recording
-                          const videoDuration = Math.min(video.duration * 1000, 60000) || 10000;
-                          console.log('EXPORT: recording for ' + videoDuration + 'ms');
-                          recorder.start();
-
-                          // 9. Stop after duration
-                          setTimeout(() => {
-                            console.log('EXPORT: stopping');
-                            recorder.stop();
-                          }, videoDuration);
-
+                          showToast('Video downloaded!', 'success');
                         } catch (err) {
-                          console.error('Recording failed:', err);
-                          showToast('Recording failed', 'error');
+                          console.error('Video export failed:', err);
+                          showToast(err instanceof Error ? err.message : 'Video export failed', 'error');
+                        } finally {
                           setIsGeneratingCard(false);
                         }
                       }}
