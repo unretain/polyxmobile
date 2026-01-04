@@ -278,7 +278,10 @@ async function syncDashboardTokens() {
     if (!metadataSynced) {
       metadataSynced = true;
       console.log(`✅ Dashboard metadata synced for ${DASHBOARD_TOKENS.length} tokens`);
-      // OHLCV data is synced manually - don't auto-sync on startup
+
+      // On first sync, also populate OHLCV cache for all dashboard tokens
+      // This runs in background so dashboard loads instantly
+      syncDashboardOHLCV().catch(console.error);
     }
 
     if (added > 0) {
@@ -293,14 +296,13 @@ async function syncDashboardTokens() {
 
 // Timeframe configurations for OHLCV sync
 // Historical data is fetched ONCE, then only live candles are refreshed
-// Use reasonable ranges that Birdeye API supports (max ~1000 candles per request)
 const OHLCV_TIMEFRAMES = [
-  { tf: "1m", rangeMs: 7 * 24 * 60 * 60 * 1000, intervalMs: 60 * 1000 },               // 7 days (~10k candles)
-  { tf: "5m", rangeMs: 30 * 24 * 60 * 60 * 1000, intervalMs: 5 * 60 * 1000 },          // 30 days (~8.6k candles)
-  { tf: "15m", rangeMs: 90 * 24 * 60 * 60 * 1000, intervalMs: 15 * 60 * 1000 },        // 90 days (~8.6k candles)
-  { tf: "1h", rangeMs: 365 * 24 * 60 * 60 * 1000, intervalMs: 60 * 60 * 1000 },        // 1 year (~8.7k candles)
-  { tf: "4h", rangeMs: 2 * 365 * 24 * 60 * 60 * 1000, intervalMs: 4 * 60 * 60 * 1000 }, // 2 years (~4.3k candles)
-  { tf: "1d", rangeMs: 5 * 365 * 24 * 60 * 60 * 1000, intervalMs: 24 * 60 * 60 * 1000 }, // 5 years (~1.8k candles)
+  { tf: "1m", rangeMs: 7 * 24 * 60 * 60 * 1000, intervalMs: 60 * 1000 },           // 7 days
+  { tf: "5m", rangeMs: 30 * 24 * 60 * 60 * 1000, intervalMs: 5 * 60 * 1000 },       // 30 days
+  { tf: "15m", rangeMs: 90 * 24 * 60 * 60 * 1000, intervalMs: 15 * 60 * 1000 },     // 90 days
+  { tf: "1h", rangeMs: 2 * 365 * 24 * 60 * 60 * 1000, intervalMs: 60 * 60 * 1000 }, // 2 years
+  { tf: "4h", rangeMs: 3 * 365 * 24 * 60 * 60 * 1000, intervalMs: 4 * 60 * 60 * 1000 }, // 3 years
+  { tf: "1d", rangeMs: 5 * 365 * 24 * 60 * 60 * 1000, intervalMs: 24 * 60 * 60 * 1000 }, // 5 years
 ];
 
 let ohlcvSyncTimer: NodeJS.Timeout | null = null;
