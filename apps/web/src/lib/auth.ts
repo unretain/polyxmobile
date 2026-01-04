@@ -6,16 +6,14 @@ import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 import { generateWalletForUser } from "./wallet";
 
-// Get wallet encryption secret from env (AUTH_SECRET is the NextAuth v5 standard)
-// SECURITY: No fallback - must be configured in production
-const WALLET_ENCRYPTION_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
-
-if (!WALLET_ENCRYPTION_SECRET && process.env.NODE_ENV === "production") {
-  throw new Error("AUTH_SECRET or NEXTAUTH_SECRET must be set in production");
+// SECURITY: Lazy evaluation to avoid build-time errors
+function getWalletSecret(): string {
+  const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+  if (!secret && process.env.NODE_ENV === "production") {
+    throw new Error("AUTH_SECRET or NEXTAUTH_SECRET must be set in production");
+  }
+  return secret || "dev-only-secret-do-not-use-in-production";
 }
-
-// Only use fallback in development
-const WALLET_SECRET = WALLET_ENCRYPTION_SECRET || "dev-only-secret-do-not-use-in-production";
 
 /**
  * Generate a Solana wallet for a user if they don't have one
@@ -31,7 +29,7 @@ async function ensureUserHasWallet(userId: string): Promise<string | null> {
   }
 
   // Generate new wallet
-  const { publicKey, encryptedPrivateKey } = generateWalletForUser(WALLET_SECRET);
+  const { publicKey, encryptedPrivateKey } = generateWalletForUser(getWalletSecret());
 
   // Store in database
   await prisma.user.update({
@@ -109,7 +107,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             console.log(`Creating Phantom user with connected wallet ${walletAddress}`);
           } else {
             // Generate wallet for regular users
-            const wallet = generateWalletForUser(WALLET_SECRET);
+            const wallet = generateWalletForUser(getWalletSecret());
             walletAddress = wallet.publicKey;
             walletEncrypted = wallet.encryptedPrivateKey;
           }

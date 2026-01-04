@@ -4,14 +4,14 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import { generateWalletForUser } from "@/lib/wallet";
 
-// SECURITY: No fallback - must be configured
-const WALLET_ENCRYPTION_SECRET = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
-
-if (!WALLET_ENCRYPTION_SECRET && process.env.NODE_ENV === "production") {
-  throw new Error("AUTH_SECRET or NEXTAUTH_SECRET must be set in production");
+// SECURITY: Lazy evaluation to avoid build-time errors
+function getWalletSecret(): string {
+  const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+  if (!secret && process.env.NODE_ENV === "production") {
+    throw new Error("AUTH_SECRET or NEXTAUTH_SECRET must be set in production");
+  }
+  return secret || "dev-only-secret-do-not-use-in-production";
 }
-
-const WALLET_SECRET = WALLET_ENCRYPTION_SECRET || "dev-only-secret-do-not-use-in-production";
 
 // Password complexity regex: min 8 chars, 1 uppercase, 1 lowercase, 1 number
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     const passwordHash = await bcrypt.hash(password, 12);
 
     // Generate wallet
-    const { publicKey, encryptedPrivateKey } = generateWalletForUser(WALLET_SECRET);
+    const { publicKey, encryptedPrivateKey } = generateWalletForUser(getWalletSecret());
 
     // Send verification email FIRST before creating user
     const apiKey = process.env.RESEND_API_KEY;
