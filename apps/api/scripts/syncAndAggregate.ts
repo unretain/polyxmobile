@@ -2,8 +2,8 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-// Birdeye API - using internal key
-const BIRDEYE_API_KEY = process.env.BIRDEYE_API_KEY_INTERNAL;
+// Birdeye API key
+const BIRDEYE_API_KEY = process.env.BIRDEYE_API_KEY || process.env.BIRDEYE_API_KEY_INTERNAL;
 
 // Dashboard tokens to sync and aggregate
 const DASHBOARD_TOKENS = [

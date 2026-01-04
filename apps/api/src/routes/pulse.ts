@@ -2,11 +2,9 @@ import { Router } from "express";
 import { z } from "zod";
 // Primary data source: Database (swaps synced from Moralis)
 // OHLCV is built from stored swaps - no API calls per request
-// Fallback: PumpPortal real-time WebSocket for very new tokens
 import { pumpFunService } from "../services/pumpfun";
 import { dexScreenerService } from "../services/dexscreener";
 import { birdeyeService } from "../services/birdeye";
-import { pumpPortalService } from "../services/pumpportal";
 import { meteoraService } from "../services/meteora";
 import { moralisService } from "../services/moralis";
 import { pulseSyncService } from "../services/pulseSync";
@@ -19,100 +17,48 @@ export const pulseRoutes = Router();
 
 const newPairsQuerySchema = z.object({
   limit: z.coerce.number().min(1).max(100).default(50),
-  source: z.enum(["all", "pumpfun", "pumpportal", "meteora", "dexscreener", "trending"]).default("all"),
+  source: z.enum(["all", "pumpfun", "meteora", "dexscreener", "trending"]).default("all"),
 });
 
 // GET /api/pulse/new-pairs - Get newest token pairs
-// ARCHITECTURE:
-// - Real-time updates come via WebSocket (PumpPortal -> Socket.io -> Frontend)
-// - This endpoint serves INITIAL LOAD data from DB (enriched with Moralis logos/data)
-// - DB syncs every 5 seconds from Moralis for enriched data
-// - PumpPortal WebSocket provides instant new tokens (sub-second)
+// Data source: Database (enriched with Moralis logos/data)
 pulseRoutes.get("/new-pairs", async (req, res) => {
   try {
     const query = newPairsQuerySchema.parse(req.query);
     const { limit } = query;
 
-    // First: Get real-time tokens from PumpPortal (instant, sub-second)
-    const realtimeTokens = pumpPortalService.getRecentNewTokens() as any[];
-
-    // Second: Get enriched tokens from DB (has logos, market cap from Moralis)
+    // Get enriched tokens from DB (has logos, market cap from Moralis)
     const dbTokens = await prisma.pulseToken.findMany({
       where: { category: PulseCategory.NEW },
       orderBy: { tokenCreatedAt: "desc" },
       take: limit,
     });
 
-    // Create a map of DB tokens for quick lookup
-    const dbTokenMap = new Map(dbTokens.map((t) => [t.address, t]));
-
-    // Merge: Use realtime data but enrich with DB data if available
-    const mergedTokens: any[] = [];
-    const seenAddresses = new Set<string>();
-
-    // Add realtime tokens first (newest)
-    for (const rt of realtimeTokens) {
-      if (seenAddresses.has(rt.address)) continue;
-      seenAddresses.add(rt.address);
-
-      const dbToken = dbTokenMap.get(rt.address);
-      mergedTokens.push({
-        address: rt.address,
-        symbol: rt.symbol,
-        name: rt.name,
-        logoUri: dbToken?.logoUri || rt.logoUri || rt.image_uri,
-        description: rt.description,
-        price: rt.price || dbToken?.price || 0,
-        priceChange24h: rt.priceChange24h || dbToken?.priceChange24h || 0,
-        volume24h: rt.volume24h || dbToken?.volume24h || 0,
-        marketCap: rt.marketCap || dbToken?.marketCap || 0,
-        liquidity: rt.liquidity || dbToken?.liquidity || 0,
-        txCount: rt.txCount || rt.replyCount || 0,
-        replyCount: rt.replyCount || 0,
-        createdAt: rt.createdAt,
-        twitter: rt.twitter,
-        telegram: rt.telegram,
-        website: rt.website,
-        source: "pumpportal",
-      });
-    }
-
-    // Add DB tokens not in realtime (older tokens with enriched data)
-    for (const dbt of dbTokens) {
-      if (seenAddresses.has(dbt.address)) continue;
-      seenAddresses.add(dbt.address);
-
-      mergedTokens.push({
-        address: dbt.address,
-        symbol: dbt.symbol,
-        name: dbt.name,
-        logoUri: dbt.logoUri,
-        description: dbt.description,
-        price: dbt.price,
-        priceChange24h: dbt.priceChange24h,
-        volume24h: dbt.volume24h,
-        marketCap: dbt.marketCap,
-        liquidity: dbt.liquidity,
-        txCount: dbt.txCount,
-        replyCount: dbt.replyCount,
-        createdAt: dbt.tokenCreatedAt?.getTime() || dbt.createdAt.getTime(),
-        twitter: dbt.twitter,
-        telegram: dbt.telegram,
-        website: dbt.website,
-        source: "database",
-      });
-    }
-
-    // Sort by creation time (newest first) and limit
-    mergedTokens.sort((a, b) => b.createdAt - a.createdAt);
-    const data = mergedTokens.slice(0, limit);
+    const data = dbTokens.map((dbt) => ({
+      address: dbt.address,
+      symbol: dbt.symbol,
+      name: dbt.name,
+      logoUri: dbt.logoUri,
+      description: dbt.description,
+      price: dbt.price,
+      priceChange24h: dbt.priceChange24h,
+      volume24h: dbt.volume24h,
+      marketCap: dbt.marketCap,
+      liquidity: dbt.liquidity,
+      txCount: dbt.txCount,
+      replyCount: dbt.replyCount,
+      createdAt: dbt.tokenCreatedAt?.getTime() || dbt.createdAt.getTime(),
+      twitter: dbt.twitter,
+      telegram: dbt.telegram,
+      website: dbt.website,
+      source: "database",
+    }));
 
     const response = {
       data,
       total: data.length,
       timestamp: Date.now(),
-      sources: ["pumpportal", "database"],
-      realtime: pumpPortalService.isConnected(),
+      sources: ["database"],
     };
 
     res.json(response);
@@ -124,91 +70,42 @@ pulseRoutes.get("/new-pairs", async (req, res) => {
 
 // GET /api/pulse/graduating - Get coins about to graduate from pump.fun
 // "Final Stretch" = Market cap $10K-$69K (approaching graduation threshold)
-// Uses DB for enriched data + PumpPortal for real-time updates
-// Shows NEWEST tokens first, filters out anything > 1 hour old
+// Uses DB for enriched data - shows NEWEST tokens first, filters out anything > 1 hour old
 pulseRoutes.get("/graduating", async (req, res) => {
   try {
     const oneHourAgo = Date.now() - 60 * 60 * 1000;
 
     // Get from DB (enriched with Moralis data)
     // Sort by creation time descending - newest first
-    // Category filter handles graduation (sync checks actual bonding status from Moralis)
     const dbTokens = await prisma.pulseToken.findMany({
       where: {
         category: PulseCategory.GRADUATING,
         tokenCreatedAt: { gte: new Date(oneHourAgo) },
       },
-      orderBy: { tokenCreatedAt: "desc" }, // Newest first
+      orderBy: { tokenCreatedAt: "desc" },
     });
 
-    // Get real-time from PumpPortal
-    const realtimeTokens = pumpPortalService.getGraduatingTokens() as any[];
-    const dbTokenMap = new Map(dbTokens.map((t) => [t.address, t]));
-
-    // Merge tokens
-    const mergedTokens: any[] = [];
-    const seenAddresses = new Set<string>();
-
-    // Add realtime tokens first (newest)
-    // Filter by bonding progress - only show tokens that haven't graduated yet
-    for (const rt of realtimeTokens) {
-      if (seenAddresses.has(rt.address)) continue;
-      // Skip if already graduated (bonding complete)
-      const progress = rt.bondingProgress || 0;
-      if (progress >= 100 || rt.complete) continue;
-      // Filter out tokens older than 1 hour
-      if (rt.createdAt && rt.createdAt < oneHourAgo) continue;
-      seenAddresses.add(rt.address);
-
-      const dbToken = dbTokenMap.get(rt.address);
-      mergedTokens.push({
-        address: rt.address,
-        symbol: rt.symbol,
-        name: rt.name,
-        logoUri: dbToken?.logoUri || rt.logoUri || rt.image_uri,
-        price: rt.price || dbToken?.price || 0,
-        priceChange24h: rt.priceChange24h || dbToken?.priceChange24h || 0,
-        volume24h: rt.volume24h || dbToken?.volume24h || 0,
-        marketCap: rt.marketCap || dbToken?.marketCap || 0,
-        liquidity: rt.liquidity || dbToken?.liquidity || 0,
-        bondingProgress: rt.bondingProgress || dbToken?.bondingProgress || 0,
-        txCount: rt.txCount || 0,
-        createdAt: rt.createdAt,
-        source: "pumpportal",
-      });
-    }
-
-    // Add DB tokens not in realtime (already filtered by category)
-    for (const dbt of dbTokens) {
-      if (seenAddresses.has(dbt.address)) continue;
-      seenAddresses.add(dbt.address);
-
-      mergedTokens.push({
-        address: dbt.address,
-        symbol: dbt.symbol,
-        name: dbt.name,
-        logoUri: dbt.logoUri,
-        price: dbt.price,
-        priceChange24h: dbt.priceChange24h,
-        volume24h: dbt.volume24h,
-        marketCap: dbt.marketCap,
-        liquidity: dbt.liquidity,
-        bondingProgress: dbt.bondingProgress || 0,
-        txCount: dbt.txCount,
-        createdAt: dbt.tokenCreatedAt?.getTime() || dbt.createdAt.getTime(),
-        source: "database",
-      });
-    }
-
-    // Sort by creation time descending - NEWEST first
-    mergedTokens.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    const data = dbTokens.map((dbt) => ({
+      address: dbt.address,
+      symbol: dbt.symbol,
+      name: dbt.name,
+      logoUri: dbt.logoUri,
+      price: dbt.price,
+      priceChange24h: dbt.priceChange24h,
+      volume24h: dbt.volume24h,
+      marketCap: dbt.marketCap,
+      liquidity: dbt.liquidity,
+      bondingProgress: dbt.bondingProgress || 0,
+      txCount: dbt.txCount,
+      createdAt: dbt.tokenCreatedAt?.getTime() || dbt.createdAt.getTime(),
+      source: "database",
+    }));
 
     const response = {
-      data: mergedTokens,
-      total: mergedTokens.length,
+      data,
+      total: data.length,
       timestamp: Date.now(),
-      sources: ["pumpportal", "database"],
-      realtime: pumpPortalService.isConnected(),
+      sources: ["database"],
     };
 
     res.json(response);
@@ -219,12 +116,10 @@ pulseRoutes.get("/graduating", async (req, res) => {
 });
 
 // GET /api/pulse/graduated - Get coins that graduated to Raydium/PumpSwap
-// Uses DB for enriched data + PumpPortal for real-time migrations
-// Shows NEWEST tokens first, filters out anything > 1 hour old
+// Uses DB for enriched data - shows NEWEST tokens first, filters out anything > 1 hour old
 pulseRoutes.get("/graduated", async (req, res) => {
   try {
     const oneHourAgo = Date.now() - 60 * 60 * 1000;
-    console.log(`[Graduated] Fetching graduated tokens (max 1hr old)...`);
 
     // Get from DB (enriched with Moralis data) - only tokens from last 1 hour
     const dbTokens = await prisma.pulseToken.findMany({
@@ -238,88 +133,36 @@ pulseRoutes.get("/graduated", async (req, res) => {
       orderBy: { graduatedAt: "desc" },
       take: 50,
     });
-    console.log(`[Graduated] DB returned ${dbTokens.length} tokens`);
 
-    // Log first DB token for debugging
-    if (dbTokens.length > 0) {
-      const sample = dbTokens[0];
-      console.log(`[Graduated] Sample DB token: ${sample.symbol} MC=$${sample.marketCap}, Vol=$${sample.volume24h}`);
-    }
+    const data = dbTokens.map((dbt) => ({
+      address: dbt.address,
+      symbol: dbt.symbol,
+      name: dbt.name,
+      logoUri: dbt.logoUri,
+      price: dbt.price,
+      priceChange24h: dbt.priceChange24h,
+      volume24h: dbt.volume24h,
+      marketCap: dbt.marketCap,
+      liquidity: dbt.liquidity,
+      txCount: dbt.txCount,
+      createdAt: dbt.tokenCreatedAt?.getTime() || dbt.createdAt.getTime(),
+      graduatedAt: dbt.graduatedAt?.getTime(),
+      complete: true,
+      source: "database",
+    }));
 
-    // Get real-time from PumpPortal (only returns tokens with actual data now)
-    const realtimeTokens = pumpPortalService.getMigratedTokens() as any[];
-    console.log(`[Graduated] PumpPortal returned ${realtimeTokens.length} tokens with data`);
-
-    const dbTokenMap = new Map(dbTokens.map((t) => [t.address, t]));
-
-    // Merge tokens
-    const mergedTokens: any[] = [];
-    const seenAddresses = new Set<string>();
-
-    // Add realtime tokens first (newest migrations) - only if they have valid data
-    for (const rt of realtimeTokens) {
-      if (seenAddresses.has(rt.address)) continue;
-      // Skip tokens with 0 market cap - they need enrichment
-      if (!rt.marketCap || rt.marketCap === 0) continue;
-      // Filter out tokens older than 1 hour
-      if (rt.createdAt && rt.createdAt < oneHourAgo) continue;
-
-      seenAddresses.add(rt.address);
-      const dbToken = dbTokenMap.get(rt.address);
-      mergedTokens.push({
-        address: rt.address,
-        symbol: rt.symbol,
-        name: rt.name,
-        logoUri: dbToken?.logoUri || rt.logoUri,
-        price: rt.price || dbToken?.price || 0,
-        priceChange24h: rt.priceChange24h || dbToken?.priceChange24h || 0,
-        volume24h: rt.volume24h || dbToken?.volume24h || 0,
-        marketCap: rt.marketCap || dbToken?.marketCap || 0,
-        liquidity: rt.liquidity || dbToken?.liquidity || 0,
-        txCount: rt.txCount || 0,
-        createdAt: rt.createdAt,
-        complete: true,
-        pool: rt.pool,
-        source: "pumpportal",
-      });
-    }
-
-    // Add DB tokens not in realtime - prefer DB data which is enriched
-    for (const dbt of dbTokens) {
-      if (seenAddresses.has(dbt.address)) continue;
-      seenAddresses.add(dbt.address);
-
-      mergedTokens.push({
-        address: dbt.address,
-        symbol: dbt.symbol,
-        name: dbt.name,
-        logoUri: dbt.logoUri,
-        price: dbt.price,
-        priceChange24h: dbt.priceChange24h,
-        volume24h: dbt.volume24h,
-        marketCap: dbt.marketCap,
-        liquidity: dbt.liquidity,
-        txCount: dbt.txCount,
-        createdAt: dbt.tokenCreatedAt?.getTime() || dbt.createdAt.getTime(),
-        graduatedAt: dbt.graduatedAt?.getTime(),
-        complete: true,
-        source: "database",
-      });
-    }
-
-    // Sort by graduated time (most recent first) then by market cap
-    mergedTokens.sort((a, b) => {
+    // Sort by graduated time (most recent first)
+    data.sort((a, b) => {
       const aTime = a.graduatedAt || a.createdAt || 0;
       const bTime = b.graduatedAt || b.createdAt || 0;
       return bTime - aTime;
     });
 
     const response = {
-      data: mergedTokens,
-      total: mergedTokens.length,
+      data,
+      total: data.length,
       timestamp: Date.now(),
-      sources: ["pumpportal", "database"],
-      realtime: pumpPortalService.isConnected(),
+      sources: ["database"],
     };
 
     res.json(response);
@@ -484,23 +327,7 @@ pulseRoutes.get("/token/:address", async (req, res) => {
       console.log(`📦 Got token data from database for ${address}`);
     }
 
-    // 2. Check PumpPortal in-memory cache (free, no API call)
-    if (!tokenData) {
-      const realtimeTokens = pumpPortalService.getRecentNewTokens();
-      tokenData = realtimeTokens.find((t: any) => t.address === address);
-    }
-
-    if (!tokenData) {
-      const graduatingTokens = pumpPortalService.getGraduatingTokens();
-      tokenData = graduatingTokens.find((t: any) => t.address === address);
-    }
-
-    if (!tokenData) {
-      const migratedTokens = pumpPortalService.getMigratedTokens();
-      tokenData = migratedTokens.find((t: any) => t.address === address);
-    }
-
-    // 3. External APIs (costly - only for tokens not in DB or cache)
+    // 2. External APIs (costly - only for tokens not in DB)
     if (!tokenData) {
       // Try pump.fun API (for memecoins)
       tokenData = await pumpFunService.getCoin(address);
@@ -663,8 +490,7 @@ pulseRoutes.get("/token/:address", async (req, res) => {
 });
 
 // GET /api/pulse/ohlcv/:address - Get OHLCV candlestick data
-// PRIMARY SOURCE: Database (swaps synced from Moralis, then built into candles)
-// FALLBACK: PumpPortal real-time trade tracking for very new tokens
+// SOURCE: Database (swaps synced from Moralis, then built into candles)
 // NO PER-REQUEST API CALLS - all data comes from DB
 pulseRoutes.get("/ohlcv/:address", async (req, res) => {
   try {
@@ -682,9 +508,6 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
 
     let source = "database";
     let ohlcv: any[] = [];
-
-    // Always subscribe to PumpPortal trades for real-time updates
-    pumpPortalService.subscribeTokenTrades([address]);
 
     // Map timeframe to interval in milliseconds
     // Each candle represents this amount of time
@@ -717,18 +540,6 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
       console.log(`📊 [OHLCV] Candle range: ${firstTs} to ${lastTs}`);
     }
 
-    // If DB has NO candles, check PumpPortal for real-time 1s data
-    // Only use for 1s timeframe - PumpPortal only has 1-second candles
-    // For other timeframes, we need to aggregate from DB swaps
-    if (ohlcv.length === 0 && timeframe === "1s") {
-      const pumpPortalOhlcv = pumpPortalService.getTokenOHLCV(address);
-      console.log(`📊 [OHLCV] PumpPortal fallback: ${pumpPortalOhlcv.length} 1s candles`);
-      if (pumpPortalOhlcv.length > 0) {
-        ohlcv = pumpPortalOhlcv;
-        source = "pumpportal-realtime";
-      }
-    }
-
     // No fake candles - if there's no data, return empty array
     // The chart will show a loading/empty state
 
@@ -738,7 +549,6 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
       data: ohlcv,
       timestamp: Date.now(),
       source,
-      realtime: pumpPortalService.isConnected(),
     };
 
     console.log(`📊 [OHLCV] FINAL RESPONSE for ${address} ${timeframe}: ${ohlcv.length} candles from ${source}`);
