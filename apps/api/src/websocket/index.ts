@@ -1,5 +1,4 @@
 import { Server, Socket } from "socket.io";
-import { pumpPortalService } from "../services/pumpportal";
 import { meteoraService } from "../services/meteora";
 import { getGrpcService } from "../grpc";
 import { Timeframe } from "../ohlcv";
@@ -152,7 +151,6 @@ async function notifyFriendsOfLobbyUpdate(
     console.error("Failed to notify friends of lobby update:", error);
   }
 }
-let pumpPortalInitialized = false;
 let meteoraPollingCleanup: (() => void) | null = null;
 let dashboardPriceInterval: NodeJS.Timeout | null = null;
 
@@ -172,10 +170,6 @@ export function setupWebSocket(io: Server) {
         state.tokens.add(data.address);
         socket.join(`token:${data.address}`);
         console.log(`Client ${socket.id} subscribed to token ${data.address}`);
-
-        // LIVE: Also subscribe to PumpPortal trades for this token
-        // This ensures we get real-time trade events from the chain
-        pumpPortalService.subscribeTokenTrades([data.address]);
       }
     });
 
@@ -1297,10 +1291,6 @@ export function setupWebSocket(io: Server) {
     });
   });
 
-  // Initialize PumpPortal real-time feed
-  console.log("🔧 Initializing PumpPortal...");
-  initializePumpPortal(io);
-
   // Initialize Meteora polling
   console.log("🔧 Initializing Meteora polling...");
   initializeMeteoraPolling(io);
@@ -1315,91 +1305,6 @@ export function setupWebSocket(io: Server) {
   // Initialize Dashboard price streaming (reads from DB, broadcasts to subscribers)
   console.log("🔧 Initializing Dashboard price streaming...");
   initializeDashboardPriceStreaming(io);
-}
-
-// Initialize PumpPortal WebSocket for real-time pump.fun data
-async function initializePumpPortal(io: Server) {
-  if (pumpPortalInitialized) return;
-
-  try {
-    await pumpPortalService.connect();
-    pumpPortalInitialized = true;
-
-    // Subscribe to new token creations
-    pumpPortalService.subscribeNewTokens();
-
-    // Subscribe to migrations (graduations)
-    pumpPortalService.subscribeMigrations();
-
-    // Forward new tokens to Pulse subscribers
-    pumpPortalService.on("pulse:newPair", (token) => {
-      io.to("pulse").emit("pulse:newPair", token);
-    });
-
-    // Forward graduating tokens to Pulse subscribers
-    pumpPortalService.on("pulse:graduating", (token) => {
-      io.to("pulse").emit("pulse:graduating", token);
-    });
-
-    // Forward migrations to Pulse subscribers
-    pumpPortalService.on("pulse:migrated", (migration) => {
-      io.to("pulse").emit("pulse:migrated", migration);
-    });
-
-    // Forward token updates (e.g., logo loaded) to Pulse subscribers
-    pumpPortalService.on("pulse:tokenUpdate", (update) => {
-      io.to("pulse").emit("pulse:tokenUpdate", update);
-    });
-
-    // LIVE: Forward individual trade events to token subscribers
-    // This enables real-time trade feeds on token pages
-    pumpPortalService.on("trade", (trade) => {
-      // Broadcast to token-specific room
-      io.to(`token:${trade.mint}`).emit("trade", {
-        mint: trade.mint,
-        type: trade.txType,
-        tokenAmount: trade.tokenAmount,
-        solAmount: trade.solAmount,
-        marketCapSol: trade.marketCapSol,
-        trader: trade.traderPublicKey,
-        signature: trade.signature,
-        timestamp: trade.timestamp || Date.now(),
-      });
-
-      // Also broadcast to pulse room for live activity feed
-      io.to("pulse").emit("pulse:trade", {
-        mint: trade.mint,
-        type: trade.txType,
-        solAmount: trade.solAmount,
-        marketCapSol: trade.marketCapSol,
-        timestamp: trade.timestamp || Date.now(),
-      });
-    });
-
-    // LIVE: Forward 1-second OHLCV updates to token subscribers
-    // This enables real-time chart updates without polling
-    pumpPortalService.on("ohlcv:update", (data) => {
-      io.to(`token:${data.mint}`).emit("ohlcv:update", {
-        mint: data.mint,
-        candle: data.candle,
-      });
-    });
-
-    // Log connection status
-    pumpPortalService.on("connected", () => {
-      console.log("📡 PumpPortal connected - broadcasting real-time pump.fun data");
-    });
-
-    pumpPortalService.on("disconnected", () => {
-      console.log("📡 PumpPortal disconnected");
-    });
-
-    console.log("✅ PumpPortal real-time feed initialized");
-  } catch (error) {
-    console.error("Failed to initialize PumpPortal:", error);
-    // Retry after 5 seconds
-    setTimeout(() => initializePumpPortal(io), 5000);
-  }
 }
 
 // Initialize Meteora polling for new DLMM pairs

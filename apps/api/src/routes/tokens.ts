@@ -4,7 +4,7 @@ import { prisma } from "../lib/prisma";
 import { jupiterService } from "../services/jupiter";
 import { birdeyeService } from "../services/birdeye";
 import { geckoTerminalService } from "../services/geckoterminal";
-import { pumpPortalService } from "../services/pumpportal";
+// PumpPortal removed - using Moralis for all swap data
 import { coinGeckoService } from "../services/coingecko";
 import { solPriceService } from "../services/solPrice";
 import { candleCacheService } from "../services/candleCache";
@@ -536,15 +536,9 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
 
     let ohlcv;
 
-    // For 1s timeframe, use PumpPortal real-time data (for new pump.fun tokens)
+    // For 1s timeframe, return empty - not supported without PumpPortal
     if (timeframe === "1s") {
-      const pumpPortalOHLCV = pumpPortalService.getTokenOHLCV(address);
-      if (pumpPortalOHLCV && pumpPortalOHLCV.length > 0) {
-        console.log(`📊 Serving PumpPortal 1s OHLCV for ${address} (${pumpPortalOHLCV.length} candles)`);
-        ohlcv = pumpPortalOHLCV.slice(-limit);
-      } else {
-        ohlcv = [];
-      }
+      ohlcv = [];
     }
     // For weekly timeframe, first check DB cache (pre-aggregated), then fall back to aggregating daily candles
     else if (timeframe === "1w") {
