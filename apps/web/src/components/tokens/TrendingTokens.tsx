@@ -64,12 +64,11 @@ function TrendingTokenCard({ token, index, isVisible }: { token: Token; index: n
       setHasFetched(true);
       try {
         // Fetch daily candles from DB cache only (instant, no API calls)
-        // Background sync keeps 1d candles populated for all dashboard tokens
-        // 1d over 1 year shows clear trend in mini preview
+        // 3 months of 1d candles = ~90 data points
         const now = Math.floor(Date.now() / 1000);
-        const from = now - (365 * 24 * 60 * 60); // 1 year
+        const from = now - (90 * 24 * 60 * 60); // 3 months
         const response = await fetch(
-          `/api/tokens/${token.address}/ohlcv?timeframe=1d&from=${from}&to=${now}&limit=365&cacheOnly=true`
+          `/api/tokens/${token.address}/ohlcv?timeframe=1d&from=${from}&to=${now}&limit=90&cacheOnly=true`
         );
         if (response.ok) {
           const data = await response.json();
