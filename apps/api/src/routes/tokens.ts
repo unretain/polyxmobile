@@ -296,13 +296,14 @@ async function syncDashboardTokens() {
 
 // Timeframe configurations for OHLCV sync
 // Historical data is fetched ONCE, then only live candles are refreshed
+// ALL-TIME: Use very large ranges to get all available history
 const OHLCV_TIMEFRAMES = [
-  { tf: "1m", rangeMs: 7 * 24 * 60 * 60 * 1000, intervalMs: 60 * 1000 },           // 7 days
-  { tf: "5m", rangeMs: 30 * 24 * 60 * 60 * 1000, intervalMs: 5 * 60 * 1000 },       // 30 days
-  { tf: "15m", rangeMs: 90 * 24 * 60 * 60 * 1000, intervalMs: 15 * 60 * 1000 },     // 90 days
-  { tf: "1h", rangeMs: 2 * 365 * 24 * 60 * 60 * 1000, intervalMs: 60 * 60 * 1000 }, // 2 years
-  { tf: "4h", rangeMs: 3 * 365 * 24 * 60 * 60 * 1000, intervalMs: 4 * 60 * 60 * 1000 }, // 3 years
-  { tf: "1d", rangeMs: 5 * 365 * 24 * 60 * 60 * 1000, intervalMs: 24 * 60 * 60 * 1000 }, // 5 years
+  { tf: "1m", rangeMs: 30 * 24 * 60 * 60 * 1000, intervalMs: 60 * 1000 },              // 30 days (1m has limited history)
+  { tf: "5m", rangeMs: 90 * 24 * 60 * 60 * 1000, intervalMs: 5 * 60 * 1000 },          // 90 days
+  { tf: "15m", rangeMs: 365 * 24 * 60 * 60 * 1000, intervalMs: 15 * 60 * 1000 },       // 1 year
+  { tf: "1h", rangeMs: 5 * 365 * 24 * 60 * 60 * 1000, intervalMs: 60 * 60 * 1000 },    // 5 years (all-time for most)
+  { tf: "4h", rangeMs: 10 * 365 * 24 * 60 * 60 * 1000, intervalMs: 4 * 60 * 60 * 1000 }, // 10 years (all-time)
+  { tf: "1d", rangeMs: 10 * 365 * 24 * 60 * 60 * 1000, intervalMs: 24 * 60 * 60 * 1000 }, // 10 years (all-time)
 ];
 
 let ohlcvSyncTimer: NodeJS.Timeout | null = null;
