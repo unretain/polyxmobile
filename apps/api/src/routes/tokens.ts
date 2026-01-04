@@ -546,53 +546,69 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
         ohlcv = [];
       }
     }
-    // For weekly timeframe, fetch daily candles and aggregate them
+    // For weekly timeframe, first check DB cache (pre-aggregated), then fall back to aggregating daily candles
     else if (timeframe === "1w") {
-      // For weekly, just get last 365 days of daily data (1 request) and aggregate
-      // This is much cheaper than fetching "all time" with 20 requests
-      const now = Math.floor(Date.now() / 1000);
-      const requestFrom = from && from > 0 ? from : now - (365 * 86400); // Max 1 year back
-      const requestTo = to || now;
+      const now = Date.now();
+      const toMs = to ? to * 1000 : now;
+      const fromMs = from && from > 0 ? from * 1000 : now - (5 * 365 * 24 * 60 * 60 * 1000); // 5 years default
 
-      const dailyCandles = await birdeyeService.getOHLCV(address, "1d", {
-        from: requestFrom,
-        to: requestTo,
-        limit: 1000,
-      });
+      // First try to get pre-aggregated weekly candles from DB cache
+      const cachedWeekly = await candleCacheService.getCachedCandles(address, "1w", fromMs, toMs);
 
-      const allDailyCandles = dailyCandles || [];
+      if (cachedWeekly.length > 0) {
+        console.log(`[OHLCV] Serving ${address.substring(0, 8)}... 1w from DB cache (${cachedWeekly.length} candles)`);
+        ohlcv = cachedWeekly;
+      } else {
+        // Fallback: fetch daily candles and aggregate to weekly
+        console.log(`[OHLCV] No 1w cache for ${address.substring(0, 8)}..., aggregating from daily`);
+        const requestFrom = from && from > 0 ? from : Math.floor(now / 1000) - (365 * 86400);
+        const requestTo = to || Math.floor(now / 1000);
 
-      // Remove duplicates and sort by timestamp
-      const uniqueCandles = Array.from(
-        new Map(allDailyCandles.map(c => [c.timestamp, c])).values()
-      ).sort((a, b) => a.timestamp - b.timestamp);
+        const dailyCandles = await birdeyeService.getOHLCV(address, "1d", {
+          from: requestFrom,
+          to: requestTo,
+          limit: 1000,
+        });
 
-      // Aggregate to weekly
-      ohlcv = aggregateToWeekly(uniqueCandles);
+        const uniqueCandles = Array.from(
+          new Map((dailyCandles || []).map(c => [c.timestamp, c])).values()
+        ).sort((a, b) => a.timestamp - b.timestamp);
+
+        ohlcv = aggregateToWeekly(uniqueCandles);
+      }
 
       // Apply limit if specified
       if (limit && ohlcv.length > limit) {
         ohlcv = ohlcv.slice(-limit);
       }
     }
-    // For monthly timeframe, fetch daily candles and aggregate them
+    // For monthly timeframe, first check DB cache (pre-aggregated), then fall back to aggregating daily candles
     else if (timeframe === "1M") {
-      // For monthly, get last 3 years of daily data (1 request) and aggregate
-      // This is much cheaper than fetching "all time" with 20 requests
-      const now = Math.floor(Date.now() / 1000);
-      const requestFrom = from && from > 0 ? from : now - (3 * 365 * 86400); // Max 3 years back
-      const requestTo = to || now;
+      const now = Date.now();
+      const toMs = to ? to * 1000 : now;
+      const fromMs = from && from > 0 ? from * 1000 : now - (5 * 365 * 24 * 60 * 60 * 1000); // 5 years default
 
-      const dailyCandles = await birdeyeService.getOHLCV(address, "1d", {
-        from: requestFrom,
-        to: requestTo,
-        limit: 1000,
-      });
+      // First try to get pre-aggregated monthly candles from DB cache
+      const cachedMonthly = await candleCacheService.getCachedCandles(address, "1M", fromMs, toMs);
 
-      const uniqueCandles = (dailyCandles || []).sort((a: any, b: any) => a.timestamp - b.timestamp);
+      if (cachedMonthly.length > 0) {
+        console.log(`[OHLCV] Serving ${address.substring(0, 8)}... 1M from DB cache (${cachedMonthly.length} candles)`);
+        ohlcv = cachedMonthly;
+      } else {
+        // Fallback: fetch daily candles and aggregate to monthly
+        console.log(`[OHLCV] No 1M cache for ${address.substring(0, 8)}..., aggregating from daily`);
+        const requestFrom = from && from > 0 ? from : Math.floor(now / 1000) - (3 * 365 * 86400);
+        const requestTo = to || Math.floor(now / 1000);
 
-      // Aggregate to monthly
-      ohlcv = aggregateToMonthly(uniqueCandles);
+        const dailyCandles = await birdeyeService.getOHLCV(address, "1d", {
+          from: requestFrom,
+          to: requestTo,
+          limit: 1000,
+        });
+
+        const uniqueCandles = (dailyCandles || []).sort((a: any, b: any) => a.timestamp - b.timestamp);
+        ohlcv = aggregateToMonthly(uniqueCandles);
+      }
 
       // Apply limit if specified
       if (limit && ohlcv.length > limit) {
