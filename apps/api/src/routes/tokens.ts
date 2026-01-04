@@ -544,7 +544,7 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
     else if (timeframe === "1w") {
       const now = Date.now();
       const toMs = to ? to * 1000 : now;
-      const fromMs = from && from > 0 ? from * 1000 : now - (5 * 365 * 24 * 60 * 60 * 1000); // 5 years default
+      const fromMs = from && from > 0 ? from * 1000 : now - (10 * 365 * 24 * 60 * 60 * 1000); // 10 years default (same as 1M)
 
       console.log(`[OHLCV] 1w request for ${address.substring(0, 8)}...: from=${from} (${new Date(fromMs).toISOString()}), to=${to} (${new Date(toMs).toISOString()})`);
 
@@ -562,8 +562,8 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
       } else {
         // Fallback: fetch daily candles and aggregate to weekly
         console.log(`[OHLCV] No 1w cache for ${address.substring(0, 8)}..., aggregating from daily`);
-        // Use 5 years of daily data for proper weekly aggregation
-        const requestFrom = from && from > 0 ? from : Math.floor(now / 1000) - (5 * 365 * 86400);
+        // Use 10 years of daily data for proper weekly aggregation (same as 1M)
+        const requestFrom = from && from > 0 ? from : Math.floor(now / 1000) - (10 * 365 * 86400);
         const requestTo = to || Math.floor(now / 1000);
 
         const dailyCandles = await birdeyeService.getOHLCV(address, "1d", {
@@ -606,8 +606,8 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
       } else {
         // Fallback: fetch daily candles and aggregate to monthly
         console.log(`[OHLCV] No 1M cache for ${address.substring(0, 8)}..., aggregating from daily`);
-        // Use 5 years of daily data for proper monthly aggregation
-        const requestFrom = from && from > 0 ? from : Math.floor(now / 1000) - (5 * 365 * 86400);
+        // Use 10 years of daily data for proper monthly aggregation
+        const requestFrom = from && from > 0 ? from : Math.floor(now / 1000) - (10 * 365 * 86400);
         const requestTo = to || Math.floor(now / 1000);
 
         const dailyCandles = await birdeyeService.getOHLCV(address, "1d", {
