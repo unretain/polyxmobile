@@ -1,0 +1,12 @@
+[phases.setup]
+# FFmpeg + fonts for video processing (PnL card generation)
+nixPkgs = ["nodejs_20", "npm", "ffmpeg", "fontconfig", "dejavu_fonts"]
+
+[phases.install]
+cmds = ["npm install"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "npm run start"

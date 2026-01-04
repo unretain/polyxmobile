@@ -7,6 +7,7 @@ import { tokenRoutes, startDashboardTokenSync } from "./routes/tokens";
 import { trendingRoutes } from "./routes/trending";
 import { pulseRoutes } from "./routes/pulse";
 import { ohlcvRoutes } from "./routes/ohlcv";
+import { videoRoutes } from "./routes/video";
 import { setupWebSocket } from "./websocket";
 import { pulseSyncService } from "./services/pulseSync";
 import { requireInternalApiKey, rateLimit } from "./middleware/auth";
@@ -43,6 +44,7 @@ app.use("/api/tokens", tokenRoutes);
 app.use("/api/trending", trendingRoutes);
 app.use("/api/pulse", pulseRoutes);
 app.use("/api/ohlcv", ohlcvRoutes);
+app.use("/api/video", videoRoutes);
 
 // WebSocket setup
 setupWebSocket(io);
