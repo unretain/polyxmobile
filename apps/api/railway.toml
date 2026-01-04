@@ -1,8 +1,6 @@
 [build]
 builder = "nixpacks"
-# Explicitly run prisma generate since postinstall might not run with npm ci
-buildCommand = "npm install && npx prisma generate && npm run build"
-watchPatterns = ["apps/api/**"]
+buildCommand = "npm install && npm run build"
 
 [deploy]
 startCommand = "npm run start"
@@ -13,5 +11,4 @@ restartPolicyMaxRetries = 3
 
 [build.nixpacks]
 pkgManager = "npm"
-# Include FFmpeg for video processing and openssl for Prisma
 aptPkgs = ["ffmpeg", "openssl"]
