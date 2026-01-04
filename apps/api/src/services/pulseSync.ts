@@ -5,9 +5,30 @@ import { swapSyncService } from "./swapSync";
 import { PulseCategory } from "@prisma/client";
 
 // Sync interval in milliseconds
-// Same frequency as current per-user polling (5 seconds)
-// But now one server fetch serves ALL users from DB
-const SYNC_INTERVAL = 5000; // 5 seconds
+// Increased to reduce DB pressure
+const SYNC_INTERVAL = 10000; // 10 seconds
+
+// Throttle concurrent DB operations
+const DB_BATCH_SIZE = 5; // Process 5 at a time
+const DB_BATCH_DELAY = 100; // 100ms between batches
+
+async function throttledBatch<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  batchSize = DB_BATCH_SIZE,
+  delayMs = DB_BATCH_DELAY
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map(fn));
+    results.push(...batchResults);
+    if (i + batchSize < items.length) {
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+  return results;
+}
 
 let syncTimer: NodeJS.Timeout | null = null;
 let isSyncing = false;
@@ -87,11 +108,10 @@ async function syncNewPairs(): Promise<number> {
     console.error("[PulseSync] PumpPortal error:", err);
   }
 
-  // Upsert to database
-  let upserted = 0;
-  for (const token of tokens) {
-    if (!token.address || !token.symbol || token.symbol === "???") continue;
+  // Upsert to database with throttling
+  const validTokens = tokens.filter(t => t.address && t.symbol && t.symbol !== "???");
 
+  const results = await throttledBatch(validTokens, async (token) => {
     try {
       await prisma.pulseToken.upsert({
         where: { address: token.address },
@@ -133,13 +153,13 @@ async function syncNewPairs(): Promise<number> {
           tokenCreatedAt: token.createdAt ? new Date(token.createdAt) : undefined,
         },
       });
-      upserted++;
+      return true;
     } catch (err) {
-      // Ignore individual upsert errors
+      return false;
     }
-  }
+  });
 
-  return upserted;
+  return results.filter(Boolean).length;
 }
 
 // Sync graduating pairs (near bonding curve completion)
@@ -163,11 +183,10 @@ async function syncGraduatingPairs(): Promise<number> {
     console.error("[PulseSync] Moralis graduating error:", err);
   }
 
-  // Upsert to database
-  let upserted = 0;
-  for (const token of tokens) {
-    if (!token.address || !token.symbol || token.symbol === "???") continue;
+  // Upsert to database with throttling
+  const validTokens = tokens.filter(t => t.address && t.symbol && t.symbol !== "???");
 
+  const results = await throttledBatch(validTokens, async (token) => {
     try {
       await prisma.pulseToken.upsert({
         where: { address: token.address },
@@ -199,13 +218,13 @@ async function syncGraduatingPairs(): Promise<number> {
           txCount: token.txCount || 0,
         },
       });
-      upserted++;
+      return true;
     } catch (err) {
-      // Ignore individual upsert errors
+      return false;
     }
-  }
+  });
 
-  return upserted;
+  return results.filter(Boolean).length;
 }
 
 // Sync graduated pairs (migrated to Raydium)
@@ -261,11 +280,10 @@ async function syncGraduatedPairs(): Promise<number> {
 
   // NO MORE ENRICHMENT - removed the getTokenData calls that were causing rate limits
 
-  // Upsert to database
-  let upserted = 0;
-  for (const token of tokens) {
-    if (!token.address || !token.symbol || token.symbol === "???") continue;
+  // Upsert to database with throttling
+  const validTokens = tokens.filter(t => t.address && t.symbol && t.symbol !== "???");
 
+  const results = await throttledBatch(validTokens, async (token) => {
     try {
       await prisma.pulseToken.upsert({
         where: { address: token.address },
@@ -295,13 +313,13 @@ async function syncGraduatedPairs(): Promise<number> {
           graduatedAt: token.graduatedAt ? new Date(token.graduatedAt) : new Date(),
         },
       });
-      upserted++;
+      return true;
     } catch (err) {
-      // Ignore individual upsert errors
+      return false;
     }
-  }
+  });
 
-  return upserted;
+  return results.filter(Boolean).length;
 }
 
 // Update tokens that have graduated (bonding curve complete) from GRADUATING to GRADUATED
@@ -443,6 +461,7 @@ async function syncTokenSwaps(): Promise<{ initial: number; incremental: number 
     let initialSynced = 0;
     if (unsyncedTokens.length > 0) {
       console.log(`[PulseSync] Initial sync for ${unsyncedTokens.length} unsynced tokens...`);
+      // Process one at a time to avoid overwhelming DB
       for (const token of unsyncedTokens) {
         try {
           const result = await swapSyncService.syncHistoricalSwaps(token.address);
@@ -450,6 +469,8 @@ async function syncTokenSwaps(): Promise<{ initial: number; incremental: number 
             initialSynced++;
             console.log(`[PulseSync] Initial sync: ${result.count} swaps for ${token.symbol}`);
           }
+          // Small delay between tokens
+          await new Promise(r => setTimeout(r, 200));
         } catch (err) {
           console.error(`[PulseSync] Failed initial sync for ${token.symbol}:`, err);
         }
@@ -469,7 +490,9 @@ async function syncTokenSwaps(): Promise<{ initial: number; incremental: number 
 
     let incrementalSynced = 0;
     if (syncedPulseTokens.length > 0) {
-      for (const token of syncedPulseTokens) {
+      // Process in small batches with delays
+      for (let i = 0; i < syncedPulseTokens.length; i++) {
+        const token = syncedPulseTokens[i];
         try {
           const count = await swapSyncService.syncNewSwaps(token.address);
           if (count > 0) {
@@ -477,6 +500,10 @@ async function syncTokenSwaps(): Promise<{ initial: number; incremental: number 
           }
         } catch (err) {
           // Silently ignore incremental sync errors
+        }
+        // Delay every 5 tokens
+        if ((i + 1) % 5 === 0) {
+          await new Promise(r => setTimeout(r, 100));
         }
       }
       if (incrementalSynced > 0) {
@@ -577,13 +604,11 @@ export async function syncPulseTokens(): Promise<{
   const startTime = Date.now();
 
   try {
-    // First sync token lists
-    const [newCount, graduatingCount, graduatedCount, cleanedCount] = await Promise.all([
-      syncNewPairs(),
-      syncGraduatingPairs(),
-      syncGraduatedPairs(),
-      cleanupStaleTokens(),
-    ]);
+    // Sync token lists SEQUENTIALLY to reduce DB pressure
+    const newCount = await syncNewPairs();
+    const graduatingCount = await syncGraduatingPairs();
+    const graduatedCount = await syncGraduatedPairs();
+    const cleanedCount = await cleanupStaleTokens();
 
     // Update tokens that graduated (bonding complete) - move from GRADUATING to GRADUATED
     await updateGraduatedTokens();
