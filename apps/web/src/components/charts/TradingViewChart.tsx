@@ -38,6 +38,7 @@ export function TradingViewChart({
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const lineSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
   const [chartType, setChartType] = useState<ChartType>("candle");
+  const [chartReady, setChartReady] = useState(false);
 
   // Initialize chart
   useEffect(() => {
@@ -117,6 +118,7 @@ export function TradingViewChart({
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     lineSeriesRef.current = lineSeries;
+    setChartReady(true);
 
     // Handle resize
     const handleResize = () => {
@@ -137,12 +139,13 @@ export function TradingViewChart({
       chartRef.current = null;
       candleSeriesRef.current = null;
       lineSeriesRef.current = null;
+      setChartReady(false);
     };
   }, [isDark, timeframe]);
 
-  // Update data when it changes
+  // Update data when it changes or when chart becomes ready
   useEffect(() => {
-    if (!candleSeriesRef.current || !lineSeriesRef.current || !data || data.length === 0) return;
+    if (!chartReady || !candleSeriesRef.current || !lineSeriesRef.current || !data || data.length === 0) return;
 
     // Convert OHLCV data to lightweight-charts format
     const candleData: CandlestickData<Time>[] = data
@@ -168,11 +171,11 @@ export function TradingViewChart({
     if (chartRef.current) {
       chartRef.current.timeScale().fitContent();
     }
-  }, [data]);
+  }, [data, chartReady]); // Re-run when data changes or chart becomes ready
 
   // Toggle series visibility based on chart type
   useEffect(() => {
-    if (!candleSeriesRef.current || !lineSeriesRef.current) return;
+    if (!chartReady || !candleSeriesRef.current || !lineSeriesRef.current) return;
 
     if (chartType === "candle") {
       candleSeriesRef.current.applyOptions({ visible: true });
@@ -181,7 +184,7 @@ export function TradingViewChart({
       candleSeriesRef.current.applyOptions({ visible: false });
       lineSeriesRef.current.applyOptions({ visible: true });
     }
-  }, [chartType]);
+  }, [chartType, chartReady]);
 
   if (isLoading && (!data || data.length === 0)) {
     return (
