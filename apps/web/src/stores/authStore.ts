@@ -1,18 +1,19 @@
 import { create } from "zustand";
 
-// This store is DEPRECATED - use NextAuth's useSession() instead
-// Keeping minimal interface for backwards compatibility during migration
-// Auth is now handled entirely by NextAuth cookies - no client-side persistence
+// Mobile app: Auth is handled via wallet stored in localStorage
+// This store provides a logout helper that clears wallet state
 
 interface AuthState {
-  // Legacy logout function - calls NextAuth signOut
+  // Logout function - clears mobile wallet
   logout: () => void;
 }
 
 export const useAuthStore = create<AuthState>()(() => ({
   logout: () => {
-    // Clear any legacy storage from old implementation
+    // Clear mobile wallet storage
     if (typeof window !== "undefined") {
+      localStorage.removeItem("polyx-mobile-wallet");
+      // Clear any legacy storage
       sessionStorage.removeItem("polyx-auth");
       localStorage.removeItem("polyx-auth");
     }

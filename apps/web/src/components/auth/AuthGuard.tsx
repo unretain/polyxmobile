@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -10,20 +10,23 @@ interface AuthGuardProps {
 
 export function AuthGuard({ children }: AuthGuardProps) {
   const router = useRouter();
-  const { data: session, status } = useSession();
+  const { wallet } = useMobileWalletStore();
+  const [isHydrated, setIsHydrated] = useState(false);
 
-  // Auth is now handled entirely by NextAuth cookies
-  const isLoading = status === "loading";
-  const isLoggedIn = !!session?.user;
+  // Wait for client-side hydration (zustand persist loads from localStorage)
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   useEffect(() => {
-    if (!isLoading && !isLoggedIn) {
-      // Redirect to landing page with auth=true query param to trigger modal
-      router.push("/?auth=true");
+    if (isHydrated && !wallet) {
+      // Redirect to home to trigger wallet onboarding
+      router.push("/");
     }
-  }, [isLoggedIn, isLoading, router]);
+  }, [wallet, isHydrated, router]);
 
-  if (isLoading) {
+  // Show loading while hydrating
+  if (!isHydrated) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#0a0a0a]">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#FF6B4A] border-t-transparent" />
@@ -31,7 +34,8 @@ export function AuthGuard({ children }: AuthGuardProps) {
     );
   }
 
-  if (!isLoggedIn) {
+  // No wallet, will redirect
+  if (!wallet) {
     return null;
   }
 

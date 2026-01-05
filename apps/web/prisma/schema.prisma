@@ -501,6 +501,58 @@ model TokenSyncStatus {
 }
 
 // ==========================================
+// Mobile Users (wallet-only, no sign-in)
+// ==========================================
+
+model MobileUser {
+  id            String   @id @default(cuid())
+  publicKey     String   @unique  // Solana wallet public key
+  deviceId      String?  // Optional device identifier
+
+  // Profile (optional)
+  displayName   String?
+
+  // App data
+  lastActiveAt  DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Trading history
+  mobileTrades  MobileTrade[]
+
+  @@index([publicKey])
+  @@index([lastActiveAt])
+}
+
+model MobileTrade {
+  id              String   @id @default(cuid())
+  mobileUserId    String
+  mobileUser      MobileUser @relation(fields: [mobileUserId], references: [id], onDelete: Cascade)
+
+  // Token details
+  inputMint       String
+  inputSymbol     String
+  outputMint      String
+  outputSymbol    String
+
+  // Amounts
+  amountIn        String
+  amountOut       String
+
+  // Price info
+  priceUsd        Float?
+  txSignature     String?  @unique
+
+  // Status
+  status          String   @default("pending") // pending, success, failed
+
+  createdAt       DateTime @default(now())
+
+  @@index([mobileUserId, createdAt])
+  @@index([txSignature])
+}
+
+// ==========================================
 // Social Features: Friends
 // ==========================================
 
