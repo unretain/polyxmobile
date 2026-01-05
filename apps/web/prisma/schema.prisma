@@ -502,25 +502,26 @@ model TokenSyncStatus {
 
 // ==========================================
 // Mobile Users (wallet-only, no sign-in)
+// Wallet addresses are encrypted with AES-256-GCM
 // ==========================================
 
 model MobileUser {
-  id            String   @id @default(cuid())
-  publicKey     String   @unique  // Solana wallet public key
-  deviceId      String?  // Optional device identifier
+  id                  String   @id @default(cuid())
+  encryptedPublicKey  String   @unique  // AES-256-GCM encrypted wallet public key
+  deviceId            String?  // Optional device identifier
 
   // Profile (optional)
-  displayName   String?
+  displayName     String?
 
   // App data
-  lastActiveAt  DateTime @default(now())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  lastActiveAt    DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   // Trading history
-  mobileTrades  MobileTrade[]
+  mobileTrades    MobileTrade[]
 
-  @@index([publicKey])
+  @@index([encryptedPublicKey])
   @@index([lastActiveAt])
 }
 
