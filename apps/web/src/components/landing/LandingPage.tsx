@@ -588,6 +588,22 @@ export function LandingPage() {
 
           <div className={`flex items-center gap-3 md:gap-4 text-xs md:text-sm ${isDark ? 'text-white/40' : 'text-black/40'}`}>
             <a
+              href="https://polyx.trade/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}
+            >
+              Privacy
+            </a>
+            <a
+              href="https://polyx.trade/tos"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}
+            >
+              Terms
+            </a>
+            <a
               href="https://x.com/tradeonpolyx"
               target="_blank"
               rel="noopener noreferrer"
