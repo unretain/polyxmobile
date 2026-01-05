@@ -98,6 +98,19 @@ export function MobileHeader() {
               >
                 Dashboard
               </Link>
+              <Link
+                href="/portfolio"
+                onClick={(e) => handleNavClick(e, "/portfolio")}
+                className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
+                  isActive('/portfolio')
+                    ? 'bg-[#FF6B4A] text-white'
+                    : isDark
+                      ? 'text-white/70 hover:bg-white/5'
+                      : 'text-black/70 hover:bg-black/5'
+                }`}
+              >
+                Portfolio
+              </Link>
             </div>
 
             {/* Wallet Info (if user has wallet) */}

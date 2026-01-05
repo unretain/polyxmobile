@@ -407,7 +407,10 @@
       "Bash(del:*)",
       "Bash(cmd /c \"cd c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\\\\apps\\\\web && npm run build\")",
       "Bash(cmd.exe /c \"cd /d c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\\\\apps\\\\web && npm run build\")",
-      "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" diff --cached --stat)"
+      "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" diff --cached --stat)",
+      "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" log --oneline -3)",
+      "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" commit -m \"$\\(cat <<''EOF''\nOptimize bundle size and add full Portfolio page\n\nBundle optimizations:\n- Remove unused deps: @ffmpeg/*, html2canvas, fix-webm-duration \\(~10MB\\)\n- Remove unused chart components: PriceChart, PriceLineChart, MiniSparkline, Probability3DChart\n- Remove unused API routes: /api/convert-video, /api/video/pnl-card\n- Dynamic import Chart3D/Line3DChart on token page\n- Consolidate duplicate formatMC/formatChartPrice functions to utils\n\nPortfolio page:\n- Full PnL tracking with daily stats\n- Calendar view with green/red days showing profit/loss\n- Cumulative PnL chart\n- Active and closed positions list\n- Stats: Total PnL, Volume, Win Rate, Current Streak\n- Period selector: 1D, 7D, 30D, ALL, Calendar\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" commit -m \"Add Portfolio link to mobile navigation\")"
     ],
     "deny": [],
     "ask": []
