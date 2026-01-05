@@ -70,12 +70,32 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
     }
   }, [pendingMnemonic, step]);
 
+  // Cleanup sensitive data on unmount
+  useEffect(() => {
+    return () => {
+      setWords([]);
+      setImportPhrase("");
+    };
+  }, []);
+
   if (!isOpen) return null;
 
   const handleCopy = async () => {
     if (pendingMnemonic) {
       await navigator.clipboard.writeText(pendingMnemonic);
       setCopied(true);
+      // Clear clipboard after 30 seconds for security
+      setTimeout(async () => {
+        try {
+          // Only clear if clipboard still contains mnemonic
+          const current = await navigator.clipboard.readText();
+          if (current === pendingMnemonic) {
+            await navigator.clipboard.writeText("");
+          }
+        } catch {
+          // Clipboard access may be denied - that's ok
+        }
+      }, 30000);
       setTimeout(() => setCopied(false), 2000);
     }
   };
@@ -94,11 +114,17 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
   };
 
   const handleComplete = () => {
+    // Clear sensitive data from memory before closing
+    setWords([]);
+    setPendingMnemonic("");
     onClose();
     router.push("/pulse");
   };
 
   const handleSkipVerify = () => {
+    // Clear sensitive data from memory
+    setWords([]);
+    setPendingMnemonic("");
     // Allow skip but mark as not backed up
     onClose();
     router.push("/pulse");
@@ -127,6 +153,9 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
         hasBackedUp: true, // Assume they have it backed up since they're importing
         createdAt: Date.now(),
       });
+
+      // Clear sensitive data from state immediately after use
+      setImportPhrase("");
 
       setPublicKey(pk);
       setStep("complete");
@@ -296,6 +325,16 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
                 <p className="text-sm text-white/60">
                   Write these 12 words down in order and store them safely.
                 </p>
+              </div>
+
+              {/* Security Warning */}
+              <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-red-400">
+                    Never share your recovery phrase. Anyone with these words can steal your funds.
+                  </p>
+                </div>
               </div>
 
               {/* Phrase Grid */}
