@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Header } from "@/components/layout/Header";
+import { MobileHeader } from "@/components/layout/MobileHeader";
 import { useThemeStore } from "@/stores/themeStore";
 
 export default function TermsOfServicePage() {
@@ -10,7 +10,7 @@ export default function TermsOfServicePage() {
   return (
     <div className={`min-h-screen ${isDark ? 'bg-[#0a0a0a] text-white' : 'bg-[#f5f5f5] text-black'}`}>
       {/* Header */}
-      <Header />
+      <MobileHeader />
 
       <main className="max-w-4xl mx-auto px-6 py-12 pt-32">
         <h1 className="text-3xl font-bold mb-2">Terms of Service</h1>

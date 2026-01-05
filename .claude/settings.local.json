@@ -384,7 +384,13 @@
       "Bash(npx ts-node:*)",
       "Bash(npx dotenv:*)",
       "Bash(copy:*)",
-      "Bash(git remote:*)"
+      "Bash(git remote:*)",
+      "Bash(start http://localhost:3000)",
+      "Bash(tasklist /FI \"IMAGENAME eq node.exe\")",
+      "Bash(cmd /c \"taskkill /F /PID 157216\")",
+      "Bash(npx next dev -p 3002)",
+      "Bash(start:*)",
+      "Bash(npx next build)"
     ],
     "deny": [],
     "ask": []

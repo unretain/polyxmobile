@@ -5,7 +5,7 @@ import { createChart, IChartApi, ISeriesApi, CandlestickData, LineData, Time, Ca
 import { useThemeStore } from "@/stores/themeStore";
 import type { OHLCV } from "@/stores/pulseStore";
 
-export type Timeframe = "1s" | "1m" | "5m" | "15m" | "1h";
+export type Timeframe = "1s" | "1m" | "5m" | "15m" | "1h" | "4h" | "1d" | "1w" | "1M";
 type ChartType = "candle" | "line";
 
 interface TradingViewChartProps {
@@ -17,11 +17,12 @@ interface TradingViewChartProps {
 }
 
 const TIMEFRAMES: { value: Timeframe; label: string }[] = [
-  { value: "1s", label: "1s" },
   { value: "1m", label: "1m" },
   { value: "5m", label: "5m" },
   { value: "15m", label: "15m" },
   { value: "1h", label: "1h" },
+  { value: "4h", label: "4h" },
+  { value: "1d", label: "1d" },
 ];
 
 export function TradingViewChart({

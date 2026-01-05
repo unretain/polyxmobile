@@ -1,6 +1,6 @@
 "use client";
 
-import { Header } from "@/components/layout/Header";
+import { MobileHeader } from "@/components/layout/MobileHeader";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import { useThemeStore } from "@/stores/themeStore";
 
@@ -17,7 +17,7 @@ export default function TokenLayout({
         {/* Star grid background */}
         <div className={`fixed inset-0 star-grid pointer-events-none ${isDark ? 'opacity-20' : 'opacity-10'}`} />
 
-        <Header />
+        <MobileHeader />
         <main className="relative z-10 flex-1 overflow-auto pt-24 px-6 pb-6">{children}</main>
       </div>
     </AuthGuard>

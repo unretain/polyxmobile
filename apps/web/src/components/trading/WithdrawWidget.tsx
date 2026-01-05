@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useSession } from "next-auth/react";
+import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { Loader2, ExternalLink, Copy, Check } from "lucide-react";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
@@ -23,7 +23,7 @@ interface BalanceResponse {
 }
 
 export function WithdrawWidget() {
-  const { data: session, status } = useSession();
+  const { wallet } = useMobileWalletStore();
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [destinationAddress, setDestinationAddress] = useState("");
   const [amount, setAmount] = useState("");
@@ -35,7 +35,7 @@ export function WithdrawWidget() {
 
   // Fetch balance
   const fetchBalance = useCallback(async () => {
-    if (status !== "authenticated") return;
+    if (!wallet) return;
 
     try {
       const res = await fetch("/api/trading/balance");
@@ -46,7 +46,7 @@ export function WithdrawWidget() {
     } catch (err) {
       console.error("Failed to fetch balance:", err);
     }
-  }, [status]);
+  }, [wallet]);
 
   useEffect(() => {
     fetchBalance();
@@ -108,21 +108,11 @@ export function WithdrawWidget() {
     }
   };
 
-  if (status === "loading") {
-    return (
-      <div className="bg-[#1a1a1a] rounded-xl p-6 border border-white/10">
-        <div className="flex items-center justify-center h-40">
-          <Loader2 className="w-6 h-6 animate-spin text-white/50" />
-        </div>
-      </div>
-    );
-  }
-
-  if (status === "unauthenticated") {
+  if (!wallet) {
     return (
       <div className="bg-[#1a1a1a] rounded-xl p-6 border border-white/10">
         <div className="text-center">
-          <p className="text-white/60 mb-4">Sign in to withdraw</p>
+          <p className="text-white/60">Create a wallet to withdraw</p>
         </div>
       </div>
     );

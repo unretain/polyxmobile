@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useSession } from "next-auth/react";
+import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { Loader2, RefreshCw, RotateCcw, Pencil, X } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import { useToast } from "@/components/ui/Toast";
@@ -95,7 +95,7 @@ export function SwapWidget({
   compactMobile = false,
 }: SwapWidgetProps) {
   const { isDark } = useThemeStore();
-  const { data: session, status } = useSession();
+  const { wallet } = useMobileWalletStore();
   const { showToast } = useToast();
   const [inputAmount, setInputAmount] = useState("");
   const [slippage] = useState(3000); // 30% default slippage for memecoins
@@ -130,7 +130,7 @@ export function SwapWidget({
   const [noWallet, setNoWallet] = useState(false);
 
   const fetchBalance = useCallback(async () => {
-    if (status !== "authenticated" || noWallet) return;
+    if (!wallet || noWallet) return;
     try {
       const res = await fetch("/api/trading/balance");
       if (res.ok) {
@@ -143,10 +143,10 @@ export function SwapWidget({
     } catch (err) {
       console.error("Failed to fetch balance:", err);
     }
-  }, [status, noWallet]);
+  }, [wallet, noWallet]);
 
   const fetchTokenStats = useCallback(async () => {
-    if (status !== "authenticated" || !defaultOutputMint) return;
+    if (!wallet || !defaultOutputMint) return;
     try {
       const res = await fetch(`/api/trading/pnl?tokenMint=${defaultOutputMint}`);
       if (res.ok) {
@@ -156,7 +156,7 @@ export function SwapWidget({
     } catch (err) {
       console.error("Failed to fetch token stats:", err);
     }
-  }, [status, defaultOutputMint]);
+  }, [wallet, defaultOutputMint]);
 
   useEffect(() => {
     fetchBalance();
@@ -360,32 +360,13 @@ export function SwapWidget({
     setIsEditingSolAmounts(false);
   };
 
-  if (status === "loading") {
+  if (!wallet) {
     return (
       <div className={cn(
         "border p-4",
         isDark ? "bg-[#0d0d0d] border-white/10" : "bg-white border-gray-200"
       )}>
-        <div className="flex items-center justify-center h-32">
-          <Loader2 className={cn("w-5 h-5 animate-spin", isDark ? "text-white/40" : "text-gray-400")} />
-        </div>
-      </div>
-    );
-  }
-
-  if (status === "unauthenticated") {
-    return (
-      <div className={cn(
-        "border p-4",
-        isDark ? "bg-[#0d0d0d] border-white/10" : "bg-white border-gray-200"
-      )}>
-        <p className={cn("text-sm text-center mb-3", isDark ? "text-white/50" : "text-gray-500")}>Sign in to trade</p>
-        <a
-          href="/auth/signin"
-          className="block w-full py-2 bg-[#00ffa3] text-black text-center text-sm font-medium hover:bg-[#00dd8a] transition-colors"
-        >
-          Sign In
-        </a>
+        <p className={cn("text-sm text-center", isDark ? "text-white/50" : "text-gray-500")}>Create a wallet to trade</p>
       </div>
     );
   }
