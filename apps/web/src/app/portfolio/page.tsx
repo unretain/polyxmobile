@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { MobileHeader } from "@/components/layout/MobileHeader";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import { useThemeStore } from "@/stores/themeStore";
@@ -10,14 +10,18 @@ import {
   ChevronLeft,
   ChevronRight,
   TrendingUp,
-  TrendingDown,
   Flame,
   Trophy,
   BarChart3,
-  Wallet,
   ArrowUpRight,
   ArrowDownRight,
   ExternalLink,
+  Share2,
+  X,
+  Download,
+  Copy,
+  Image as ImageIcon,
+  Loader2,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -79,6 +83,14 @@ export default function PortfolioPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "positions">("overview");
 
+  // Share card state
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [customBgImage, setCustomBgImage] = useState<string | null>(null);
+  const [isGeneratingCard, setIsGeneratingCard] = useState(false);
+  const [selectedDayForShare, setSelectedDayForShare] = useState<DailyPnL | null>(null);
+  const shareCanvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Fetch PnL data
   useEffect(() => {
     async function fetchPnL() {
@@ -137,6 +149,141 @@ export default function PortfolioPage() {
     "July", "August", "September", "October", "November", "December"
   ];
 
+  // Generate PnL card on canvas
+  const generatePnLCard = useCallback(async (): Promise<Blob | null> => {
+    const canvas = shareCanvasRef.current;
+    if (!canvas) return null;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    const width = 800;
+    const height = 600;
+    canvas.width = width;
+    canvas.height = height;
+
+    // Draw background
+    if (customBgImage) {
+      const img = new window.Image();
+      img.crossOrigin = "anonymous";
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => {
+          // Cover fit
+          const scale = Math.max(width / img.width, height / img.height);
+          const w = img.width * scale;
+          const h = img.height * scale;
+          const x = (width - w) / 2;
+          const y = (height - h) / 2;
+          ctx.drawImage(img, x, y, w, h);
+          resolve();
+        };
+        img.onerror = reject;
+        img.src = customBgImage;
+      });
+    } else {
+      // Default gradient background
+      const gradient = ctx.createLinearGradient(0, 0, width, height);
+      gradient.addColorStop(0, "#FF6B4A");
+      gradient.addColorStop(0.5, "#FF8F6B");
+      gradient.addColorStop(1, "#FFB088");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+    }
+
+    // Dark overlay
+    ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+    ctx.fillRect(0, 0, width, height);
+
+    // Get PnL data
+    const pnl = selectedDayForShare?.pnl ?? data?.summary.totalRealizedPnl ?? 0;
+    const isPositive = pnl >= 0;
+    const trades = selectedDayForShare?.trades ?? data?.summary.totalTrades ?? 0;
+    const winRate = ((data?.summary.winRate || 0) * 100).toFixed(0);
+
+    // Logo
+    ctx.font = "bold 36px system-ui, -apple-system, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillStyle = "white";
+    ctx.fillText("[poly", 40, 60);
+    ctx.fillStyle = "#FF6B4A";
+    ctx.fillText("x", 40 + ctx.measureText("[poly").width, 60);
+    ctx.fillStyle = "white";
+    ctx.fillText("]", 40 + ctx.measureText("[polyx").width, 60);
+
+    // Period label
+    ctx.textAlign = "center";
+    ctx.font = "20px system-ui, -apple-system, sans-serif";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+    const periodLabel = selectedDayForShare
+      ? new Date(selectedDayForShare.date).toLocaleDateString(undefined, {
+          weekday: "long", month: "long", day: "numeric", year: "numeric"
+        })
+      : period === "calendar"
+        ? `${monthNames[calendarMonth - 1]} ${calendarYear}`
+        : period === "all" ? "All Time" : `Last ${period.toUpperCase()}`;
+    ctx.fillText(`${periodLabel} PnL`, width / 2, height * 0.38);
+
+    // PnL value
+    ctx.font = "bold 72px system-ui, -apple-system, sans-serif";
+    ctx.fillStyle = isPositive ? "#4ade80" : "#f87171";
+    const pnlText = `${isPositive ? "+" : ""}${pnl.toFixed(4)} SOL`;
+    ctx.fillText(pnlText, width / 2, height * 0.52);
+
+    // Stats
+    ctx.font = "18px system-ui, -apple-system, sans-serif";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.6)";
+    const statsText = selectedDayForShare
+      ? `${trades} trade${trades !== 1 ? "s" : ""} • ${(selectedDayForShare.volume || 0).toFixed(4)} SOL volume`
+      : `${trades} trades • ${winRate}% win rate`;
+    ctx.fillText(statsText, width / 2, height * 0.62);
+
+    // Footer
+    ctx.font = "16px system-ui, -apple-system, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }), 40, height - 40);
+    ctx.textAlign = "right";
+    ctx.fillText("polyx.trade", width - 40, height - 40);
+
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => resolve(blob), "image/png");
+    });
+  }, [customBgImage, selectedDayForShare, data, period, calendarMonth, calendarYear, monthNames]);
+
+  // Download card
+  const handleDownloadCard = async () => {
+    setIsGeneratingCard(true);
+    try {
+      const blob = await generatePnLCard();
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `polyx-pnl-${new Date().toISOString().split("T")[0]}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } finally {
+      setIsGeneratingCard(false);
+    }
+  };
+
+  // Copy card to clipboard
+  const handleCopyCard = async () => {
+    setIsGeneratingCard(true);
+    try {
+      const blob = await generatePnLCard();
+      if (blob) {
+        await navigator.clipboard.write([
+          new ClipboardItem({ "image/png": blob })
+        ]);
+      }
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    } finally {
+      setIsGeneratingCard(false);
+    }
+  };
+
   return (
     <AuthGuard>
       <div className={`min-h-screen ${isDark ? "bg-[#0a0a0a] text-white" : "bg-[#f5f5f5] text-black"}`}>
@@ -148,11 +295,24 @@ export default function PortfolioPage() {
             <h1 className={`text-xl font-bold ${isDark ? "text-white" : "text-gray-900"}`}>
               Portfolio
             </h1>
-            {wallet && (
-              <div className={`text-xs font-mono px-2 py-1 rounded ${isDark ? "bg-white/10 text-white/60" : "bg-black/5 text-gray-500"}`}>
-                {shortenAddress(wallet.publicKey, 4)}
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              {/* Share Button */}
+              <button
+                onClick={() => {
+                  setSelectedDayForShare(null);
+                  setShowShareModal(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FF6B4A] text-white text-xs font-medium"
+              >
+                <Share2 className="w-3.5 h-3.5" />
+                Share
+              </button>
+              {wallet && (
+                <div className={`text-xs font-mono px-2 py-1 rounded ${isDark ? "bg-white/10 text-white/60" : "bg-black/5 text-gray-500"}`}>
+                  {shortenAddress(wallet.publicKey, 4)}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Period Selector */}
@@ -244,6 +404,10 @@ export default function PortfolioPage() {
                   data={data?.calendarData || {}}
                   onPrevMonth={prevMonth}
                   onNextMonth={nextMonth}
+                  onDayClick={(day) => {
+                    setSelectedDayForShare(day);
+                    setShowShareModal(true);
+                  }}
                   monthName={monthNames[calendarMonth - 1]}
                   isDark={isDark}
                 />
@@ -324,6 +488,167 @@ export default function PortfolioPage() {
             </div>
           )}
         </main>
+
+        {/* Hidden canvas for generating share card */}
+        <canvas ref={shareCanvasRef} className="hidden" />
+
+        {/* Hidden file input for custom background */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              const reader = new FileReader();
+              reader.onload = (ev) => {
+                setCustomBgImage(ev.target?.result as string);
+              };
+              reader.readAsDataURL(file);
+            }
+          }}
+        />
+
+        {/* Share Modal */}
+        {showShareModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+            <div className={`relative w-full max-w-sm rounded-2xl overflow-hidden ${isDark ? "bg-[#111] border border-white/10" : "bg-white border border-gray-200"}`}>
+              {/* Modal Header */}
+              <div className={`flex items-center justify-between p-4 border-b ${isDark ? "border-white/10" : "border-gray-200"}`}>
+                <h3 className={`text-lg font-semibold ${isDark ? "text-white" : "text-gray-900"}`}>Share PnL Card</h3>
+                <button
+                  onClick={() => setShowShareModal(false)}
+                  className={`p-2 rounded-lg transition-colors ${isDark ? "hover:bg-white/10 text-white/60" : "hover:bg-gray-100 text-gray-500"}`}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Card Preview */}
+              <div className="p-4">
+                <div
+                  className="relative w-full aspect-[4/3] rounded-xl overflow-hidden"
+                  style={{
+                    background: customBgImage
+                      ? `url(${customBgImage}) center/cover`
+                      : "linear-gradient(135deg, #FF6B4A 0%, #FF8F6B 50%, #FFB088 100%)"
+                  }}
+                >
+                  {/* Overlay */}
+                  <div className="absolute inset-0 bg-black/30" />
+
+                  {/* Card Content */}
+                  <div className="relative h-full flex flex-col justify-between p-4 text-white">
+                    {/* Logo */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl font-bold">[poly<span className="text-[#FF6B4A]">x</span>]</span>
+                    </div>
+
+                    {/* PnL Display */}
+                    <div className="text-center">
+                      {selectedDayForShare ? (
+                        <>
+                          <p className="text-xs opacity-80 mb-1">
+                            {new Date(selectedDayForShare.date).toLocaleDateString(undefined, {
+                              weekday: "long", month: "long", day: "numeric"
+                            })}
+                          </p>
+                          <p className={`text-3xl font-bold ${selectedDayForShare.pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+                            {selectedDayForShare.pnl >= 0 ? "+" : ""}{selectedDayForShare.pnl.toFixed(4)} SOL
+                          </p>
+                          <p className="text-xs opacity-60 mt-1">
+                            {selectedDayForShare.trades} trade{selectedDayForShare.trades !== 1 ? "s" : ""}
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-xs opacity-80 mb-1">
+                            {period === "calendar"
+                              ? `${monthNames[calendarMonth - 1]} ${calendarYear}`
+                              : period === "all" ? "All Time" : `Last ${period.toUpperCase()}`} PnL
+                          </p>
+                          <p className={`text-3xl font-bold ${(data?.summary.totalRealizedPnl || 0) >= 0 ? "text-green-400" : "text-red-400"}`}>
+                            {(data?.summary.totalRealizedPnl || 0) >= 0 ? "+" : ""}{(data?.summary.totalRealizedPnl || 0).toFixed(4)} SOL
+                          </p>
+                          <p className="text-xs opacity-60 mt-1">
+                            {data?.summary.totalTrades || 0} trades • {((data?.summary.winRate || 0) * 100).toFixed(0)}% win rate
+                          </p>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Footer */}
+                    <div className="flex items-center justify-between text-[10px] opacity-60">
+                      <span>{new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
+                      <span>polyx.trade</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className={`p-4 border-t ${isDark ? "border-white/10" : "border-gray-200"}`}>
+                {/* Background selector */}
+                <div className="flex items-center gap-2 mb-3">
+                  <span className={`text-xs ${isDark ? "text-white/40" : "text-gray-500"}`}>Background:</span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setCustomBgImage(null)}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded transition-colors",
+                        !customBgImage
+                          ? "bg-[#FF6B4A] text-white"
+                          : isDark ? "bg-white/5 text-white/60 hover:bg-white/10" : "bg-gray-100 text-gray-600"
+                      )}
+                    >
+                      Default
+                    </button>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className={cn(
+                        "px-2 py-1 text-xs rounded transition-colors flex items-center gap-1",
+                        customBgImage
+                          ? "bg-[#FF6B4A] text-white"
+                          : isDark ? "bg-white/5 text-white/60 hover:bg-white/10" : "bg-gray-100 text-gray-600"
+                      )}
+                    >
+                      <ImageIcon className="w-3 h-3" />
+                      Custom
+                    </button>
+                  </div>
+                </div>
+
+                {/* Buttons */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleCopyCard}
+                    disabled={isGeneratingCard}
+                    className={cn(
+                      "flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50",
+                      isDark ? "bg-white/5 hover:bg-white/10 border border-white/10 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-900"
+                    )}
+                  >
+                    <Copy className="h-4 w-4" />
+                    <span className="text-sm font-medium">Copy</span>
+                  </button>
+                  <button
+                    onClick={handleDownloadCard}
+                    disabled={isGeneratingCard}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#FF6B4A] hover:bg-[#ff5a35] text-white transition-colors disabled:opacity-50"
+                  >
+                    {isGeneratingCard ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    <span className="text-sm font-medium">Download</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AuthGuard>
   );
@@ -438,6 +763,7 @@ function PnLCalendar({
   data,
   onPrevMonth,
   onNextMonth,
+  onDayClick,
   monthName,
   isDark,
 }: {
@@ -446,6 +772,7 @@ function PnLCalendar({
   data: Record<string, DailyPnL>;
   onPrevMonth: () => void;
   onNextMonth: () => void;
+  onDayClick?: (day: DailyPnL) => void;
   monthName: string;
   isDark: boolean;
 }) {
@@ -495,13 +822,14 @@ function PnLCalendar({
           return (
             <div
               key={day}
+              onClick={() => hasTrades && dayData && onDayClick?.(dayData)}
               className={cn(
-                "aspect-square rounded-md flex flex-col items-center justify-center text-[10px] relative",
+                "aspect-square rounded-md flex flex-col items-center justify-center text-[10px] relative transition-transform",
                 hasTrades
                   ? pnl > 0
-                    ? "bg-green-500/20 text-green-500"
+                    ? "bg-green-500/20 text-green-500 cursor-pointer active:scale-95"
                     : pnl < 0
-                    ? "bg-red-500/20 text-red-500"
+                    ? "bg-red-500/20 text-red-500 cursor-pointer active:scale-95"
                     : isDark ? "bg-white/5 text-white/60" : "bg-black/5 text-gray-500"
                   : isDark ? "text-white/30" : "text-gray-300"
               )}
