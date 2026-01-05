@@ -42,8 +42,10 @@ export function TradingViewChart({
 
   // Initialize chart
   useEffect(() => {
+    console.log("[TradingViewChart] Init effect running, containerRef:", !!chartContainerRef.current);
     if (!chartContainerRef.current) return;
 
+    console.log("[TradingViewChart] Creating chart...");
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { color: "transparent" },
@@ -119,6 +121,7 @@ export function TradingViewChart({
     candleSeriesRef.current = candleSeries;
     lineSeriesRef.current = lineSeries;
     setChartReady(true);
+    console.log("[TradingViewChart] Chart created and ready");
 
     // Handle resize
     const handleResize = () => {
@@ -145,7 +148,11 @@ export function TradingViewChart({
 
   // Update data when it changes or when chart becomes ready
   useEffect(() => {
-    if (!chartReady || !candleSeriesRef.current || !lineSeriesRef.current || !data || data.length === 0) return;
+    console.log("[TradingViewChart] Data effect running, chartReady:", chartReady, "dataLen:", data?.length);
+    if (!chartReady || !candleSeriesRef.current || !lineSeriesRef.current || !data || data.length === 0) {
+      console.log("[TradingViewChart] Skipping data update - not ready or no data");
+      return;
+    }
 
     // Convert OHLCV data to lightweight-charts format
     const candleData: CandlestickData<Time>[] = data
@@ -164,12 +171,14 @@ export function TradingViewChart({
       value: d.close,
     }));
 
+    console.log("[TradingViewChart] Setting data, candleData length:", candleData.length);
     candleSeriesRef.current.setData(candleData);
     lineSeriesRef.current.setData(lineData);
 
     // Fit content to view
     if (chartRef.current) {
       chartRef.current.timeScale().fitContent();
+      console.log("[TradingViewChart] Data set and fitted to view");
     }
   }, [data, chartReady]); // Re-run when data changes or chart becomes ready
 
