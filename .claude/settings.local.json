@@ -393,7 +393,12 @@
       "Bash(npx next build)",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nMobile wallet-only auth with hydration fix\n\n- Remove NextAuth session dependencies for mobile app\n- Add wallet creation/import with BIP39 mnemonic\n- Add MobileHeader component without auth buttons\n- Fix wallet persistence with Zustand hydration tracking\n- Remove social/lobby features for mobile\n- Update footer with X profile links\n- Remove Markets from mobile navigation\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git pull:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(cmd /c \"tasklist /FI \"\"IMAGENAME eq node.exe\"\"\")",
+      "Bash(cmd /c \"cd c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\\\\apps\\\\api && if exist .env \\(type .env\\) else if exist .env.local \\(type .env.local\\) else \\(echo No .env file found\\)\")",
+      "Bash(cmd /c \"cd c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\\\\apps\\\\web && npm run build 2>&1\")",
+      "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" status)",
+      "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" add -A)"
     ],
     "deny": [],
     "ask": []

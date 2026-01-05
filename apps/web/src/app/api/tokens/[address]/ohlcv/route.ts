@@ -4,8 +4,8 @@ import { fetchInternalApi } from "@/lib/config";
 // Solana address validation
 const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
-// Valid timeframes
-const VALID_TIMEFRAMES = new Set(["1s", "1min", "5min", "15m", "1h", "4h", "1d", "1w", "1M"]);
+// Valid timeframes - support both formats (1m/1min, 5m/5min)
+const VALID_TIMEFRAMES = new Set(["1s", "1m", "1min", "5m", "5min", "15m", "1h", "4h", "1d", "1w", "1M"]);
 
 // Proxy to internal API - protects Birdeye API key
 export async function GET(
