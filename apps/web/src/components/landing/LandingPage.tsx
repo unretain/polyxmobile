@@ -24,6 +24,19 @@ const TradingViewChart = dynamic(
   }
 );
 
+// Dynamic import for 3D Chart
+const Chart3D = dynamic(
+  () => import("@/components/charts/Chart3D").then((mod) => mod.Chart3D),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-full bg-transparent flex items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#FF6B4A] border-t-transparent" />
+      </div>
+    ),
+  }
+);
+
 const SOL_ADDRESS = "So11111111111111111111111111111111111111112";
 const WETH_ADDRESS = "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs";
 // API calls go through Next.js proxy routes (protects internal API key)
@@ -204,6 +217,7 @@ export function LandingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [timeframe, setTimeframe] = useState<Timeframe>("4h");
   const [isWalletOnboardingOpen, setIsWalletOnboardingOpen] = useState(false);
+  const [chartMode, setChartMode] = useState<"3d" | "2d">("3d"); // Default to 3D
 
   const currentToken = FEATURED_TOKENS[tokenIndex];
 
@@ -386,20 +400,57 @@ export function LandingPage() {
                       <span className={`font-mono text-xs md:text-sm ${isDark ? 'text-white/60' : 'text-black/60'}`}>${currentToken.symbol}</span>
                     </div>
                   </div>
-                  <TimeframeSelector
-                    timeframe={timeframe}
-                    onTimeframeChange={setTimeframe}
-                    isDark={isDark}
-                  />
+                  <div className="flex items-center gap-2">
+                    {/* 3D/2D Toggle */}
+                    <div className={`flex items-center gap-0.5 p-1 rounded-lg ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
+                      <button
+                        onClick={() => setChartMode("3d")}
+                        className={`px-2 py-1 rounded-md text-xs font-mono transition-colors ${
+                          chartMode === "3d"
+                            ? 'bg-[#FF6B4A] text-white'
+                            : isDark
+                              ? 'text-white/60 hover:text-white hover:bg-white/5'
+                              : 'text-black/60 hover:text-black hover:bg-black/5'
+                        }`}
+                      >
+                        3D
+                      </button>
+                      <button
+                        onClick={() => setChartMode("2d")}
+                        className={`px-2 py-1 rounded-md text-xs font-mono transition-colors ${
+                          chartMode === "2d"
+                            ? 'bg-[#FF6B4A] text-white'
+                            : isDark
+                              ? 'text-white/60 hover:text-white hover:bg-white/5'
+                              : 'text-black/60 hover:text-black hover:bg-black/5'
+                        }`}
+                      >
+                        2D
+                      </button>
+                    </div>
+                    <TimeframeSelector
+                      timeframe={timeframe}
+                      onTimeframeChange={setTimeframe}
+                      isDark={isDark}
+                    />
+                  </div>
                 </div>
 
-                {/* Chart Area - TradingView 2D */}
+                {/* Chart Area - 3D or 2D based on mode */}
                 <div className="flex-1 relative">
                   <div className="absolute inset-0">
-                    <TradingViewChart
-                      data={candles}
-                      isLoading={isLoading}
-                    />
+                    {chartMode === "3d" ? (
+                      <Chart3D
+                        data={candles}
+                        isLoading={isLoading}
+                        showDrawingTools={false}
+                      />
+                    ) : (
+                      <TradingViewChart
+                        data={candles}
+                        isLoading={isLoading}
+                      />
+                    )}
                   </div>
                 </div>
 

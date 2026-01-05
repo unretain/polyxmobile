@@ -45,8 +45,14 @@ export function TradingViewChart({
     console.log("[TradingViewChart] Init effect running, containerRef:", !!chartContainerRef.current);
     if (!chartContainerRef.current) return;
 
-    console.log("[TradingViewChart] Creating chart...");
-    const chart = createChart(chartContainerRef.current, {
+    const container = chartContainerRef.current;
+    const width = container.clientWidth || 400;
+    const height = container.clientHeight || 300;
+    console.log("[TradingViewChart] Creating chart with dimensions:", width, "x", height);
+
+    const chart = createChart(container, {
+      width,
+      height,
       layout: {
         background: { color: "transparent" },
         textColor: isDark ? "#888888" : "#333333",
@@ -134,9 +140,12 @@ export function TradingViewChart({
     };
 
     window.addEventListener("resize", handleResize);
+    // Initial resize and delayed resize to handle container dimensions settling
     handleResize();
+    const resizeTimeout = setTimeout(handleResize, 100);
 
     return () => {
+      clearTimeout(resizeTimeout);
       window.removeEventListener("resize", handleResize);
       chart.remove();
       chartRef.current = null;
