@@ -31,8 +31,22 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
   const [importError, setImportError] = useState("");
   const [importing, setImporting] = useState(false);
 
+  // Register wallet with backend (encrypted storage)
+  const registerWallet = async (pk: string) => {
+    try {
+      await fetch("/api/wallet/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publicKey: pk }),
+      });
+    } catch {
+      // Silent fail - wallet still works locally
+      console.error("Failed to register wallet with backend");
+    }
+  };
+
   // Generate wallet when creating new
-  const handleCreateNew = () => {
+  const handleCreateNew = async () => {
     const { mnemonic, publicKey: pk } = generateWalletWithMnemonic();
     setPendingMnemonic(mnemonic);
     setWords(formatMnemonicForDisplay(mnemonic));
@@ -44,6 +58,9 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
       hasBackedUp: false,
       createdAt: Date.now(),
     });
+
+    // Register with backend (encrypted)
+    registerWallet(pk);
 
     setStep("create-intro");
   };
@@ -153,6 +170,9 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
         hasBackedUp: true, // Assume they have it backed up since they're importing
         createdAt: Date.now(),
       });
+
+      // Register with backend (encrypted)
+      registerWallet(pk);
 
       // Clear sensitive data from state immediately after use
       setImportPhrase("");
