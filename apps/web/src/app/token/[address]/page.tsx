@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import {
   ArrowLeft,
   ExternalLink,
@@ -18,9 +19,25 @@ import { formatPrice, formatNumber, formatPercent, shortenAddress, cn } from "@/
 import { useTokenStore } from "@/stores/tokenStore";
 import { usePulseStore, type OHLCV } from "@/stores/pulseStore";
 import { useThemeStore } from "@/stores/themeStore";
-import { Chart3D } from "@/components/charts/Chart3D";
-import { Line3DChart } from "@/components/charts/Line3DChart";
 import { ChartControls } from "@/components/charts/ChartControls";
+
+// Dynamic imports for heavy 3D chart components
+const Chart3D = dynamic(
+  () => import("@/components/charts/Chart3D").then((mod) => mod.Chart3D),
+  { ssr: false, loading: () => <ChartLoadingSpinner /> }
+);
+const Line3DChart = dynamic(
+  () => import("@/components/charts/Line3DChart").then((mod) => mod.Line3DChart),
+  { ssr: false, loading: () => <ChartLoadingSpinner /> }
+);
+
+function ChartLoadingSpinner() {
+  return (
+    <div className="h-full w-full flex items-center justify-center bg-black/20">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#FF6B4A] border-t-transparent" />
+    </div>
+  );
+}
 import { type ChartType, LINE_PERIODS, CANDLE_PERIODS, PULSE_PERIOD } from "@/stores/chartStore";
 import { BarChart3, LineChart } from "lucide-react";
 import { SwapWidget } from "@/components/trading";

@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import type { OHLCV } from "@/stores/pulseStore";
+import { formatMC, formatChartPrice } from "@/lib/utils";
 
 interface MiniCandlestickChartProps {
   data: OHLCV[];
@@ -12,21 +13,6 @@ interface MiniCandlestickChartProps {
 
 // Pump.fun tokens have 1 billion supply
 const PUMP_FUN_SUPPLY = 1_000_000_000;
-
-// Format market cap for Y-axis labels
-function formatMC(value: number): string {
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-  return `$${value.toFixed(0)}`;
-}
-
-// Format price for Y-axis labels
-function formatPrice(value: number): string {
-  if (value >= 1) return `$${value.toFixed(2)}`;
-  if (value >= 0.01) return `$${value.toFixed(4)}`;
-  if (value >= 0.0001) return `$${value.toFixed(6)}`;
-  return `$${value.toExponential(2)}`;
-}
 
 export function MiniCandlestickChart({
   data,
@@ -89,7 +75,7 @@ export function MiniCandlestickChart({
     for (let i = 0; i <= 2; i++) {
       const value = bounds.min + (i / 2) * bounds.range;
       const displayValue = showMarketCap ? value * PUMP_FUN_SUPPLY : value;
-      const text = showMarketCap ? formatMC(displayValue) : formatPrice(displayValue);
+      const text = showMarketCap ? formatMC(displayValue) : formatChartPrice(displayValue);
       labels.push({ value, text });
     }
     return labels;

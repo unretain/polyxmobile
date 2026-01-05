@@ -6,6 +6,7 @@ import { PerspectiveCamera, Text } from "@react-three/drei";
 import * as THREE from "three";
 import type { OHLCV } from "@/stores/pulseStore";
 import { useThemeStore } from "@/stores/themeStore";
+import { formatMC, formatChartPrice } from "@/lib/utils";
 
 interface Mini3DChartProps {
   data: OHLCV[];
@@ -16,21 +17,6 @@ interface Mini3DChartProps {
 
 // Pump.fun tokens have 1 billion supply
 const PUMP_FUN_SUPPLY = 1_000_000_000;
-
-// Format market cap for Y-axis labels
-function formatMC(value: number): string {
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-  return `$${value.toFixed(0)}`;
-}
-
-// Format price for Y-axis labels
-function formatPrice(value: number): string {
-  if (value >= 1) return `$${value.toFixed(2)}`;
-  if (value >= 0.01) return `$${value.toFixed(4)}`;
-  if (value >= 0.0001) return `$${value.toFixed(6)}`;
-  return `$${value.toExponential(2)}`;
-}
 
 // Mini 3D Candlestick component
 function MiniCandlestick({
@@ -236,7 +222,7 @@ function ChartScene({
       const normalizedY = (i / 2) * CHART_HEIGHT;
       const value = bounds.min + (i / 2) * bounds.range;
       const displayValue = showMarketCap ? value * PUMP_FUN_SUPPLY : value;
-      const text = showMarketCap ? formatMC(displayValue) : formatPrice(displayValue);
+      const text = showMarketCap ? formatMC(displayValue) : formatChartPrice(displayValue);
       labels.push({ y: normalizedY, text });
     }
     return labels;
