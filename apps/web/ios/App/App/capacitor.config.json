@@ -1,0 +1,27 @@
+{
+	"appId": "com.polyx.app",
+	"appName": "Polyx",
+	"webDir": "out",
+	"ios": {
+		"contentInset": "automatic",
+		"allowsLinkPreview": false,
+		"backgroundColor": "#000000",
+		"preferredContentMode": "mobile"
+	},
+	"plugins": {
+		"SplashScreen": {
+			"launchShowDuration": 2000,
+			"backgroundColor": "#000000",
+			"showSpinner": false
+		},
+		"Keyboard": {
+			"resize": "body",
+			"resizeOnFullScreen": true
+		}
+	},
+	"packageClassList": [
+		"AppPlugin",
+		"HapticsPlugin",
+		"NativeBiometric"
+	]
+}
