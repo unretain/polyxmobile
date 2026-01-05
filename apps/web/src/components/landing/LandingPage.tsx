@@ -239,25 +239,37 @@ export function LandingPage() {
 
   // Fetch candles when timeframe or token changes
   useEffect(() => {
+    console.log("[LandingPage] Fetching data for", currentToken.symbol, "timeframe:", timeframe);
     setIsLoading(true);
     setTokenPrice(null);
 
     fetch(`/api/tokens/${currentToken.address}`)
       .then((res) => res.json())
       .then((data) => {
+        console.log("[LandingPage] Token data received:", data?.price);
         if (data.price) setTokenPrice(data.price);
       })
-      .catch(() => setTokenPrice(currentToken.symbol === "SOL" ? 235 : 3018));
+      .catch((err) => {
+        console.error("[LandingPage] Token fetch error:", err);
+        setTokenPrice(currentToken.symbol === "SOL" ? 235 : 3018);
+      });
 
     fetch(`/api/tokens/${currentToken.address}/ohlcv?timeframe=${timeframe}&limit=100`)
       .then((res) => res.json())
       .then((data) => {
+        console.log("[LandingPage] OHLCV data received, isArray:", Array.isArray(data), "length:", data?.length);
         if (Array.isArray(data) && data.length > 0) {
           setCandles(data);
+          console.log("[LandingPage] Candles set:", data.length);
+        } else {
+          console.warn("[LandingPage] OHLCV data invalid or empty:", data);
         }
         setIsLoading(false);
       })
-      .catch(() => setIsLoading(false));
+      .catch((err) => {
+        console.error("[LandingPage] OHLCV fetch error:", err);
+        setIsLoading(false);
+      });
   }, [timeframe, currentToken.address, currentToken.symbol]);
 
   // Auto-refresh data
