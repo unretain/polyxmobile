@@ -59,3 +59,16 @@ export function formatPercent(percent: number): string {
 export function shortenAddress(address: string, chars = 4): string {
   return `${address.slice(0, chars)}...${address.slice(-chars)}`;
 }
+
+export function formatMC(value: number): string {
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
+  return `$${value.toFixed(0)}`;
+}
+
+export function formatChartPrice(value: number): string {
+  if (value >= 1) return `$${value.toFixed(2)}`;
+  if (value >= 0.01) return `$${value.toFixed(4)}`;
+  if (value >= 0.0001) return `$${value.toFixed(6)}`;
+  return `$${value.toExponential(2)}`;
+}

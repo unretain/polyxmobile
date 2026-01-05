@@ -403,7 +403,11 @@
       "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" commit -m \"$\\(cat <<''EOF''\nFix landing page chart not rendering\n\n- Add chartReady state to track when lightweight-charts is initialized\n- Ensure data updates wait for chart to be ready before setting data\n- Fix race condition where data effect could run before chart init\n- Support additional timeframe formats \\(1m/1min, 5m/5min\\) in OHLCV route\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" push)",
       "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" commit -m \"Add debug logs for chart rendering\")",
-      "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" commit -m \"$\\(cat <<''EOF''\nAdd 3D/2D chart toggle on landing page\n\n- Add chartMode state \\(defaults to 3D\\)\n- Add 3D/2D toggle buttons next to timeframe selector\n- Conditionally render Chart3D or TradingViewChart based on mode\n- Fix chart initialization with explicit width/height\n- Add delayed resize to handle container dimensions settling\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+      "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" commit -m \"$\\(cat <<''EOF''\nAdd 3D/2D chart toggle on landing page\n\n- Add chartMode state \\(defaults to 3D\\)\n- Add 3D/2D toggle buttons next to timeframe selector\n- Conditionally render Chart3D or TradingViewChart based on mode\n- Fix chart initialization with explicit width/height\n- Add delayed resize to handle container dimensions settling\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(del:*)",
+      "Bash(cmd /c \"cd c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\\\\apps\\\\web && npm run build\")",
+      "Bash(cmd.exe /c \"cd /d c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\\\\apps\\\\web && npm run build\")",
+      "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" diff --cached --stat)"
     ],
     "deny": [],
     "ask": []
