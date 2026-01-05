@@ -382,7 +382,9 @@
       "Bash(railway logs:*)",
       "Bash(npx railway:*)",
       "Bash(npx ts-node:*)",
-      "Bash(npx dotenv:*)"
+      "Bash(npx dotenv:*)",
+      "Bash(copy:*)",
+      "Bash(git remote:*)"
     ],
     "deny": [],
     "ask": []
