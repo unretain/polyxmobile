@@ -497,19 +497,6 @@ export function Header() {
                   )}
                 </div>
 
-                {/* Mobile: Logout Button - always visible */}
-                <button
-                  onClick={handleLogout}
-                  className={`md:hidden p-2 rounded-full border backdrop-blur-md transition-colors ${
-                    isDark
-                      ? 'bg-[#FF6B4A]/20 border-[#FF6B4A]/30 text-[#FF6B4A]'
-                      : 'bg-orange-100 border-orange-200 text-[#FF6B4A]'
-                  }`}
-                  title="Sign Out"
-                >
-                  <LogOut className="h-5 w-5" />
-                </button>
-
                 {/* Mobile: Hamburger menu */}
                 <button
                   onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -624,6 +611,15 @@ export function Header() {
             {/* User Section */}
             {currentUser ? (
               <div className="p-2">
+                {/* LOGOUT - at the top for visibility */}
+                <button
+                  onClick={() => { handleLogout(); setMobileMenuOpen(false); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium bg-[#FF6B4A]/10 text-[#FF6B4A] hover:bg-[#FF6B4A]/20 transition-colors mb-2"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Logout
+                </button>
+
                 {/* Wallet Balance */}
                 {walletAddress && (
                   <button
@@ -645,15 +641,6 @@ export function Header() {
                     <span className={`text-xs ${isDark ? 'text-white/40' : 'text-black/40'}`}>{shortenAddress(walletAddress)}</span>
                   </button>
                 )}
-                <button
-                  onClick={() => { setMobileMenuOpen(false); setShowSocialPanel(true); }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors ${
-                    isDark ? 'text-white/70 hover:bg-white/5' : 'text-black/70 hover:bg-black/5'
-                  }`}
-                >
-                  <Users className="h-4 w-4" />
-                  Social
-                </button>
                 <Link
                   href="/portfolio"
                   onClick={() => setMobileMenuOpen(false)}
@@ -664,16 +651,6 @@ export function Header() {
                   <PieChart className="h-4 w-4" />
                   Portfolio
                 </Link>
-                <Link
-                  href="/dashboard/license"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors ${
-                    isDark ? 'text-white/70 hover:bg-white/5' : 'text-black/70 hover:bg-black/5'
-                  }`}
-                >
-                  <CreditCard className="h-4 w-4" />
-                  License & Billing
-                </Link>
                 <button
                   onClick={() => { handleOpenSecurity(); setMobileMenuOpen(false); }}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors ${
@@ -682,13 +659,6 @@ export function Header() {
                 >
                   <Key className="h-4 w-4" />
                   Security
-                </button>
-                <button
-                  onClick={() => { handleLogout(); setMobileMenuOpen(false); }}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm text-red-400 hover:bg-red-500/10 transition-colors"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Sign Out
                 </button>
               </div>
             ) : (
