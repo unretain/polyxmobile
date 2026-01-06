@@ -21,13 +21,17 @@ import { usePulseStore, type OHLCV } from "@/stores/pulseStore";
 import { useThemeStore } from "@/stores/themeStore";
 import { ChartControls } from "@/components/charts/ChartControls";
 
-// Dynamic imports for heavy 3D chart components
+// Dynamic imports for heavy chart components
 const Chart3D = dynamic(
   () => import("@/components/charts/Chart3D").then((mod) => mod.Chart3D),
   { ssr: false, loading: () => <ChartLoadingSpinner /> }
 );
 const Line3DChart = dynamic(
   () => import("@/components/charts/Line3DChart").then((mod) => mod.Line3DChart),
+  { ssr: false, loading: () => <ChartLoadingSpinner /> }
+);
+const TradingViewChart = dynamic(
+  () => import("@/components/charts/TradingViewChart").then((mod) => mod.TradingViewChart),
   { ssr: false, loading: () => <ChartLoadingSpinner /> }
 );
 
@@ -398,6 +402,7 @@ export default function TokenPage() {
   const [holdersLoading, setHoldersLoading] = useState(false);
   const [chartType, setChartType] = useState<ChartType>("candle");
   const [chartPeriod, setChartPeriod] = useState<string | null>(null); // Loaded from localStorage
+  const [chartMode, setChartMode] = useState<"3d" | "2d">("3d"); // 3D or 2D chart rendering
   const [supplyData, setSupplyData] = useState<{
     totalSupply: number | null;
     maxSupply: number | null;
@@ -951,43 +956,71 @@ export default function TokenPage() {
           {/* Chart Controls */}
           <div className="flex items-center justify-between gap-2 md:gap-4 flex-shrink-0 overflow-x-auto">
             {/* Chart Type Toggle */}
-            <div className={`flex items-center gap-0.5 md:gap-1 border p-0.5 md:p-1 flex-shrink-0 ${isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}>
-              <button
-                onClick={() => {
-                  setChartType("line");
-                  // Reset to default line chart period (line chart doesn't have 1s)
-                  if (chartPeriod === "1s") {
-                    setChartPeriod("15m"); // Default for line chart
-                  }
-                }}
-                className={cn(
-                  "flex items-center gap-1 md:gap-1.5 px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium transition-colors",
-                  chartType === "line"
-                    ? "bg-[#FF6B4A] text-white"
-                    : isDark ? "text-white/60 hover:text-white" : "text-black/60 hover:text-black"
-                )}
-              >
-                <LineChart className="h-3 w-3 md:h-4 md:w-4" />
-                <span className="hidden md:inline">Line</span>
-              </button>
-              <button
-                onClick={() => {
-                  setChartType("candle");
-                  // For Pulse tokens on candlestick, default to 1s (per-trade)
-                  if (fromPulse && (chartPeriod === "15m" || chartPeriod === "30d" || chartPeriod === "all")) {
-                    setChartPeriod("1s");
-                  }
-                }}
-                className={cn(
-                  "flex items-center gap-1 md:gap-1.5 px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium transition-colors",
-                  chartType === "candle"
-                    ? "bg-[#FF6B4A] text-white"
-                    : isDark ? "text-white/60 hover:text-white" : "text-black/60 hover:text-black"
-                )}
-              >
-                <BarChart3 className="h-3 w-3 md:h-4 md:w-4" />
-                <span className="hidden md:inline">Candle</span>
-              </button>
+            <div className="flex items-center gap-2">
+              <div className={`flex items-center gap-0.5 md:gap-1 border p-0.5 md:p-1 flex-shrink-0 ${isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}>
+                <button
+                  onClick={() => {
+                    setChartType("line");
+                    // Reset to default line chart period (line chart doesn't have 1s)
+                    if (chartPeriod === "1s") {
+                      setChartPeriod("15m"); // Default for line chart
+                    }
+                  }}
+                  className={cn(
+                    "flex items-center gap-1 md:gap-1.5 px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium transition-colors",
+                    chartType === "line"
+                      ? "bg-[#FF6B4A] text-white"
+                      : isDark ? "text-white/60 hover:text-white" : "text-black/60 hover:text-black"
+                  )}
+                >
+                  <LineChart className="h-3 w-3 md:h-4 md:w-4" />
+                  <span className="hidden md:inline">Line</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setChartType("candle");
+                    // For Pulse tokens on candlestick, default to 1s (per-trade)
+                    if (fromPulse && (chartPeriod === "15m" || chartPeriod === "30d" || chartPeriod === "all")) {
+                      setChartPeriod("1s");
+                    }
+                  }}
+                  className={cn(
+                    "flex items-center gap-1 md:gap-1.5 px-2 md:px-3 py-1 md:py-1.5 text-xs md:text-sm font-medium transition-colors",
+                    chartType === "candle"
+                      ? "bg-[#FF6B4A] text-white"
+                      : isDark ? "text-white/60 hover:text-white" : "text-black/60 hover:text-black"
+                  )}
+                >
+                  <BarChart3 className="h-3 w-3 md:h-4 md:w-4" />
+                  <span className="hidden md:inline">Candle</span>
+                </button>
+              </div>
+
+              {/* 3D/2D Toggle */}
+              <div className={`flex items-center gap-0.5 border p-0.5 flex-shrink-0 ${isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}>
+                <button
+                  onClick={() => setChartMode("3d")}
+                  className={cn(
+                    "px-2 py-1 md:py-1.5 text-xs font-mono transition-colors",
+                    chartMode === "3d"
+                      ? "bg-[#FF6B4A] text-white"
+                      : isDark ? "text-white/60 hover:text-white" : "text-black/60 hover:text-black"
+                  )}
+                >
+                  3D
+                </button>
+                <button
+                  onClick={() => setChartMode("2d")}
+                  className={cn(
+                    "px-2 py-1 md:py-1.5 text-xs font-mono transition-colors",
+                    chartMode === "2d"
+                      ? "bg-[#FF6B4A] text-white"
+                      : isDark ? "text-white/60 hover:text-white" : "text-black/60 hover:text-black"
+                  )}
+                >
+                  2D
+                </button>
+              </div>
             </div>
 
             {/* Period/Timeframe Controls */}
@@ -1000,10 +1033,16 @@ export default function TokenPage() {
             />
           </div>
 
-          {/* 3D Chart */}
+          {/* Chart - 3D or 2D based on mode */}
           {/* Pass actual token price to ensure chart header shows correct current price */}
           <div className={`flex-shrink-0 h-[300px] md:h-[400px] border overflow-hidden ${isDark ? 'border-white/10' : 'border-black/10'}`}>
-            {chartType === "line" ? (
+            {chartMode === "2d" ? (
+              <TradingViewChart
+                data={ohlcv}
+                isLoading={chartLoading && ohlcv.length === 0}
+                timeframe={chartPeriod || "1h"}
+              />
+            ) : chartType === "line" ? (
               <Line3DChart
                 data={ohlcv}
                 isLoading={chartLoading && ohlcv.length === 0}
