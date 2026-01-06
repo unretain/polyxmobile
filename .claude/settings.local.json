@@ -425,7 +425,9 @@
       "Bash(DATABASE_URL=\"postgresql://postgres:[iMasitbackwitablunt]@db.jjnnpsgcnhlpiqabmvju.supabase.co:5432/postgres\" npx prisma db push:*)",
       "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" commit -m \"$\\(cat <<''EOF''\nAdd Capacitor for iOS mobile build\n\n- Add capacitor.config.ts with production server URL\n- Add @capacitor/core and @capacitor/cli dependencies\n- Add MOBILE_BUILD support in next.config.ts for static export\n- Ready for iOS App Store submission\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" commit -m \"$\\(cat <<''EOF''\nAdd 2D/3D chart toggle and always-visible trash button\n\n- Add 3D/2D toggle to token page for both Pulse and Dashboard tokens\n- TradingViewChart renders in 2D mode, Chart3D/Line3DChart in 3D mode\n- DrawingToolbar trash button now always visible \\(disabled when no drawings\\)\n- Improves chart UX with clear mode switching\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
-      "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" commit -m \"Fix TradingViewChart timeframe type\")"
+      "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" commit -m \"Fix TradingViewChart timeframe type\")",
+      "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" commit -m \"$\\(cat <<''EOF''\nAdd visible logout button to header\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" commit -m \"$\\(cat <<''EOF''\nAdd visible logout button on mobile header\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ],
     "deny": [],
     "ask": []

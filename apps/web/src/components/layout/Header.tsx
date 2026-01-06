@@ -497,6 +497,19 @@ export function Header() {
                   )}
                 </div>
 
+                {/* Mobile: Logout Button - always visible */}
+                <button
+                  onClick={handleLogout}
+                  className={`md:hidden p-2 rounded-full border backdrop-blur-md transition-colors ${
+                    isDark
+                      ? 'bg-red-500/20 border-red-500/30 text-red-400'
+                      : 'bg-red-100 border-red-200 text-red-500'
+                  }`}
+                  title="Sign Out"
+                >
+                  <LogOut className="h-5 w-5" />
+                </button>
+
                 {/* Mobile: Hamburger menu */}
                 <button
                   onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
