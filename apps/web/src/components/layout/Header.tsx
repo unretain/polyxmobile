@@ -403,8 +403,8 @@ export function Header() {
                   onClick={handleLogout}
                   className={`hidden md:flex items-center gap-2 px-3 py-2 rounded-full border backdrop-blur-md transition-colors ${
                     isDark
-                      ? 'bg-red-500/10 border-red-500/20 hover:bg-red-500/20 text-red-400 hover:text-red-300'
-                      : 'bg-red-50 border-red-200 hover:bg-red-100 text-red-500 hover:text-red-600'
+                      ? 'bg-[#FF6B4A]/10 border-[#FF6B4A]/20 hover:bg-[#FF6B4A]/20 text-[#FF6B4A] hover:text-[#FF8F6B]'
+                      : 'bg-orange-50 border-orange-200 hover:bg-orange-100 text-[#FF6B4A] hover:text-[#FF5A36]'
                   }`}
                   title="Sign Out"
                 >
@@ -502,8 +502,8 @@ export function Header() {
                   onClick={handleLogout}
                   className={`md:hidden p-2 rounded-full border backdrop-blur-md transition-colors ${
                     isDark
-                      ? 'bg-red-500/20 border-red-500/30 text-red-400'
-                      : 'bg-red-100 border-red-200 text-red-500'
+                      ? 'bg-[#FF6B4A]/20 border-[#FF6B4A]/30 text-[#FF6B4A]'
+                      : 'bg-orange-100 border-orange-200 text-[#FF6B4A]'
                   }`}
                   title="Sign Out"
                 >
