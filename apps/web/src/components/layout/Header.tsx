@@ -398,6 +398,20 @@ export function Header() {
                   </button>
                 )}
 
+                {/* Logout Button - always visible on desktop */}
+                <button
+                  onClick={handleLogout}
+                  className={`hidden md:flex items-center gap-2 px-3 py-2 rounded-full border backdrop-blur-md transition-colors ${
+                    isDark
+                      ? 'bg-red-500/10 border-red-500/20 hover:bg-red-500/20 text-red-400 hover:text-red-300'
+                      : 'bg-red-50 border-red-200 hover:bg-red-100 text-red-500 hover:text-red-600'
+                  }`}
+                  title="Sign Out"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span className="text-sm font-medium">Logout</span>
+                </button>
+
                 {/* User Account Dropdown - hidden on mobile */}
                 <div className="hidden md:block relative" ref={dropdownRef}>
                   <button
