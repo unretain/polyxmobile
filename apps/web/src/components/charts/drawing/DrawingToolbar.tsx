@@ -94,19 +94,22 @@ export function DrawingToolbar({
           className="absolute opacity-0 w-0 h-0 pointer-events-none"
         />
 
-        {/* Clear all */}
-        {drawingCount > 0 && (
-          <>
-            <div className={`w-5 h-px my-1 ${isDark ? "bg-white/10" : "bg-gray-300"}`} />
-            <button
-              onClick={onClearAll}
-              title={`Clear (${drawingCount})`}
-              className="p-1.5 rounded text-red-400/50 hover:text-red-400 hover:bg-red-400/10 transition-colors"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </>
-        )}
+        {/* Clear all - always visible */}
+        <div className={`w-5 h-px my-1 ${isDark ? "bg-white/10" : "bg-gray-300"}`} />
+        <button
+          onClick={onClearAll}
+          disabled={drawingCount === 0}
+          title={drawingCount > 0 ? `Clear (${drawingCount})` : "No drawings"}
+          className={`p-1.5 rounded transition-colors ${
+            drawingCount > 0
+              ? "text-red-400/50 hover:text-red-400 hover:bg-red-400/10"
+              : isDark
+                ? "text-white/20 cursor-not-allowed"
+                : "text-gray-300 cursor-not-allowed"
+          }`}
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
       </div>
     );
   }
@@ -161,19 +164,22 @@ export function DrawingToolbar({
           />
         </div>
 
-        {/* Clear all */}
-        {drawingCount > 0 && (
-          <>
-            <div className={`w-px h-5 mx-0.5 flex-shrink-0 ${isDark ? "bg-white/10" : "bg-gray-300"}`} />
-            <button
-              onClick={onClearAll}
-              title={`Clear All (${drawingCount})`}
-              className="p-1.5 rounded text-red-400/60 hover:text-red-400 hover:bg-red-400/10 transition-colors flex-shrink-0"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </>
-        )}
+        {/* Clear all - always visible */}
+        <div className={`w-px h-5 mx-0.5 flex-shrink-0 ${isDark ? "bg-white/10" : "bg-gray-300"}`} />
+        <button
+          onClick={onClearAll}
+          disabled={drawingCount === 0}
+          title={drawingCount > 0 ? `Clear All (${drawingCount})` : "No drawings"}
+          className={`p-1.5 rounded transition-colors flex-shrink-0 ${
+            drawingCount > 0
+              ? "text-red-400/60 hover:text-red-400 hover:bg-red-400/10"
+              : isDark
+                ? "text-white/20 cursor-not-allowed"
+                : "text-gray-300 cursor-not-allowed"
+          }`}
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
       </div>
     );
   }
@@ -248,29 +254,34 @@ export function DrawingToolbar({
       </div>
 
       {/* Divider */}
-      {drawingCount > 0 && <div className={`h-px my-1 ${isDark ? "bg-white/10" : "bg-gray-300"}`} />}
+      <div className={`h-px my-1 ${isDark ? "bg-white/10" : "bg-gray-300"}`} />
 
-      {/* Clear all */}
-      {drawingCount > 0 && (
-        <div className="relative">
-          <button
-            onClick={onClearAll}
-            onMouseEnter={() => setHoveredTool("clear")}
-            onMouseLeave={() => setHoveredTool(null)}
-            className="p-2 rounded text-red-400/60 hover:text-red-400 hover:bg-red-400/10 transition-colors"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+      {/* Clear all - always visible */}
+      <div className="relative">
+        <button
+          onClick={onClearAll}
+          disabled={drawingCount === 0}
+          onMouseEnter={() => setHoveredTool("clear")}
+          onMouseLeave={() => setHoveredTool(null)}
+          className={`p-2 rounded transition-colors ${
+            drawingCount > 0
+              ? "text-red-400/60 hover:text-red-400 hover:bg-red-400/10"
+              : isDark
+                ? "text-white/20 cursor-not-allowed"
+                : "text-gray-300 cursor-not-allowed"
+          }`}
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
 
-          {hoveredTool === "clear" && (
-            <div className={`absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap z-50 pointer-events-none ${
-              isDark ? "bg-black/90 text-white" : "bg-gray-800 text-white"
-            }`}>
-              Clear All ({drawingCount})
-            </div>
-          )}
-        </div>
-      )}
+        {hoveredTool === "clear" && (
+          <div className={`absolute left-full ml-2 top-1/2 -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap z-50 pointer-events-none ${
+            isDark ? "bg-black/90 text-white" : "bg-gray-800 text-white"
+          }`}>
+            {drawingCount > 0 ? `Clear All (${drawingCount})` : "No drawings"}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
