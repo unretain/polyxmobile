@@ -675,12 +675,12 @@ export function LandingPage() {
               @tradeonpolyx
             </a>
             <a
-              href="https://x.com/unretain"
+              href="https://x.com/unretains"
               target="_blank"
               rel="noopener noreferrer"
               className={`transition-colors ${isDark ? 'hover:text-white' : 'hover:text-black'}`}
             >
-              @unretain
+              @unretains
             </a>
           </div>
         </div>
