@@ -643,15 +643,6 @@ export function Header() {
                     <span className={`text-xs ${isDark ? 'text-white/40' : 'text-black/40'}`}>{shortenAddress(walletAddress)}</span>
                   </button>
                 )}
-                <button
-                  onClick={() => { setMobileMenuOpen(false); setShowSocialPanel(true); }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors ${
-                    isDark ? 'text-white/70 hover:bg-white/5' : 'text-black/70 hover:bg-black/5'
-                  }`}
-                >
-                  <Users className="h-4 w-4" />
-                  Social
-                </button>
                 <Link
                   href="/portfolio"
                   onClick={() => setMobileMenuOpen(false)}
@@ -661,16 +652,6 @@ export function Header() {
                 >
                   <PieChart className="h-4 w-4" />
                   Portfolio
-                </Link>
-                <Link
-                  href="/dashboard/license"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm transition-colors ${
-                    isDark ? 'text-white/70 hover:bg-white/5' : 'text-black/70 hover:bg-black/5'
-                  }`}
-                >
-                  <CreditCard className="h-4 w-4" />
-                  License & Billing
                 </Link>
                 <button
                   onClick={() => { handleOpenSecurity(); setMobileMenuOpen(false); }}
