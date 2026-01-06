@@ -215,7 +215,7 @@ export function LandingPage() {
   const [tokenPrice, setTokenPrice] = useState<number | null>(null);
   const [candles, setCandles] = useState<OHLCVCandle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [timeframe, setTimeframe] = useState<Timeframe>("4h");
+  const [timeframe, setTimeframe] = useState<Timeframe>("1m");
   const [isWalletOnboardingOpen, setIsWalletOnboardingOpen] = useState(false);
   const [chartMode, setChartMode] = useState<"3d" | "2d">("3d"); // Default to 3D
 
