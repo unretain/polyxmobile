@@ -83,12 +83,12 @@ const BIRDEYE_LINE_CONFIG: Record<string, { interval: string; seconds: number }>
 };
 
 const BIRDEYE_CANDLE_CONFIG: Record<string, { interval: string; seconds: number }> = {
-  "1m": { interval: "1m", seconds: 86400 },       // 1 min candles, 24 hours of data
-  "5m": { interval: "5m", seconds: 86400 * 3 },   // 5 min candles, 3 days of data
-  "15m": { interval: "15m", seconds: 86400 * 7 }, // 15 min candles, 7 days of data
-  "1h": { interval: "1h", seconds: 86400 * 30 },  // 1 hour candles, 30 days of data
-  "4h": { interval: "4h", seconds: 86400 * 90 },  // 4 hour candles, 90 days of data
-  "1d": { interval: "1d", seconds: 86400 * 365 }, // 1 day candles, 1 year of data
+  "1m": { interval: "1m", seconds: 86400 * 7 },       // 1 min candles, 7 days of data (max ~10080 candles)
+  "5m": { interval: "5m", seconds: 86400 * 30 },      // 5 min candles, 30 days of data
+  "15m": { interval: "15m", seconds: 86400 * 90 },    // 15 min candles, 90 days of data
+  "1h": { interval: "1h", seconds: 86400 * 365 * 2 }, // 1 hour candles, 2 years of data
+  "4h": { interval: "4h", seconds: 86400 * 365 * 3 }, // 4 hour candles, 3 years of data
+  "1d": { interval: "1d", seconds: 86400 * 365 * 5 }, // 1 day candles, 5 years of data
   "1w": { interval: "1w", seconds: 86400 * 365 * 10 }, // Weekly candles from DB cache (10 years)
   "1M": { interval: "1M", seconds: 86400 * 365 * 10 }, // Monthly candles from DB cache (10 years)
 };
