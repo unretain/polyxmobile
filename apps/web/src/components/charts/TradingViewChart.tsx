@@ -40,7 +40,7 @@ export function TradingViewChart({
   const [chartType, setChartType] = useState<ChartType>("candle");
   const [chartReady, setChartReady] = useState(false);
 
-  // Initialize chart
+  // Initialize chart - only recreate on theme change, NOT on timeframe change
   useEffect(() => {
     console.log("[TradingViewChart] Init effect running, containerRef:", !!chartContainerRef.current);
     if (!chartContainerRef.current) return;
@@ -86,7 +86,7 @@ export function TradingViewChart({
       timeScale: {
         borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
         timeVisible: true,
-        secondsVisible: timeframe === "1s",
+        secondsVisible: false, // Will be updated dynamically
       },
       handleScroll: {
         mouseWheel: true,
@@ -153,7 +153,15 @@ export function TradingViewChart({
       lineSeriesRef.current = null;
       setChartReady(false);
     };
-  }, [isDark, timeframe]);
+  }, [isDark]); // Only recreate chart on theme change
+
+  // Update timeScale options when timeframe changes (without recreating chart)
+  useEffect(() => {
+    if (!chartRef.current) return;
+    chartRef.current.timeScale().applyOptions({
+      secondsVisible: timeframe === "1s",
+    });
+  }, [timeframe]);
 
   // Update data when it changes or when chart becomes ready
   useEffect(() => {
