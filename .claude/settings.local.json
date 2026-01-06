@@ -413,7 +413,16 @@
       "Bash(git -C \"c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\" commit -m \"Add Portfolio link to mobile navigation\")",
       "Bash(powershell -Command:*)",
       "Bash(cmd.exe /c \"cd /d c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\\\\apps\\\\web && npm run build 2>&1\")",
-      "Bash(npx --yes next build:*)"
+      "Bash(npx --yes next build:*)",
+      "Bash(cd:*)",
+      "Bash(cmd /c \"cd /d c:\\\\Users\\\\owenz\\\\Desktop\\\\Polyxmobile_fresh\\\\apps\\\\web && npm run build\")",
+      "Bash(DATABASE_URL=\"postgresql://postgres.jjnnpsgcnhlpiqabmvju:Mynameisdesmond5%%@aws-1-us-east-1.pooler.supabase.com:5432/postgres\" npx prisma db push)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:Mynameisdesmond5%@db.jjnnpsgcnhlpiqabmvju.supabase.co:5432/postgres\" npx prisma db push:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:Mynameisdesmond5%25@db.jjnnpsgcnhlpiqabmvju.supabase.co:5432/postgres\" npx prisma db push:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:[Mynameisdesmond5%%]@db.jjnnpsgcnhlpiqabmvju.supabase.co:5432/postgres\" npx prisma db push:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:Mynameisdesmond5%25%25@db.jjnnpsgcnhlpiqabmvju.supabase.co:5432/postgres\" npx prisma db push:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:iMasitbackwitablunt@db.jjnnpsgcnhlpiqabmvju.supabase.co:5432/postgres\" npx prisma db push:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:[iMasitbackwitablunt]@db.jjnnpsgcnhlpiqabmvju.supabase.co:5432/postgres\" npx prisma db push:*)"
     ],
     "deny": [],
     "ask": []
