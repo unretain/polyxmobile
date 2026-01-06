@@ -36,18 +36,18 @@ const LINE_PERIOD_CONFIG: Record<LinePeriod, { interval: string; seconds: number
 // ============================================================================
 export type CandlePeriod = "1s" | "1m" | "5m" | "15m" | "1h" | "4h" | "1d" | "1w" | "1M";
 
-// Candlestick config - period IS the interval, we fetch enough data to show ~100-200 candles
+// Candlestick config - period IS the interval, fetch ALL available data for each timeframe
 // 1s is special: per-trade candles for Pulse tokens (pump.fun style)
 const CANDLE_PERIOD_CONFIG: Record<CandlePeriod, { interval: string; seconds: number; isPulse?: boolean }> = {
   "1s": { interval: "1s", seconds: 0, isPulse: true },      // Per-trade candles, fetch ALL history (pump.fun style)
-  "1m": { interval: "1min", seconds: 7200 },                // 1 min candles, 2 hours of data (~120 candles)
-  "5m": { interval: "5min", seconds: 36000 },               // 5 min candles, 10 hours of data (~120 candles)
-  "15m": { interval: "15m", seconds: 86400 },               // 15 min candles, 24 hours of data (~96 candles)
-  "1h": { interval: "1h", seconds: 86400 * 5 },             // 1 hour candles, 5 days of data (~120 candles)
-  "4h": { interval: "4h", seconds: 86400 * 20 },            // 4 hour candles, 20 days of data (~120 candles)
-  "1d": { interval: "1d", seconds: 86400 * 180 },           // 1 day candles, 6 months of data (~180 candles)
-  "1w": { interval: "1w", seconds: 86400 * 365 * 3 },       // 1 week candles, 3 years of data (~156 candles)
-  "1M": { interval: "1M", seconds: 86400 * 365 * 10 },      // 1 month candles, 10 years of data (~120 candles)
+  "1m": { interval: "1min", seconds: 86400 * 7 },           // 1 min candles, 7 days of data (~10080 candles)
+  "5m": { interval: "5min", seconds: 86400 * 30 },          // 5 min candles, 30 days of data
+  "15m": { interval: "15m", seconds: 86400 * 90 },          // 15 min candles, 90 days of data
+  "1h": { interval: "1h", seconds: 86400 * 365 * 2 },       // 1 hour candles, 2 years of data
+  "4h": { interval: "4h", seconds: 86400 * 365 * 3 },       // 4 hour candles, 3 years of data
+  "1d": { interval: "1d", seconds: 86400 * 365 * 5 },       // 1 day candles, 5 years of data
+  "1w": { interval: "1w", seconds: 86400 * 365 * 10 },      // 1 week candles, 10 years of data
+  "1M": { interval: "1M", seconds: 86400 * 365 * 10 },      // 1 month candles, 10 years of data
 };
 
 // Legacy type for backwards compatibility
