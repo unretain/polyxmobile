@@ -687,7 +687,7 @@ export default function TokenPage() {
           const now = Math.floor(Date.now() / 1000);
           const fromDate = now - config.seconds;
           response = await fetch(
-            `/api/tokens/${address}/ohlcv?timeframe=${config.interval}&from=${fromDate}&to=${now}&limit=500`
+            `/api/tokens/${address}/ohlcv?timeframe=${config.interval}&from=${fromDate}&to=${now}`
           );
 
           if (!response.ok) {
@@ -1035,30 +1035,36 @@ export default function TokenPage() {
 
           {/* Chart - 3D or 2D based on mode */}
           {/* Pass actual token price to ensure chart header shows correct current price */}
-          <div className={`flex-shrink-0 h-[300px] md:h-[400px] border overflow-hidden ${isDark ? 'border-white/10' : 'border-black/10'}`}>
-            {chartMode === "2d" ? (
+          {/* Render both 2D and 3D charts but hide inactive one to prevent unmount/remount issues */}
+          <div className={`flex-shrink-0 h-[300px] md:h-[400px] border overflow-hidden relative ${isDark ? 'border-white/10' : 'border-black/10'}`}>
+            {/* 2D TradingView Chart - always rendered, hidden when not active */}
+            <div className={`absolute inset-0 ${chartMode === "2d" ? "" : "invisible pointer-events-none"}`}>
               <TradingViewChart
                 data={ohlcv}
                 isLoading={chartLoading && ohlcv.length === 0}
                 timeframe={(chartPeriod || "1h") as "1s" | "1m" | "5m" | "15m" | "1h" | "4h" | "1d" | "1w" | "1M"}
               />
-            ) : chartType === "line" ? (
-              <Line3DChart
-                data={ohlcv}
-                isLoading={chartLoading && ohlcv.length === 0}
-                showMarketCap={fromPulse}
-                marketCap={token?.marketCap}
-                price={token?.price}
-              />
-            ) : (
-              <Chart3D
-                data={ohlcv}
-                isLoading={chartLoading && ohlcv.length === 0}
-                showMarketCap={fromPulse}
-                marketCap={token?.marketCap}
-                price={token?.price}
-                timeframe={chartPeriod || "1s"}
-              />
+            </div>
+            {/* 3D Charts - only render when in 3D mode to save resources */}
+            {chartMode === "3d" && (
+              chartType === "line" ? (
+                <Line3DChart
+                  data={ohlcv}
+                  isLoading={chartLoading && ohlcv.length === 0}
+                  showMarketCap={fromPulse}
+                  marketCap={token?.marketCap}
+                  price={token?.price}
+                />
+              ) : (
+                <Chart3D
+                  data={ohlcv}
+                  isLoading={chartLoading && ohlcv.length === 0}
+                  showMarketCap={fromPulse}
+                  marketCap={token?.marketCap}
+                  price={token?.price}
+                  timeframe={chartPeriod || "1s"}
+                />
+              )
             )}
           </div>
 

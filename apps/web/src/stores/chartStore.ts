@@ -221,7 +221,7 @@ export const useChartStore = create<ChartStore>((set, get) => ({
         const from = config.seconds === 0 ? 0 : to - config.seconds;
 
         const response = await fetch(
-          `/api/tokens/${tokenAddress}/ohlcv?timeframe=${config.interval}&from=${from}&to=${to}&limit=1000`
+          `/api/tokens/${tokenAddress}/ohlcv?timeframe=${config.interval}&from=${from}&to=${to}`
         );
         if (!response.ok) {
           throw new Error(`API error: ${response.status}`);
