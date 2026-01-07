@@ -3,7 +3,7 @@ import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import dotenv from "dotenv";
-import { tokenRoutes, startDashboardTokenSync } from "./routes/tokens";
+import { tokenRoutes } from "./routes/tokens";
 import { trendingRoutes } from "./routes/trending";
 import { pulseRoutes } from "./routes/pulse";
 import { ohlcvRoutes } from "./routes/ohlcv";
@@ -73,8 +73,6 @@ httpServer.listen(PORT, () => {
   pulseSyncService.start();
   console.log(`📊 Pulse background sync started`);
 
-  // Start background Dashboard token sync (every 30 seconds)
-  // Established tokens don't need as frequent updates as Pulse tokens
-  startDashboardTokenSync();
-  console.log(`📊 Dashboard token sync started`);
+  // Dashboard token sync DISABLED - not using Birdeye for dashboard tokens
+  // All data comes from DB, no external API calls needed
 });

@@ -295,13 +295,15 @@ pulseRoutes.get("/king", async (req, res) => {
 });
 
 // GET /api/pulse/token/:address - Get enriched token data from multiple sources
-// PRIORITY: 1. Database (free), 2. In-memory caches (free), 3. External APIs (costly)
+// PRIORITY: 1. Database (free), 2. In-memory caches (free), 3. External APIs (costly - ONLY if not in DB)
+// IMPORTANT: No duplicate API calls - use DB first, only call APIs once if needed
 pulseRoutes.get("/token/:address", async (req, res) => {
   try {
     const { address } = req.params;
     let tokenData: any = null;
 
     // 1. FIRST: Check database (free, no API call)
+    // The sync service already stores all token data including social links and volume
     const dbToken = await prisma.pulseToken.findUnique({
       where: { address },
     });
@@ -325,16 +327,37 @@ pulseRoutes.get("/token/:address", async (req, res) => {
         source: "database",
       };
       console.log(`📦 Got token data from database for ${address}`);
+
+      // If we have DB data, return it immediately - don't make any API calls
+      // The sync service keeps this data fresh
+
+      // Only enrich logo from cache if missing (no API call)
+      if (!tokenData.logoUri) {
+        const moralisLogo = moralisService.getCachedLogo(address);
+        if (moralisLogo) {
+          tokenData.logoUri = moralisLogo;
+        } else {
+          // Trigger async fetch for next time (non-blocking)
+          moralisService.prefetchLogo(address);
+        }
+      }
+
+      return res.json(tokenData);
     }
 
-    // 2. External APIs (costly - only for tokens not in DB)
-    if (!tokenData) {
-      // Try pump.fun API (for memecoins)
-      tokenData = await pumpFunService.getCoin(address);
+    // 2. Token NOT in DB - fetch from external APIs (ONE call each, cached for DB)
+    // This only happens for tokens not yet synced by pulseSync
+    console.log(`⚠️ Token ${address} not in DB, fetching from APIs...`);
+
+    // Try pump.fun API first (for memecoins) - SINGLE CALL
+    const pumpFunData = await pumpFunService.getCoin(address);
+    if (pumpFunData) {
+      tokenData = pumpFunData;
+      tokenData.source = "pumpfun";
     }
 
     if (!tokenData) {
-      // Try Moralis API as primary source (reliable for pump.fun tokens with market cap)
+      // Try Moralis API - SINGLE CALL
       try {
         const moralisData = await moralisService.getTokenData(address);
         if (moralisData) {
@@ -360,7 +383,7 @@ pulseRoutes.get("/token/:address", async (req, res) => {
     }
 
     if (!tokenData) {
-      // Try DexScreener as fallback
+      // Try DexScreener as fallback - SINGLE CALL
       const pairs = await dexScreenerService.getTokenPairs(address);
       if (pairs.length > 0) {
         const pair = pairs[0];
@@ -382,7 +405,7 @@ pulseRoutes.get("/token/:address", async (req, res) => {
     }
 
     if (!tokenData) {
-      // Try Birdeye as final fallback
+      // Try Birdeye as final fallback - SINGLE CALL
       try {
         const birdeyeData = await birdeyeService.getTokenData(address);
         if (birdeyeData) {
@@ -400,30 +423,6 @@ pulseRoutes.get("/token/:address", async (req, res) => {
             createdAt: Date.now(),
             source: "birdeye",
           };
-
-          // CACHE in database so we don't call Birdeye again for this token
-          prisma.pulseToken.upsert({
-            where: { address },
-            create: {
-              address,
-              symbol: birdeyeData.symbol || address.slice(0, 6),
-              name: birdeyeData.name || birdeyeData.symbol || "Unknown",
-              logoUri: birdeyeData.logoURI,
-              price: birdeyeData.price || 0,
-              priceChange24h: birdeyeData.priceChange24h || 0,
-              volume24h: birdeyeData.volume24h || 0,
-              liquidity: birdeyeData.liquidity || 0,
-              marketCap: birdeyeData.marketCap || 0,
-            },
-            update: {
-              price: birdeyeData.price || 0,
-              priceChange24h: birdeyeData.priceChange24h || 0,
-              volume24h: birdeyeData.volume24h || 0,
-              liquidity: birdeyeData.liquidity || 0,
-              marketCap: birdeyeData.marketCap || 0,
-              logoUri: birdeyeData.logoURI,
-            },
-          }).catch((err) => console.log("Failed to cache token:", err));
         }
       } catch (err) {
         console.error("Birdeye token fetch error:", err);
@@ -434,51 +433,45 @@ pulseRoutes.get("/token/:address", async (req, res) => {
       return res.status(404).json({ error: "Token not found" });
     }
 
-    // Enrich with Moralis logo if not present
+    // CACHE in database so we don't call APIs again for this token
+    prisma.pulseToken.upsert({
+      where: { address },
+      create: {
+        address,
+        symbol: tokenData.symbol || address.slice(0, 6),
+        name: tokenData.name || tokenData.symbol || "Unknown",
+        logoUri: tokenData.logoUri,
+        description: tokenData.description,
+        price: tokenData.price || 0,
+        priceChange24h: tokenData.priceChange24h || 0,
+        volume24h: tokenData.volume24h || 0,
+        liquidity: tokenData.liquidity || 0,
+        marketCap: tokenData.marketCap || 0,
+        twitter: tokenData.twitter,
+        telegram: tokenData.telegram,
+        website: tokenData.website,
+      },
+      update: {
+        price: tokenData.price || 0,
+        priceChange24h: tokenData.priceChange24h || 0,
+        volume24h: tokenData.volume24h || 0,
+        liquidity: tokenData.liquidity || 0,
+        marketCap: tokenData.marketCap || 0,
+        logoUri: tokenData.logoUri,
+        twitter: tokenData.twitter,
+        telegram: tokenData.telegram,
+        website: tokenData.website,
+      },
+    }).catch((err) => console.log("Failed to cache token:", err));
+
+    // Enrich with Moralis logo if not present (from cache only)
     if (!tokenData.logoUri) {
       const moralisLogo = moralisService.getCachedLogo(address);
       if (moralisLogo) {
         tokenData.logoUri = moralisLogo;
       } else {
-        // Trigger async fetch for next time
+        // Trigger async fetch for next time (non-blocking)
         moralisService.prefetchLogo(address);
-      }
-    }
-
-    // Enrich with pump.fun social links if not present
-    if (!tokenData.twitter && !tokenData.website && !tokenData.telegram) {
-      try {
-        const pumpFunData = await pumpFunService.getCoin(address);
-        if (pumpFunData) {
-          tokenData.twitter = pumpFunData.twitter || tokenData.twitter;
-          tokenData.website = pumpFunData.website || tokenData.website;
-          tokenData.telegram = pumpFunData.telegram || tokenData.telegram;
-          tokenData.description = pumpFunData.description || tokenData.description;
-          // Also use pump.fun logo if we don't have one
-          if (!tokenData.logoUri && pumpFunData.logoUri) {
-            tokenData.logoUri = pumpFunData.logoUri;
-          }
-        }
-      } catch (err) {
-        // Silently fail - social links are optional
-        console.log(`Could not enrich with pump.fun social links for ${address}`);
-      }
-    }
-
-    // Enrich with volume from DexScreener if volume24h is 0 or missing
-    if (!tokenData.volume24h || tokenData.volume24h === 0) {
-      try {
-        const pairs = await dexScreenerService.getTokenPairs(address);
-        if (pairs.length > 0) {
-          const pair = pairs[0];
-          const dexVolume = pair.volume?.h24 || 0;
-          if (dexVolume > 0) {
-            tokenData.volume24h = dexVolume;
-            console.log(`📈 Enriched volume24h from DexScreener: $${dexVolume.toLocaleString()}`);
-          }
-        }
-      } catch (err) {
-        console.log(`Could not enrich volume from DexScreener for ${address}`);
       }
     }
 

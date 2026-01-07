@@ -553,7 +553,19 @@ export function Header() {
             isDark ? 'bg-[#1a1a1a]/95 border-white/10' : 'bg-white/95 border-black/10'
           }`}>
             {/* Navigation Links */}
-            <div className={`p-2 border-b ${isDark ? 'border-white/10' : 'border-black/10'}`}>
+            <div className={`p-2 ${currentUser ? '' : 'border-b'} ${isDark ? 'border-white/10' : 'border-black/10'}`}>
+              {/* Logout - show at top when logged in */}
+              {currentUser && (
+                <button
+                  onClick={() => { handleLogout(); setMobileMenuOpen(false); }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
+                    isDark ? 'text-white/70 hover:bg-white/5' : 'text-black/70 hover:bg-black/5'
+                  }`}
+                >
+                  <LogOut className="h-4 w-4" />
+                  Logout
+                </button>
+              )}
               <Link
                 href="/pulse"
                 onClick={(e) => { handleNavClick(e, "/pulse"); setMobileMenuOpen(false); }}
@@ -581,30 +593,17 @@ export function Header() {
                 Dashboard
               </Link>
               <Link
-                href="/solutions"
+                href="/portfolio"
                 onClick={() => setMobileMenuOpen(false)}
                 className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                  isActive('/solutions')
+                  isActive('/portfolio')
                     ? 'bg-[#FF6B4A] text-white'
                     : isDark
                       ? 'text-white/70 hover:bg-white/5'
                       : 'text-black/70 hover:bg-black/5'
                 }`}
               >
-                Solutions
-              </Link>
-              <Link
-                href="/markets"
-                onClick={(e) => { handleNavClick(e, "/markets"); setMobileMenuOpen(false); }}
-                className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                  isActive('/markets')
-                    ? 'bg-[#FF6B4A] text-white'
-                    : isDark
-                      ? 'text-white/70 hover:bg-white/5'
-                      : 'text-black/70 hover:bg-black/5'
-                }`}
-              >
-                Markets
+                Portfolio
               </Link>
             </div>
 
