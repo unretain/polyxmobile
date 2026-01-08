@@ -1,17 +1,13 @@
 import type { NextConfig } from "next";
 
-const isMobileBuild = process.env.MOBILE_BUILD === "true";
-
 const nextConfig: NextConfig = {
-  // Static export for Capacitor iOS build
-  ...(isMobileBuild && {
-    output: "export",
-    trailingSlash: true,
-  }),
+  // Static export for Capacitor iOS/mobile build
+  output: "export",
+  trailingSlash: true,
   transpilePackages: ["@shared/types"],
   images: {
     // Static export requires unoptimized images
-    unoptimized: isMobileBuild,
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: "https",
