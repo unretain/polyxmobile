@@ -1,0 +1,182 @@
+import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+
+// GET /api/friends/request - Get pending incoming friend requests
+export async function GET() {
+  try {
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: "Authentication required" },
+        { status: 401 }
+      );
+    }
+
+    // Get incoming pending friend requests
+    const requests = await prisma.friendRequest.findMany({
+      where: {
+        receiverId: session.user.id,
+        status: "pending",
+      },
+      include: {
+        sender: {
+          select: {
+            id: true,
+            username: true,
+            name: true,
+            image: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    return NextResponse.json({ requests });
+  } catch (error) {
+    console.error("[friends/request] GET error:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch friend requests" },
+      { status: 500 }
+    );
+  }
+}
+
+// POST /api/friends/request - Send a friend request by username
+export async function POST(request: Request) {
+  try {
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { error: "Authentication required" },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json();
+    const { username } = body;
+
+    if (!username) {
+      return NextResponse.json(
+        { error: "Username is required" },
+        { status: 400 }
+      );
+    }
+
+    // Find user by username (case-insensitive)
+    const targetUser = await prisma.user.findFirst({
+      where: {
+        username: { equals: username, mode: "insensitive" },
+      },
+      select: { id: true, username: true, name: true, image: true },
+    });
+
+    if (!targetUser) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    // Can't add yourself
+    if (targetUser.id === session.user.id) {
+      return NextResponse.json(
+        { error: "You cannot add yourself as a friend" },
+        { status: 400 }
+      );
+    }
+
+    // Check if already friends
+    const existingFriendship = await prisma.friendship.findUnique({
+      where: {
+        userId_friendId: {
+          userId: session.user.id,
+          friendId: targetUser.id,
+        },
+      },
+    });
+
+    if (existingFriendship) {
+      return NextResponse.json(
+        { error: "You are already friends" },
+        { status: 400 }
+      );
+    }
+
+    // Check if request already exists (in either direction) - check ALL statuses due to unique constraint
+    const existingRequest = await prisma.friendRequest.findFirst({
+      where: {
+        OR: [
+          { senderId: session.user.id, receiverId: targetUser.id },
+          { senderId: targetUser.id, receiverId: session.user.id },
+        ],
+      },
+    });
+
+    if (existingRequest) {
+      // If it's a pending request from them, accept it
+      if (existingRequest.senderId === targetUser.id && existingRequest.status === "pending") {
+        await prisma.$transaction([
+          prisma.friendRequest.update({
+            where: { id: existingRequest.id },
+            data: { status: "accepted" },
+          }),
+          prisma.friendship.create({
+            data: {
+              userId: session.user.id,
+              friendId: targetUser.id,
+            },
+          }),
+          prisma.friendship.create({
+            data: {
+              userId: targetUser.id,
+              friendId: session.user.id,
+            },
+          }),
+        ]);
+
+        return NextResponse.json({
+          message: "Friend request accepted",
+          friend: targetUser,
+        });
+      }
+
+      // If it's a pending request we already sent, tell them
+      if (existingRequest.senderId === session.user.id && existingRequest.status === "pending") {
+        return NextResponse.json(
+          { error: "You already sent a request to this user. Wait for them to accept!" },
+          { status: 400 }
+        );
+      }
+
+      // If it's an old accepted/rejected request, delete it so we can create a fresh one
+      // This handles the case where users unfriended and want to re-add
+      await prisma.friendRequest.delete({
+        where: { id: existingRequest.id },
+      });
+    }
+
+    // Create friend request
+    const friendRequest = await prisma.friendRequest.create({
+      data: {
+        senderId: session.user.id,
+        receiverId: targetUser.id,
+      },
+    });
+
+    return NextResponse.json({
+      message: "Friend request sent",
+      request: {
+        id: friendRequest.id,
+        receiver: targetUser,
+      },
+    });
+  } catch (error) {
+    console.error("[friends/request] POST error:", error);
+    return NextResponse.json(
+      { error: "Failed to send friend request" },
+      { status: 500 }
+    );
+  }
+}
