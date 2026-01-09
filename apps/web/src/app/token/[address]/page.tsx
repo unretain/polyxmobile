@@ -1,5 +1,10 @@
 "use client";
 
+// Required for static export with dynamic routes
+export function generateStaticParams() {
+  return [];
+}
+
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Image from "next/image";
