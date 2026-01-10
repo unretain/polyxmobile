@@ -164,12 +164,18 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
       // Derive keypair from mnemonic
       const { publicKey: pk } = deriveKeypairFromMnemonic(phrase);
 
-      // Store wallet
+      // Set pending mnemonic so it gets encrypted on confirmBackup
+      setPendingMnemonic(phrase);
+
+      // Store wallet (will be updated with encrypted mnemonic on confirmBackup)
       setWallet({
         publicKey: pk,
         hasBackedUp: true, // Assume they have it backed up since they're importing
         createdAt: Date.now(),
       });
+
+      // Call confirmBackup to encrypt and store the mnemonic
+      confirmBackup();
 
       // Register with backend (encrypted)
       registerWallet(pk);

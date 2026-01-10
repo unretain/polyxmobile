@@ -6,6 +6,7 @@ import { Loader2, RefreshCw, RotateCcw, Pencil, X } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/utils";
+import { executeSwap as executeClientSwap } from "@/lib/mobileSwap";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -264,6 +265,38 @@ export function SwapWidget({
         parseFloat(inputAmount) * Math.pow(10, inputDecimals)
       ).toString();
 
+      // Try client-side swap first (for mobile wallets with local mnemonic)
+      const mnemonic = await useMobileWalletStore.getState().getMnemonic();
+
+      if (mnemonic && tradingSource === "jupiter") {
+        // Client-side swap using Jupiter directly
+        const result = await executeClientSwap(
+          mnemonic,
+          inputMint!,
+          outputMint!,
+          rawAmount,
+          slippage
+        );
+
+        // Success! Play sound and show toast
+        playTradeSound(isBuy);
+        showToast(
+          isBuy
+            ? `Bought ${formatOutputAmount()} ${outputSymbol}`
+            : `Sold ${inputAmount} ${outputSymbol}`,
+          "success"
+        );
+
+        setSuccess("Transaction successful!");
+        setInputAmount("");
+        setQuote(null);
+        setTradingSource(null);
+        fetchBalance();
+        fetchTokenStats();
+        return;
+      }
+
+      // Fallback to server-side swap (requires NextAuth session)
       const endpoint = tradingSource === "pumpfun"
         ? "/api/trading/pump-swap"
         : "/api/trading/swap";
