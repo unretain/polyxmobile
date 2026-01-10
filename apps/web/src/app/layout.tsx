@@ -18,6 +18,12 @@ const fragmentMono = Fragment_Mono({
 export const metadata: Metadata = {
   title: "[polyx] - 3D Solana Memecoin Charts",
   description: "View Solana memecoins with immersive 3D price charts",
+  viewport: {
+    width: "device-width",
+    initialScale: 1,
+    maximumScale: 1,
+    viewportFit: "cover",
+  },
 };
 
 export default function RootLayout({
