@@ -113,17 +113,24 @@ export function MobileHeader() {
               </Link>
             </div>
 
-            {/* Wallet Info (if user has wallet) */}
+            {/* Wallet Info (if user has wallet) - clickable to go to wallet page */}
             {wallet && (
               <div className="p-3">
-                <div className={`flex items-center gap-3 px-4 py-3 rounded-xl ${
-                  isDark ? 'bg-white/5' : 'bg-black/5'
-                }`}>
-                  <Wallet className={`h-4 w-4 ${isDark ? 'text-white/60' : 'text-black/60'}`} />
+                <Link
+                  href="/wallet"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+                    isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'
+                  }`}
+                >
+                  <Wallet className="h-4 w-4 text-[#FF6B4A]" />
                   <span className={`font-mono text-sm ${isDark ? 'text-white/60' : 'text-black/60'}`}>
                     {shortenAddress(wallet.publicKey)}
                   </span>
-                </div>
+                  <span className={`ml-auto text-xs ${isDark ? 'text-white/40' : 'text-black/40'}`}>
+                    Deposit / Withdraw →
+                  </span>
+                </Link>
               </div>
             )}
           </div>
