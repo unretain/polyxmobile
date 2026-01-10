@@ -193,8 +193,8 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
 
       {/* Modal - Full screen on mobile, centered on desktop */}
       <div className="relative w-full sm:max-w-md bg-[#0a0a0a] sm:rounded-2xl sm:border sm:border-white/10 min-h-screen sm:min-h-0 sm:max-h-[90vh] overflow-y-auto">
-        {/* Content */}
-        <div className="p-6 pt-12 sm:pt-6">
+        {/* Content - pt-safe accounts for iOS notch/status bar */}
+        <div className="p-6 pt-16 sm:pt-6" style={{ paddingTop: 'max(4rem, env(safe-area-inset-top, 1rem) + 1rem)' }}>
           {/* Choose: Create or Import */}
           {step === "choose" && (
             <div className="space-y-6">
