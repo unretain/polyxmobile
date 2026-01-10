@@ -64,78 +64,78 @@ export function MobileHeader() {
             </button>
           </div>
         </div>
+      </header>
 
-        {/* Mobile Menu */}
-        {mobileMenuOpen && (
-          <div className={`absolute top-full left-0 right-0 mt-2 mx-4 rounded-2xl border backdrop-blur-md shadow-xl overflow-hidden ${
-            isDark ? 'bg-[#1a1a1a]/95 border-white/10' : 'bg-white/95 border-black/10'
-          }`}>
-            {/* Navigation Links */}
-            <div className={`p-2 ${wallet ? `border-b ${isDark ? 'border-white/10' : 'border-black/10'}` : ''}`}>
+      {/* Mobile Menu - positioned outside header with its own z-index */}
+      {mobileMenuOpen && (
+        <div className={`fixed top-14 left-4 right-4 z-[100] rounded-2xl border backdrop-blur-md shadow-xl overflow-hidden ${
+          isDark ? 'bg-[#1a1a1a]/95 border-white/10' : 'bg-white/95 border-black/10'
+        }`}>
+          {/* Navigation Links */}
+          <div className={`p-2 ${wallet ? `border-b ${isDark ? 'border-white/10' : 'border-black/10'}` : ''}`}>
+            <Link
+              href="/pulse"
+              onClick={(e) => handleNavClick(e, "/pulse")}
+              className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
+                isActive('/pulse')
+                  ? 'bg-[#FF6B4A] text-white'
+                  : isDark
+                    ? 'text-white/70 hover:bg-white/5'
+                    : 'text-black/70 hover:bg-black/5'
+              }`}
+            >
+              Pulse
+            </Link>
+            <Link
+              href="/dashboard"
+              onClick={(e) => handleNavClick(e, "/dashboard")}
+              className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
+                isActive('/dashboard')
+                  ? 'bg-[#FF6B4A] text-white'
+                  : isDark
+                    ? 'text-white/70 hover:bg-white/5'
+                    : 'text-black/70 hover:bg-black/5'
+              }`}
+            >
+              Dashboard
+            </Link>
+            <Link
+              href="/portfolio"
+              onClick={(e) => handleNavClick(e, "/portfolio")}
+              className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
+                isActive('/portfolio')
+                  ? 'bg-[#FF6B4A] text-white'
+                  : isDark
+                    ? 'text-white/70 hover:bg-white/5'
+                    : 'text-black/70 hover:bg-black/5'
+              }`}
+            >
+              Portfolio
+            </Link>
+          </div>
+
+          {/* Wallet Info (if user has wallet) - clickable to go to wallet page */}
+          {wallet && (
+            <div className="p-3">
               <Link
-                href="/pulse"
-                onClick={(e) => handleNavClick(e, "/pulse")}
-                className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                  isActive('/pulse')
-                    ? 'bg-[#FF6B4A] text-white'
-                    : isDark
-                      ? 'text-white/70 hover:bg-white/5'
-                      : 'text-black/70 hover:bg-black/5'
+                href="/wallet"
+                onClick={() => setMobileMenuOpen(false)}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+                  isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'
                 }`}
               >
-                Pulse
-              </Link>
-              <Link
-                href="/dashboard"
-                onClick={(e) => handleNavClick(e, "/dashboard")}
-                className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                  isActive('/dashboard')
-                    ? 'bg-[#FF6B4A] text-white'
-                    : isDark
-                      ? 'text-white/70 hover:bg-white/5'
-                      : 'text-black/70 hover:bg-black/5'
-                }`}
-              >
-                Dashboard
-              </Link>
-              <Link
-                href="/portfolio"
-                onClick={(e) => handleNavClick(e, "/portfolio")}
-                className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                  isActive('/portfolio')
-                    ? 'bg-[#FF6B4A] text-white'
-                    : isDark
-                      ? 'text-white/70 hover:bg-white/5'
-                      : 'text-black/70 hover:bg-black/5'
-                }`}
-              >
-                Portfolio
+                <Wallet className="h-4 w-4 text-[#FF6B4A]" />
+                <span className={`font-mono text-sm ${isDark ? 'text-white/60' : 'text-black/60'}`}>
+                  {shortenAddress(wallet.publicKey)}
+                </span>
+                <span className={`ml-auto text-xs ${isDark ? 'text-white/40' : 'text-black/40'}`}>
+                  Deposit / Withdraw →
+                </span>
               </Link>
             </div>
-
-            {/* Wallet Info (if user has wallet) - clickable to go to wallet page */}
-            {wallet && (
-              <div className="p-3">
-                <Link
-                  href="/wallet"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
-                    isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'
-                  }`}
-                >
-                  <Wallet className="h-4 w-4 text-[#FF6B4A]" />
-                  <span className={`font-mono text-sm ${isDark ? 'text-white/60' : 'text-black/60'}`}>
-                    {shortenAddress(wallet.publicKey)}
-                  </span>
-                  <span className={`ml-auto text-xs ${isDark ? 'text-white/40' : 'text-black/40'}`}>
-                    Deposit / Withdraw →
-                  </span>
-                </Link>
-              </div>
-            )}
-          </div>
-        )}
-      </header>
+          )}
+        </div>
+      )}
     </>
   );
 }

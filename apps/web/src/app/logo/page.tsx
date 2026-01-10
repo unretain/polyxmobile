@@ -17,7 +17,7 @@ export default function LogoPage() {
         justifyContent: "center",
         flexShrink: 0
       }}>
-        <h1 style={{ fontSize: "48px", fontWeight: "bold", fontFamily: "Inter, sans-serif", letterSpacing: "-0.02em", lineHeight: 1, userSelect: "none" }}>
+        <h1 style={{ fontSize: "120px", fontWeight: "bold", fontFamily: "Inter, sans-serif", letterSpacing: "-0.02em", lineHeight: 1, userSelect: "none" }}>
           <span style={{ color: "#000" }}>[poly</span>
           <span style={{ color: "#FF6B4A" }}>x</span>
           <span style={{ color: "#000" }}>]</span>
