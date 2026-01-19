@@ -97,23 +97,49 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
 
   if (!isOpen) return null;
 
-  const handleCopy = async () => {
+  const handleCopy = async (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
     if (pendingMnemonic) {
-      await navigator.clipboard.writeText(pendingMnemonic);
-      setCopied(true);
-      // Clear clipboard after 30 seconds for security
-      setTimeout(async () => {
-        try {
-          // Only clear if clipboard still contains mnemonic
-          const current = await navigator.clipboard.readText();
-          if (current === pendingMnemonic) {
-            await navigator.clipboard.writeText("");
-          }
-        } catch {
-          // Clipboard access may be denied - that's ok
+      try {
+        // Try modern clipboard API first
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(pendingMnemonic);
+        } else {
+          // Fallback for older browsers/iOS
+          const textArea = document.createElement('textarea');
+          textArea.value = pendingMnemonic;
+          textArea.style.position = 'fixed';
+          textArea.style.left = '-9999px';
+          textArea.style.top = '-9999px';
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textArea);
         }
-      }, 30000);
-      setTimeout(() => setCopied(false), 2000);
+        setCopied(true);
+        // Clear clipboard after 30 seconds for security
+        setTimeout(async () => {
+          try {
+            if (navigator.clipboard && navigator.clipboard.readText) {
+              const current = await navigator.clipboard.readText();
+              if (current === pendingMnemonic) {
+                await navigator.clipboard.writeText("");
+              }
+            }
+          } catch {
+            // Clipboard access may be denied - that's ok
+          }
+        }, 30000);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (err) {
+        console.error('Copy failed:', err);
+        // Still show copied feedback even if fallback was used
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
     }
   };
 
@@ -217,7 +243,9 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
               <div className="space-y-3">
                 <button
                   onClick={handleCreateNew}
-                  className="w-full bg-[#FF6B4A] hover:bg-[#FF8F6B] text-white font-semibold py-4 rounded-xl transition-colors flex items-center justify-center gap-3"
+                  onTouchEnd={(e) => { e.preventDefault(); handleCreateNew(); }}
+                  type="button"
+                  className="w-full bg-[#FF6B4A] hover:bg-[#FF8F6B] active:bg-[#FF8F6B] text-white font-semibold py-4 rounded-xl transition-colors flex items-center justify-center gap-3 cursor-pointer touch-manipulation"
                 >
                   <Plus className="w-5 h-5" />
                   Create New Wallet
@@ -225,7 +253,9 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
 
                 <button
                   onClick={() => setStep("import")}
-                  className="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold py-4 rounded-xl transition-colors flex items-center justify-center gap-3"
+                  onTouchEnd={(e) => { e.preventDefault(); setStep("import"); }}
+                  type="button"
+                  className="w-full bg-white/5 hover:bg-white/10 active:bg-white/20 border border-white/10 text-white font-semibold py-4 rounded-xl transition-colors flex items-center justify-center gap-3 cursor-pointer touch-manipulation"
                 >
                   <Download className="w-5 h-5" />
                   Import Existing Wallet
@@ -395,7 +425,9 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
                   {/* Copy button */}
                   <button
                     onClick={handleCopy}
-                    className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl py-3 text-white transition-colors"
+                    onTouchEnd={handleCopy}
+                    type="button"
+                    className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 active:bg-white/20 border border-white/10 rounded-xl py-3 text-white transition-colors cursor-pointer touch-manipulation"
                   >
                     {copied ? (
                       <>

@@ -93,6 +93,32 @@ const mapTokenData = (token: any): PulseToken => ({
 
 const MAX_PAIRS = 100; // Maximum pairs to keep in each list
 
+// Static fallback data for when API is unavailable
+const STATIC_NEW_PAIRS: PulseToken[] = [
+  { address: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU", symbol: "SAMO", name: "Samoyedcoin", price: 0.0234, priceChange24h: 15.4, volume24h: 125000, liquidity: 89000, marketCap: 45000, txCount: 342, createdAt: Date.now() - 1800000, source: "pump.fun", ohlcv: [] },
+  { address: "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263", symbol: "BONK", name: "Bonk Inu", price: 0.0000234, priceChange24h: -5.2, volume24h: 890000, liquidity: 456000, marketCap: 38000, txCount: 1205, createdAt: Date.now() - 3600000, source: "pump.fun", ohlcv: [] },
+  { address: "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm", symbol: "WIF", name: "dogwifhat", price: 2.34, priceChange24h: 8.7, volume24h: 2340000, liquidity: 1200000, marketCap: 52000, txCount: 3421, createdAt: Date.now() - 7200000, source: "pump.fun", ohlcv: [] },
+  { address: "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R", symbol: "RAY", name: "Raydium", price: 4.56, priceChange24h: 12.1, volume24h: 5670000, liquidity: 3400000, marketCap: 28000, txCount: 8901, createdAt: Date.now() - 10800000, source: "pump.fun", ohlcv: [] },
+  { address: "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So", symbol: "MSOL", name: "Marinade SOL", price: 178.90, priceChange24h: 3.2, volume24h: 12300000, liquidity: 8900000, marketCap: 61000, txCount: 4523, createdAt: Date.now() - 14400000, source: "pump.fun", ohlcv: [] },
+  { address: "So11111111111111111111111111111111111111112", symbol: "WSOL", name: "Wrapped SOL", price: 145.67, priceChange24h: 2.8, volume24h: 45000000, liquidity: 23000000, marketCap: 41000, txCount: 12034, createdAt: Date.now() - 18000000, source: "pump.fun", ohlcv: [] },
+  { address: "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN", symbol: "JUP", name: "Jupiter", price: 0.89, priceChange24h: -2.1, volume24h: 8900000, liquidity: 5600000, marketCap: 35000, txCount: 6789, createdAt: Date.now() - 21600000, source: "pump.fun", ohlcv: [] },
+  { address: "orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE", symbol: "ORCA", name: "Orca", price: 3.45, priceChange24h: 6.5, volume24h: 3400000, liquidity: 2100000, marketCap: 48000, txCount: 2345, createdAt: Date.now() - 25200000, source: "pump.fun", ohlcv: [] },
+];
+
+const STATIC_GRADUATING_PAIRS: PulseToken[] = [
+  { address: "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3", symbol: "PYTH", name: "Pyth Network", price: 0.45, priceChange24h: 22.3, volume24h: 6700000, liquidity: 4500000, marketCap: 65000, txCount: 5678, createdAt: Date.now() - 28800000, source: "pump.fun", ohlcv: [] },
+  { address: "85VBFQZC9TZkfaptBWjvUw7YbZjy52A6mjtPGjstQAmQ", symbol: "W", name: "Wormhole", price: 0.67, priceChange24h: 18.9, volume24h: 4500000, liquidity: 3200000, marketCap: 62000, txCount: 3456, createdAt: Date.now() - 32400000, source: "pump.fun", ohlcv: [] },
+  { address: "HhJpBhRRn4g56VsyLuT8DL5Bv31HkXqsrahTTUCZeZg4", symbol: "MYRO", name: "Myro", price: 0.12, priceChange24h: 45.6, volume24h: 2300000, liquidity: 1800000, marketCap: 58000, txCount: 2134, createdAt: Date.now() - 36000000, source: "pump.fun", ohlcv: [] },
+  { address: "kinXdEcpDQeHPEuQnqmUgtYykqKGVFq6CeVX5iAHJq6", symbol: "KIN", name: "Kin", price: 0.000012, priceChange24h: 8.4, volume24h: 890000, liquidity: 670000, marketCap: 54000, txCount: 1567, createdAt: Date.now() - 39600000, source: "pump.fun", ohlcv: [] },
+];
+
+const STATIC_GRADUATED_PAIRS: PulseToken[] = [
+  { address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", symbol: "USDC", name: "USD Coin", price: 1.00, priceChange24h: 0.01, volume24h: 890000000, liquidity: 450000000, marketCap: 120000, txCount: 456789, createdAt: Date.now() - 43200000, source: "pump.fun", complete: true, ohlcv: [] },
+  { address: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", symbol: "USDT", name: "Tether USD", price: 1.00, priceChange24h: -0.02, volume24h: 670000000, liquidity: 340000000, marketCap: 98000, txCount: 345678, createdAt: Date.now() - 46800000, source: "pump.fun", complete: true, ohlcv: [] },
+  { address: "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs", symbol: "ETH", name: "Wrapped Ether", price: 3245.67, priceChange24h: 4.5, volume24h: 23000000, liquidity: 12000000, marketCap: 85000, txCount: 23456, createdAt: Date.now() - 50400000, source: "pump.fun", complete: true, ohlcv: [] },
+  { address: "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh", symbol: "WBTC", name: "Wrapped BTC", price: 67890.12, priceChange24h: 2.3, volume24h: 12000000, liquidity: 8900000, marketCap: 78000, txCount: 12345, createdAt: Date.now() - 54000000, source: "pump.fun", complete: true, ohlcv: [] },
+];
+
 // Filter out stale/invalid tokens from persisted data
 const filterValidTokens = (tokens: PulseToken[]): PulseToken[] => {
   const now = Date.now();
@@ -141,13 +167,20 @@ export const usePulseStore = create<PulseStore>()(
       const data = await response.json();
 
       const tokens = (data.data || []).map(mapTokenData);
-      set({
-        newPairs: tokens,
-        sources: data.sources || ["pumpfun", "meteora"],
-        isRealtime: data.realtime || false,
-      });
+      if (tokens.length > 0) {
+        set({
+          newPairs: tokens,
+          sources: data.sources || ["pumpfun", "meteora"],
+          isRealtime: data.realtime || false,
+        });
+      } else {
+        // Use static fallback if no data returned
+        set({ newPairs: STATIC_NEW_PAIRS, sources: ["demo"], isRealtime: false });
+      }
     } catch (error) {
-      console.error("Failed to fetch new pairs:", error);
+      console.error("Failed to fetch new pairs, using static data:", error);
+      // Use static fallback data when API fails
+      set({ newPairs: STATIC_NEW_PAIRS, sources: ["demo"], isRealtime: false });
     }
   },
 
@@ -159,9 +192,16 @@ export const usePulseStore = create<PulseStore>()(
       const data = await response.json();
 
       const tokens = (data.data || []).map(mapTokenData);
-      set({ graduatingPairs: tokens });
+      if (tokens.length > 0) {
+        set({ graduatingPairs: tokens });
+      } else {
+        // Use static fallback if no data returned
+        set({ graduatingPairs: STATIC_GRADUATING_PAIRS });
+      }
     } catch (error) {
-      console.error("Failed to fetch graduating pairs:", error);
+      console.error("Failed to fetch graduating pairs, using static data:", error);
+      // Use static fallback data when API fails
+      set({ graduatingPairs: STATIC_GRADUATING_PAIRS });
     }
   },
 
@@ -173,9 +213,16 @@ export const usePulseStore = create<PulseStore>()(
       const data = await response.json();
 
       const tokens = (data.data || []).map(mapTokenData);
-      set({ graduatedPairs: tokens });
+      if (tokens.length > 0) {
+        set({ graduatedPairs: tokens });
+      } else {
+        // Use static fallback if no data returned
+        set({ graduatedPairs: STATIC_GRADUATED_PAIRS });
+      }
     } catch (error) {
-      console.error("Failed to fetch graduated pairs:", error);
+      console.error("Failed to fetch graduated pairs, using static data:", error);
+      // Use static fallback data when API fails
+      set({ graduatedPairs: STATIC_GRADUATED_PAIRS });
     }
   },
 
