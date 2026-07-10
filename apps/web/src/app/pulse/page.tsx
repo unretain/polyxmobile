@@ -354,9 +354,6 @@ export default function PulsePage() {
         isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
       }`}>
         <div className="flex items-center gap-3">
-          <div className="bg-[#FF6B4A]/20 p-2 md:p-2.5 ring-1 ring-[#FF6B4A]/40">
-            <Activity className="h-4 w-4 md:h-5 md:w-5 text-[#FF6B4A]" />
-          </div>
           <div>
             <h1 className={`text-lg md:text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Pulse</h1>
             <p className={`text-xs md:text-sm ${isDark ? 'text-white/50' : 'text-gray-500'}`}>

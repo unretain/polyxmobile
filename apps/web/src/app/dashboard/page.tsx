@@ -1,6 +1,5 @@
 "use client";
 
-import { LayoutDashboard } from "lucide-react";
 import { TokenList } from "@/components/tokens/TokenList";
 import { TokenSearch } from "@/components/tokens/TokenSearch";
 import { TrendingTokens } from "@/components/tokens/TrendingTokens";
@@ -18,9 +17,6 @@ export default function DashboardPage() {
           : 'bg-black/5 border-black/10'
       }`}>
         <div className="flex items-center gap-3">
-          <div className="bg-[#FF6B4A]/20 p-2.5 ring-1 ring-[#FF6B4A]/40">
-            <LayoutDashboard className="h-5 w-5 text-[#FF6B4A]" />
-          </div>
           <div>
             <h1 className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Solana Memecoins</h1>
             <p className={`text-sm ${isDark ? 'text-white/50' : 'text-gray-500'}`}>
