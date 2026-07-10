@@ -1,8 +1,6 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { MobileHeader } from "@/components/layout/MobileHeader";
-import { AuthGuard } from "@/components/auth/AuthGuard";
 import { useThemeStore } from "@/stores/themeStore";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { formatNumber, shortenAddress, cn } from "@/lib/utils";
@@ -285,13 +283,9 @@ export default function PortfolioPage() {
   };
 
   return (
-    <AuthGuard>
-      <div className={`min-h-screen ${isDark ? "bg-[#0a0a0a] text-white" : "bg-[#f5f5f5] text-black"}`}>
-        <MobileHeader />
-
-        <main className="pt-20 px-4 pb-24">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-4">
+    <div className={isDark ? "text-white" : "text-black"}>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
             <h1 className={`text-xl font-bold ${isDark ? "text-white" : "text-gray-900"}`}>
               Portfolio
             </h1>
@@ -487,9 +481,8 @@ export default function PortfolioPage() {
               </div>
             </div>
           )}
-        </main>
 
-        {/* Hidden canvas for generating share card */}
+      {/* Hidden canvas for generating share card */}
         <canvas ref={shareCanvasRef} className="hidden" />
 
         {/* Hidden file input for custom background */}
@@ -648,9 +641,8 @@ export default function PortfolioPage() {
               </div>
             </div>
           </div>
-        )}
-      </div>
-    </AuthGuard>
+      )}
+    </div>
   );
 }
 

@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft,
   Copy,
   Check,
   ArrowDownLeft,
@@ -146,36 +145,17 @@ export default function WalletPage() {
   if (!wallet) return null;
 
   return (
-    <div
-      className={`min-h-screen ${isDark ? 'bg-[#0a0a0a]' : 'bg-gray-50'}`}
-      style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
-    >
-      {/* Header */}
-      <div className={`sticky top-0 z-10 px-4 py-4 border-b backdrop-blur-md ${
-        isDark ? 'bg-[#0a0a0a]/90 border-white/10' : 'bg-white/90 border-black/10'
-      }`} style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1rem)' }}>
-        <div className="flex items-center justify-between">
-          <button
-            onClick={() => router.back()}
-            className={`p-2 rounded-full ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}
-          >
-            <ArrowLeft className={`h-5 w-5 ${isDark ? 'text-white' : 'text-black'}`} />
-          </button>
-
-          <h1 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            Wallet
-          </h1>
-
-          <button
-            onClick={handleRefresh}
-            className={`p-2 rounded-full ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}
-          >
-            <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''} ${isDark ? 'text-white' : 'text-black'}`} />
-          </button>
-        </div>
+    <div className={`space-y-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold">Wallet</h1>
+        <button
+          onClick={handleRefresh}
+          className={`p-2 rounded-full ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}
+        >
+          <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
+        </button>
       </div>
-
-      <div className="px-4 py-6 space-y-6">
         {/* Balance Card */}
         <div className={`rounded-2xl p-6 ${isDark ? 'bg-white/5 border border-white/10' : 'bg-white border border-black/10'}`}>
           <div className="text-center mb-4">
@@ -418,7 +398,6 @@ export default function WalletPage() {
             </div>
           </div>
         )}
-      </div>
     </div>
   );
 }

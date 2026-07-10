@@ -9,6 +9,7 @@ import Client, {
   SubscribeUpdate,
 } from "@triton-one/yellowstone-grpc";
 import { PublicKey } from "@solana/web3.js";
+import bs58 from "bs58";
 import { getTokenMetadata, getTokenPrice } from "./solana-data";
 
 // Pump.fun Program ID
@@ -170,7 +171,7 @@ export class PumpFunGrpcMonitor {
         const tx = update.transaction.transaction;
         if (!tx) return;
 
-        const signature = Buffer.from(tx.signature).toString("base58");
+        const signature = bs58.encode(tx.signature);
         const meta = tx.meta;
         const message = tx.transaction?.message;
 
