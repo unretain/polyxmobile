@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(# Get metadata PDA for a known pump.fun token # First let''s find one from pump.fun curl -s \"\"https://frontend-api.pump.fun/coins/latest\"\")"
+      "Bash(# Get metadata PDA for a known pump.fun token # First let''s find one from pump.fun curl -s \"\"https://frontend-api.pump.fun/coins/latest\"\")",
+      "PowerShell(Get-Process node,turbo -ErrorAction SilentlyContinue)",
+      "Bash(npm install *)",
+      "WebFetch(domain:capacitorjs.com)"
     ]
   }
 }
