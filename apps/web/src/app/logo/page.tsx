@@ -76,6 +76,8 @@ async function download(name: string, size: number, paint: (ctx: CanvasRendering
   }, "image/png");
 }
 
+const downloadLogo = () => download("polyx-logo.png", ICON, (ctx) => drawTile(ctx, ICON, 0, 0));
+
 const downloadIcon = () => download(`icon-${ICON}.png`, ICON, (ctx) => drawTile(ctx, ICON, 0, 0));
 
 const downloadSplash = () =>
@@ -180,7 +182,11 @@ export default function LogoPage() {
         padding: 64,
       }}
     >
-      <Panel label="Logo" spec="the mark">
+      <Panel
+        label="Logo"
+        spec="the mark"
+        action={<Button onClick={downloadLogo}>Download logo</Button>}
+      >
         <Mark size={previewFrame} />
       </Panel>
 
