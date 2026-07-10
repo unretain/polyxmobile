@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- The white tile is part of the mark: it fills the app icon, and sits centered on
+       black for the splash. Opaque throughout — App Store icons reject alpha. -->
+  <rect width="1024" height="1024" fill="#ffffff"/>
+  <!-- textLength pins the mark's width so it renders identically without Inter installed. -->
+  <!-- Baseline is pinned numerically rather than via dominant-baseline, which SVG
+       rasterizers honor inconsistently. 563 centers the ink box on the canvas. -->
+  <text
+    x="512"
+    y="563"
+    textLength="780"
+    lengthAdjust="spacingAndGlyphs"
+    font-family="Inter, Helvetica, Arial, sans-serif"
+    font-size="200"
+    font-weight="bold"
+    text-anchor="middle"
+  ><tspan fill="#000000">[poly</tspan><tspan fill="#FF6B4A">x</tspan><tspan fill="#000000">]</tspan></text>
+</svg>
