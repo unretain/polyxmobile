@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: "out",
   server: {
     // Use the production API
-    url: "https://web-production-02f21.up.railway.app",
+    url: "https://web-production-0d2ec.up.railway.app",
     cleartext: false,
   },
   ios: {
