@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(# Get metadata PDA for a known pump.fun token # First let''s find one from pump.fun curl -s \"\"https://frontend-api.pump.fun/coins/latest\"\")"
+    ]
+  }
+}

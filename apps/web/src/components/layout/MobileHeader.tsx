@@ -112,6 +112,19 @@ export function MobileHeader() {
             >
               Portfolio
             </Link>
+            <Link
+              href="/coldstick"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
+                isActive('/coldstick')
+                  ? 'bg-[#FF6B4A] text-white'
+                  : isDark
+                    ? 'text-white/70 hover:bg-white/5'
+                    : 'text-black/70 hover:bg-black/5'
+              }`}
+            >
+              3x Wallet
+            </Link>
           </div>
 
           {/* Wallet Info (if user has wallet) - clickable to go to wallet page */}
