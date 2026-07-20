@@ -1,8 +1,20 @@
 diff --git a/node_modules/@capgo/capacitor-nfc/ios/Sources/NfcPlugin/NfcPlugin.swift b/node_modules/@capgo/capacitor-nfc/ios/Sources/NfcPlugin/NfcPlugin.swift
-index 6d0b570..bd46f1c 100644
+index 6d0b570..d2cf0e2 100644
 --- a/node_modules/@capgo/capacitor-nfc/ios/Sources/NfcPlugin/NfcPlugin.swift
 +++ b/node_modules/@capgo/capacitor-nfc/ios/Sources/NfcPlugin/NfcPlugin.swift
-@@ -419,13 +419,12 @@ extension NfcPlugin: NFCNDEFReaderSessionDelegate {
+@@ -281,7 +281,10 @@ public class NfcPlugin: CAPPlugin, CAPBridgedPlugin {
+ 
+     private func notify(event: [String: Any]) {
+         DispatchQueue.main.async {
+-            self.notifyListeners("nfcEvent", data: event, retainUntilConsumed: true)
++            // PATCHED (polyx): retainUntilConsumed:false so a stale NFC event from a
++            // previous session is NOT replayed onto the next scan's listener (which
++            // caused a phantom "read" of the last-created wallet on a blank tag).
++            self.notifyListeners("nfcEvent", data: event, retainUntilConsumed: false)
+             guard let type = event["type"] as? String else {
+                 return
+             }
+@@ -419,13 +422,12 @@ extension NfcPlugin: NFCNDEFReaderSessionDelegate {
                  }
  
                  tag.readNDEF { message, readError in
