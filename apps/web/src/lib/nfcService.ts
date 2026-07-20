@@ -55,6 +55,10 @@ export async function startNfcScan(
   try {
     const { CapacitorNfc } = await import("@capgo/capacitor-nfc");
 
+    // Clear any stale listeners first — otherwise a leftover read/write listener
+    // fires on the same nfcEvent and reports a false "no NDEF message".
+    await (CapacitorNfc as any).removeAllListeners();
+
     const listener = await CapacitorNfc.addListener("nfcEvent", (event: NfcEvent) => {
       try {
         const records = event.tag.ndefMessage;
@@ -100,6 +104,10 @@ export async function writeNfcTag(
 
     const record = createTextRecord(JSON.stringify(payload));
 
+    // Clear stale listeners so a leftover read-listener can't fire a false
+    // "no NDEF message" while we're writing.
+    await (CapacitorNfc as any).removeAllListeners();
+
     // The tag must be discovered before it can be written to
     const listener = await CapacitorNfc.addListener("nfcEvent", async () => {
       try {
@@ -112,9 +120,13 @@ export async function writeNfcTag(
       }
     });
 
+    // invalidateAfterFirstRead:false is REQUIRED for writing — otherwise iOS opens
+    // a read session, reads the blank sticker, finds no NDEF, and shows its system
+    // "No NDEF message found" error instead of letting us write.
     await CapacitorNfc.startScanning({
       alertMessage: "Hold your NFC sticker near the top of your phone to write",
-    });
+      invalidateAfterFirstRead: false,
+    } as any);
 
     return async () => {
       await listener.remove();
