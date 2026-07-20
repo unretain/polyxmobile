@@ -1,0 +1,23 @@
+diff --git a/node_modules/@capgo/capacitor-nfc/ios/Sources/NfcPlugin/NfcPlugin.swift b/node_modules/@capgo/capacitor-nfc/ios/Sources/NfcPlugin/NfcPlugin.swift
+index 6d0b570..bd46f1c 100644
+--- a/node_modules/@capgo/capacitor-nfc/ios/Sources/NfcPlugin/NfcPlugin.swift
++++ b/node_modules/@capgo/capacitor-nfc/ios/Sources/NfcPlugin/NfcPlugin.swift
+@@ -419,13 +419,12 @@ extension NfcPlugin: NFCNDEFReaderSessionDelegate {
+                 }
+ 
+                 tag.readNDEF { message, readError in
+-                    if let readError {
+-                        session.invalidate(errorMessage: "Failed to read NDEF message: \(readError.localizedDescription)")
+-                        return
+-                    }
+-
++                    // PATCHED (polyx): a blank/unwritten sticker returns a read
++                    // error, but for WRITING that's fine — the tag is still there.
++                    // Store the tag and emit anyway (nil message on read error) so
++                    // write() can run on brand-new blank stickers.
+                     self.currentTag = tag
+-                    let event = self.buildEvent(tag: tag, status: status, capacity: capacity, message: message)
++                    let event = self.buildEvent(tag: tag, status: status, capacity: capacity, message: readError == nil ? message : nil)
+                     self.notify(event: event)
+                 }
+             }
