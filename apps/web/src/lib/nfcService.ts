@@ -120,11 +120,14 @@ export async function writeNfcTag(
       }
     });
 
-    // invalidateAfterFirstRead:false is REQUIRED for writing — otherwise iOS opens
-    // a read session, reads the blank sticker, finds no NDEF, and shows its system
-    // "No NDEF message found" error instead of letting us write.
+    // Write over the raw TAG session, not the NDEF session. The plugin's NDEF
+    // path bails on a blank sticker (readNDEF errors → session invalidated, tag
+    // never stored). The TAG path keeps the tag connected even when it has no
+    // NDEF (emitTagEvent still sets currentTag), so write() can run.
+    // invalidateAfterFirstRead:false keeps the session open for the write.
     await CapacitorNfc.startScanning({
       alertMessage: "Hold your NFC sticker near the top of your phone to write",
+      iosSessionType: "tag",
       invalidateAfterFirstRead: false,
     } as any);
 
