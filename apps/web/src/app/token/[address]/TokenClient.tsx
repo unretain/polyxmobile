@@ -600,7 +600,12 @@ export default function TokenClient() {
       const response = await fetch(`/api/pulse/token/${address}`);
       if (response.ok) {
         const data = await response.json();
-        setPulseToken(data);
+        // Keep the last known logo sticky — the 1s poll sometimes returns a
+        // response without logoUri (feed hiccup / fallback source), and replacing
+        // the whole object would blank the image a second after it loaded.
+        setPulseToken((prev: any) =>
+          prev ? { ...data, logoUri: data.logoUri || prev.logoUri } : data
+        );
       }
     } catch (error) {
       console.error("Failed to fetch pulse token:", error);
