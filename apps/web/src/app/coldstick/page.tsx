@@ -34,8 +34,15 @@ import { shortenAddress } from "@/lib/utils";
 import { Connection, PublicKey, LAMPORTS_PER_SOL, Transaction, SystemProgram } from "@solana/web3.js";
 import QRCode from "qrcode";
 
-// Solana RPC connection
-const RPC_URL = "https://api.mainnet-beta.solana.com";
+// Solana RPC — go through our same-origin proxy (/api/rpc) so the request is
+// forwarded server-side to a working RPC. Hitting a public RPC directly from the
+// WKWebView rate-limits / CORS-fails (broken balance + "failed to get blockhash").
+function getRpcUrl(): string {
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/api/rpc`;
+  }
+  return "https://solana-rpc.publicnode.com";
+}
 
 type Step = "home" | "create" | "create-passphrase" | "create-write" | "create-done" | "scan" | "wallet-view" | "send" | "receive";
 
@@ -98,7 +105,7 @@ export default function ThreeXWalletPage() {
   const fetchBalance = useCallback(async (publicKey: string) => {
     setLoadingBalance(true);
     try {
-      const connection = new Connection(RPC_URL);
+      const connection = new Connection(getRpcUrl());
       const pubkey = new PublicKey(publicKey);
       const balance = await connection.getBalance(pubkey);
       setWalletBalance(balance / LAMPORTS_PER_SOL);
@@ -256,17 +263,26 @@ export default function ThreeXWalletPage() {
     setSendError("");
     setTxSignature("");
 
+    // Decrypt separately: an AES-GCM failure here is (almost always) a wrong
+    // passphrase, so surface that clearly instead of a cryptic crypto error.
+    let secretKey: Uint8Array;
     try {
-      const secretKey = await decryptSecretKey(
+      secretKey = await decryptSecretKey(
         scannedPayload.enc,
         scannedPayload.salt,
         scannedPayload.iv,
         sendPassphrase
       );
+    } catch {
+      setSendError("Incorrect passphrase");
+      setSending(false);
+      return;
+    }
 
+    try {
       const keypair = keypairFromSecretKey(secretKey);
 
-      const connection = new Connection(RPC_URL);
+      const connection = new Connection(getRpcUrl());
       const recipientPubkey = new PublicKey(recipient);
       const lamports = Math.floor(parseFloat(amount) * LAMPORTS_PER_SOL);
 
