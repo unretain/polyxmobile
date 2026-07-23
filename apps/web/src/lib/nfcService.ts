@@ -71,12 +71,17 @@ export async function startNfcScan(
       // ignore — drain is best-effort
     }
 
+    // Fire each result at most once, so a cancel/timeout can't race a real read.
+    let settled = false;
+
     // ...and, as a backstop, ignore anything that fires in the first moment after
     // we start. A real tag read can never complete that fast (the iOS sheet alone
     // takes ~1s), but a retained replay fires within a few ms of attaching.
     const scanStartedAt = Date.now();
     const listener = await CapacitorNfc.addListener("nfcEvent", (event: NfcEvent) => {
       if (Date.now() - scanStartedAt < 800) return; // stale replay — drop it
+      if (settled) return;
+      settled = true;
       try {
         const records = event.tag.ndefMessage;
         if (records && records.length > 0) {
@@ -91,13 +96,28 @@ export async function startNfcScan(
       }
     });
 
+    // When the iOS sheet is cancelled or times out, the plugin invalidates the
+    // session and fires nfcStateChange (never nfcEvent). Without handling it the
+    // UI hangs forever on the "Scanning…" spinner. Treat it as "scan ended" so the
+    // caller can reset back to a usable screen.
+    const stateListener = await CapacitorNfc.addListener("nfcStateChange", () => {
+      if (settled) return;
+      settled = true;
+      onError("Scan cancelled");
+    });
+
     await CapacitorNfc.startScanning({
       alertMessage: "Hold your ColdStick near the top of your phone",
     });
 
     return async () => {
       await listener.remove();
-      await CapacitorNfc.stopScanning();
+      await stateListener.remove();
+      try {
+        await CapacitorNfc.stopScanning();
+      } catch {
+        // session may already be closed
+      }
     };
   } catch (error: any) {
     onError(error.message || "Failed to start NFC scan");

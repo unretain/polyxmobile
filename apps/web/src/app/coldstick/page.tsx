@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Nfc,
@@ -58,6 +58,10 @@ export default function ThreeXWalletPage() {
 
   const [step, setStep] = useState<Step>("home");
   const [nfcAvailable, setNfcAvailable] = useState<boolean | null>(null);
+
+  // Holds the teardown fn for an in-flight NFC scan so leaving the screen (back
+  // button / cancel) actually closes the session instead of leaving it hanging.
+  const scanCleanupRef = useRef<null | (() => void | Promise<void>)>(null);
 
   // Create wallet state
   const [pendingKeypair, setPendingKeypair] = useState<{ publicKey: string; secretKey: Uint8Array } | null>(null);
@@ -208,7 +212,7 @@ export default function ThreeXWalletPage() {
     setError(null);
     setStep("scan");
 
-    const cleanup = await startNfcScan(
+    scanCleanupRef.current = await startNfcScan(
       (payload, rawData) => {
         setScanning(false);
         if (payload) {
@@ -236,12 +240,12 @@ export default function ThreeXWalletPage() {
       },
       (err) => {
         setScanning(false);
-        setError(err);
+        scanCleanupRef.current = null;
+        // A user-cancelled scan isn't a real error — don't flash a red banner.
+        setError(err === "Scan cancelled" ? null : err);
         setStep("home");
       }
     );
-
-    return cleanup;
   };
 
   // Handle send transaction
@@ -318,6 +322,15 @@ export default function ThreeXWalletPage() {
   };
 
   const goHome = () => {
+    // Close any in-flight NFC scan session before leaving the screen.
+    if (scanCleanupRef.current) {
+      try {
+        void scanCleanupRef.current();
+      } catch {
+        // best-effort teardown
+      }
+      scanCleanupRef.current = null;
+    }
     resetState();
     setStep("home");
   };
