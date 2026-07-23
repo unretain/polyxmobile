@@ -154,17 +154,27 @@ function b58(buf: Buffer): string {
 }
 
 async function resolveImage(mint: string, uri: string) {
-  if (!uri || state.imageCache.has(uri)) return;
-  state.imageCache.set(uri, "");
+  if (!uri) return;
+  const attach = (img: string) => {
+    const t = state.newTokens.get(mint) || state.graduatingTokens.get(mint) || state.graduatedTokens.get(mint);
+    if (t && !t.logoUri) t.logoUri = img;
+  };
+  const cached = state.imageCache.get(uri);
+  if (cached) { attach(cached); return; } // already resolved — (re)attach
+  if (cached === "") return;              // fetch in flight — don't duplicate
+  state.imageCache.set(uri, "");          // mark in-flight
   try {
-    const res = await fetch(uri, { signal: AbortSignal.timeout(6000) });
+    const res = await fetch(uri, { signal: AbortSignal.timeout(8000) });
     const j = await res.json();
     const img = typeof j?.image === "string" ? j.image : "";
-    if (!img) return;
+    // On failure/no-image DELETE the marker (not leave "") so a later view retries,
+    // instead of caching an empty result forever after one transient blip.
+    if (!img) { state.imageCache.delete(uri); return; }
     state.imageCache.set(uri, img);
-    const t = state.newTokens.get(mint) || state.graduatingTokens.get(mint) || state.graduatedTokens.get(mint);
-    if (t) t.logoUri = img;
-  } catch { /* leave null */ }
+    attach(img);
+  } catch {
+    state.imageCache.delete(uri);
+  }
 }
 
 function usd(token: PulseToken): PulseToken {
@@ -580,6 +590,9 @@ export function getGraduated(limit = 20): PulseToken[] {
 }
 export function getToken(mint: string): PulseToken | null {
   const t = state.newTokens.get(mint) || state.graduatingTokens.get(mint) || state.graduatedTokens.get(mint);
+  // Retry image resolution on view — covers coins whose metadata blipped at create
+  // time. Async fire-and-forget; the page's 1s poll picks up the logo next tick.
+  if (t && !t.logoUri && t.uri) resolveImage(mint, t.uri);
   return t ? usd(t) : null;
 }
 
