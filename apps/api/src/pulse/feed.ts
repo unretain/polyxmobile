@@ -607,23 +607,10 @@ export function getCandles(mint: string, intervalSec: number, limit: number) {
     }
     out = Array.from(buckets.values()).sort((a, b) => a.t - b.t);
   }
-  // Gap-fill: candles only exist for intervals that had a trade, leaving holes on
-  // the time axis. Fill silent intervals with flat candles (O=H=L=C=last close,
-  // volume 0) so the chart is continuous. Windowed to the last `limit` buckets so
-  // a sparsely-traded token can't blow up into a huge array.
-  const iv = intervalSec * 1000;
-  const lastBucket = out[out.length - 1].t;
-  const firstBucket = Math.max(out[0].t, lastBucket - (limit - 1) * iv);
-  const byBucket = new Map(out.map((c) => [c.t, c]));
-  let lastClose = out[0].o;
-  for (const c of out) { if (c.t <= firstBucket) lastClose = c.c; else break; }
-  const filled: Candle[] = [];
-  for (let t = firstBucket; t <= lastBucket; t += iv) {
-    const real = byBucket.get(t);
-    if (real) { filled.push(real); lastClose = real.c; }
-    else filled.push({ t, o: lastClose, h: lastClose, l: lastClose, c: lastClose, v: 0 });
-  }
-  return filled.map((c) => ({
+  // Real trade candles only — NO gap-fill. The 2D chart spaces bars evenly by
+  // index, so real candles pack together with no holes, and we don't drown a
+  // low-activity coin in meaningless flat filler candles.
+  return out.slice(-limit).map((c) => ({
     timestamp: c.t,
     open: c.o * p,
     high: c.h * p,
