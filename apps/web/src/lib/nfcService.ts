@@ -55,11 +55,28 @@ export async function startNfcScan(
   try {
     const { CapacitorNfc } = await import("@capgo/capacitor-nfc");
 
-    // Clear any stale listeners first — otherwise a leftover read/write listener
-    // fires on the same nfcEvent and reports a false "no NDEF message".
+    // Clear any stale listeners first.
     await (CapacitorNfc as any).removeAllListeners();
 
+    // The native plugin emits nfcEvent with retainUntilConsumed, so a leftover
+    // event from a previous session (e.g. the wallet just written) gets REPLAYED
+    // onto the next listener the instant it attaches — which showed a phantom
+    // "read" of the last wallet on a fresh scan, before any tag was presented.
+    // Drain any retained event with a throwaway listener first...
+    try {
+      const drain = await CapacitorNfc.addListener("nfcEvent", () => {});
+      await new Promise((r) => setTimeout(r, 150));
+      await drain.remove();
+    } catch {
+      // ignore — drain is best-effort
+    }
+
+    // ...and, as a backstop, ignore anything that fires in the first moment after
+    // we start. A real tag read can never complete that fast (the iOS sheet alone
+    // takes ~1s), but a retained replay fires within a few ms of attaching.
+    const scanStartedAt = Date.now();
     const listener = await CapacitorNfc.addListener("nfcEvent", (event: NfcEvent) => {
+      if (Date.now() - scanStartedAt < 800) return; // stale replay — drop it
       try {
         const records = event.tag.ndefMessage;
         if (records && records.length > 0) {
