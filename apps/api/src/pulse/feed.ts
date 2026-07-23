@@ -242,7 +242,7 @@ function handleTransaction(update: any) {
         o += 8; // token amount
         o += 1; // isBuy
         o += 32; // user
-        o += 8; // ts
+        const tsSec = Number(data.readBigInt64LE(o)); o += 8; // on-chain block time (i64 seconds)
         const vSol = Number(data.readBigUInt64LE(o)); o += 8;
         const vTok = Number(data.readBigUInt64LE(o)); o += 8;
         o += 8; // real sol reserves
@@ -258,7 +258,10 @@ function handleTransaction(update: any) {
         token.priceChange24h = token.launchPriceSol > 0 ? ((priceSol - token.launchPriceSol) / token.launchPriceSol) * 100 : 0;
         token.volume24h += (solLamports / 1e9) * state.solPrice;
         token.txCount++;
-        recordCandle(mint, priceSol, solLamports / 1e9); // OHLCV from our own stream
+        // Bucket by ON-CHAIN block time (what Axiom/indexers use), NOT our processing
+        // clock — bursty gRPC delivery otherwise piles trades into one wrong second and
+        // mangles the candle wicks.
+        recordCandleAt(mint, priceSol, solLamports / 1e9, tsSec > 0 ? tsSec * 1000 : Date.now());
         state.stats.trades++;
         if (token.progress >= FINAL_STRETCH_PROGRESS && state.newTokens.has(mint)) {
           state.newTokens.delete(mint);
