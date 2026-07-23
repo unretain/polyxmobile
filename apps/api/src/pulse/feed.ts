@@ -77,6 +77,9 @@ const state = {
   candles1s: new Map<string, Map<number, Candle>>(),
   candles1m: new Map<string, Map<number, Candle>>(),
   imageCache: new Map<string, string>(),
+  // Mints explicitly requested (a user searched/opened them) that migrated before
+  // we saw them — we watch these on PumpSwap on-demand so their charts keep updating.
+  watched: new Set<string>(),
   stats: { creates: 0, trades: 0, graduations: 0, pumpswap: 0 },
 };
 
@@ -292,7 +295,8 @@ function handlePumpSwap(tx: any) {
   // Only tokens we already know (migrated out of our own feed). Ones created
   // before we started need the RPC backfill instead.
   const token = state.newTokens.get(mint) || state.graduatingTokens.get(mint) || state.graduatedTokens.get(mint);
-  if (!token) return;
+  // Process if we track this token OR it's an on-demand watched (searched) mint.
+  if (!token && !state.watched.has(mint)) return;
 
   const maxUi = (list: any[], m: string) =>
     Math.max(0, ...list.filter((b) => b.mint === m).map((b) => Number(b.uiTokenAmount?.uiAmount || 0)));
@@ -302,22 +306,24 @@ function handlePumpSwap(tx: any) {
   const priceSol = quoteRes / baseRes;
   const volSol = Math.abs(quoteRes - maxUi(tx.meta.preTokenBalances || [], WSOL)); // pool WSOL delta
 
-  // Migration: was on the bonding curve, now trading on PumpSwap.
-  if (state.newTokens.has(mint) || state.graduatingTokens.has(mint)) {
-    state.newTokens.delete(mint);
-    state.graduatingTokens.delete(mint);
-    token.complete = true;
-    token.progress = 100;
-    token.destination = "pumpswap";
-    state.graduatedTokens.set(mint, token);
-    feedEvents.emit("graduated", usd(token));
+  if (token) {
+    // Migration: was on the bonding curve, now trading on PumpSwap.
+    if (state.newTokens.has(mint) || state.graduatingTokens.has(mint)) {
+      state.newTokens.delete(mint);
+      state.graduatingTokens.delete(mint);
+      token.complete = true;
+      token.progress = 100;
+      token.destination = "pumpswap";
+      state.graduatedTokens.set(mint, token);
+      feedEvents.emit("graduated", usd(token));
+    }
+    token.priceSol = priceSol;
+    token.marketCapSol = priceSol * TOTAL_SUPPLY;
+    if (!token.launchPriceSol) token.launchPriceSol = priceSol;
+    token.priceChange24h = token.launchPriceSol > 0 ? ((priceSol - token.launchPriceSol) / token.launchPriceSol) * 100 : 0;
+    token.volume24h += volSol * state.solPrice;
+    token.txCount++;
   }
-  token.priceSol = priceSol;
-  token.marketCapSol = priceSol * TOTAL_SUPPLY;
-  if (!token.launchPriceSol) token.launchPriceSol = priceSol;
-  token.priceChange24h = token.launchPriceSol > 0 ? ((priceSol - token.launchPriceSol) / token.launchPriceSol) * 100 : 0;
-  token.volume24h += volSol * state.solPrice;
-  token.txCount++;
   recordCandle(mint, priceSol, volSol); // keep charting under the same mint
   state.stats.pumpswap++;
 }
@@ -335,7 +341,20 @@ function pumpswapWatchMints(): string[] {
   const set = new Set<string>();
   for (const m of state.graduatedTokens.keys()) set.add(m);
   for (const m of state.graduatingTokens.keys()) set.add(m);
+  for (const m of state.watched) set.add(m);
   return Array.from(set).slice(-MAX_SUB_MINTS);
+}
+
+// Explicitly watch a mint's PumpSwap trades on-demand (e.g. a user opened an
+// already-migrated coin we didn't see graduate). Picked up by maybeResubscribe().
+const MAX_WATCHED = 80;
+export function watchMint(mint: string) {
+  if (state.watched.has(mint)) return;
+  state.watched.add(mint);
+  if (state.watched.size > MAX_WATCHED) {
+    const oldest = state.watched.values().next().value;
+    if (oldest) state.watched.delete(oldest);
+  }
 }
 
 function buildSubscribeRequest() {
@@ -546,6 +565,9 @@ export function getToken(mint: string): PulseToken | null {
 // OHLCV built from OUR gRPC stream. Picks the 1s tier for sub-minute timeframes,
 // the 1m tier otherwise, rolls up to `intervalSec`, and converts SOL->USD at read.
 export function getCandles(mint: string, intervalSec: number, limit: number) {
+  // Someone's viewing this chart — start watching its PumpSwap trades so a
+  // migrated coin keeps updating live (picked up on the next resubscribe tick).
+  watchMint(mint);
   const useSecond = intervalSec < 60;
   const src = useSecond ? state.candles1s.get(mint) : state.candles1m.get(mint);
   if (!src || src.size === 0) return [];
