@@ -4,6 +4,7 @@ import { getGrpcService } from "../grpc";
 import { Timeframe } from "../ohlcv";
 import { prisma } from "../lib/prisma";
 import crypto from "crypto";
+import { getSnapshot, feedEvents } from "../pulse/feed";
 
 // ==========================================
 // Rate Limiting
@@ -189,7 +190,8 @@ export function setupWebSocket(io: Server) {
       if (state) {
         state.pulse = true;
         socket.join("pulse");
-        console.log(`Client ${socket.id} subscribed to Pulse`);
+        // Send the current snapshot immediately so late-joiners aren't empty.
+        socket.emit("pulse:snapshot", getSnapshot());
       }
     });
 
@@ -1294,6 +1296,17 @@ export function setupWebSocket(io: Server) {
   // Initialize Meteora polling
   console.log("🔧 Initializing Meteora polling...");
   initializeMeteoraPolling(io);
+
+  // THE pulse stream: broadcast the in-memory snapshot to all "pulse" subscribers
+  // once per second (one gRPC feed -> one broadcast -> every user, same data).
+  setInterval(() => {
+    io.to("pulse").emit("pulse:snapshot", getSnapshot());
+  }, 1000);
+  // Push brand-new tokens instantly (don't wait for the next 1s tick).
+  feedEvents.on("new", (token) => io.to("pulse").emit("pulse:new", token));
+  feedEvents.on("graduated", (token) => io.to("pulse").emit("pulse:graduated", token));
+  // Per-trade fan-out to whoever has this token's page open (subscribe:token).
+  feedEvents.on("trade", (t: any) => io.to(`token:${t.mint}`).emit("trade", t));
 
   // Start price update simulation (replace with real data feeds later)
   startPriceUpdates(io);

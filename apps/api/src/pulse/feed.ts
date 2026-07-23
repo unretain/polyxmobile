@@ -214,6 +214,7 @@ function handleTransaction(update: any) {
   const tx = update.transaction?.transaction;
   if (!tx?.meta) return;
   const keys: Uint8Array[] = tx.transaction?.message?.accountKeys || [];
+  const signature = tx.signature ? bs58.encode(Buffer.from(tx.signature)) : "";
   const outer = tx.transaction?.message?.instructions || [];
   const inner: any[] = [];
   for (const g of tx.meta.innerInstructions || []) for (const ix of g.instructions || []) inner.push(ix);
@@ -249,9 +250,9 @@ function handleTransaction(update: any) {
         let o = 16;
         const mint = b58(data.slice(o, o + 32)); o += 32;
         const solLamports = Number(data.readBigUInt64LE(o)); o += 8;
-        o += 8; // token amount
-        o += 1; // isBuy
-        o += 32; // user
+        const tokenRaw = Number(data.readBigUInt64LE(o)); o += 8; // token amount (6 decimals)
+        const isBuy = data.readUInt8(o) === 1; o += 1;
+        const trader = b58(data.slice(o, o + 32)); o += 32; // user
         const tsSec = Number(data.readBigInt64LE(o)); o += 8; // on-chain block time (i64 seconds)
         const vSol = Number(data.readBigUInt64LE(o)); o += 8;
         const vTok = Number(data.readBigUInt64LE(o)); o += 8;
@@ -272,6 +273,12 @@ function handleTransaction(update: any) {
         // clock — bursty gRPC delivery otherwise piles trades into one wrong second and
         // mangles the candle wicks.
         recordCandleAt(mint, priceSol, solLamports / 1e9, tsSec > 0 ? tsSec * 1000 : Date.now());
+        // Per-trade event for the token page's live "recent trades" panel.
+        feedEvents.emit("trade", {
+          mint, type: isBuy ? "buy" : "sell", tokenAmount: tokenRaw / 1e6,
+          solAmount: solLamports / 1e9, marketCapSol: token.marketCapSol, trader, signature,
+          timestamp: (tsSec > 0 ? tsSec : Math.floor(Date.now() / 1000)) * 1000,
+        });
         state.stats.trades++;
         if (token.progress >= FINAL_STRETCH_PROGRESS && state.newTokens.has(mint)) {
           state.newTokens.delete(mint);
@@ -298,12 +305,12 @@ function handleTransaction(update: any) {
   }
 
   // PumpSwap (post-graduation AMM). A token we track trading here = it MIGRATED.
-  if (keys.some((k) => b58(Buffer.from(k)) === PUMPSWAP_PROGRAM)) handlePumpSwap(tx);
+  if (keys.some((k) => b58(Buffer.from(k)) === PUMPSWAP_PROGRAM)) handlePumpSwap(tx, signature, keys);
 }
 
 // Price from pool reserves (uiAmount handles decimals) — IDL-independent, robust
 // to pump changing their event layout. quote=WSOL(9), base=token.
-function handlePumpSwap(tx: any) {
+function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = []) {
   const post = tx.meta.postTokenBalances || [];
   if (!post.length) return;
   const mints = [...new Set(post.map((b: any) => b.mint))].filter((m: any) => m && m !== WSOL) as string[];
@@ -356,6 +363,19 @@ function handlePumpSwap(tx: any) {
     token.txCount++;
   }
   recordCandle(mint, priceSol, volSol); // keep charting under the same mint
+  // Per-trade event for the live trades panel. Buy/sell from the pool's token
+  // reserve change (pool = largest token holder): pool loses tokens => user bought.
+  let poolPre = 0, poolPost = -1;
+  for (const b of post) {
+    if (b.mint !== mint) continue;
+    const amt = Number(b.uiTokenAmount?.uiAmount || 0);
+    if (amt > poolPost) { poolPost = amt; poolPre = Number(preByIdx.get(b.accountIndex)?.uiTokenAmount?.uiAmount || 0); }
+  }
+  feedEvents.emit("trade", {
+    mint, type: poolPost < poolPre ? "buy" : "sell", tokenAmount: absTok,
+    solAmount: volSol, marketCapSol: priceSol * TOTAL_SUPPLY,
+    trader: keys[0] ? b58(Buffer.from(keys[0])) : "", signature, timestamp: Date.now(),
+  });
   state.stats.pumpswap++;
 }
 
