@@ -29,6 +29,8 @@ interface TradingViewChartProps {
   showTimeframeSelector?: boolean;
   /** Total token supply used to render market cap instead of raw price. */
   supply?: number;
+  /** Controlled Line/Candle mode — when set, overrides the internal toggle. */
+  chartType?: ChartType;
 }
 
 const TIMEFRAMES: { value: Timeframe; label: string }[] = [
@@ -47,6 +49,7 @@ export function TradingViewChart({
   onTimeframeChange,
   showTimeframeSelector = false,
   supply = DEFAULT_SUPPLY,
+  chartType: chartTypeProp,
 }: TradingViewChartProps) {
   const { isDark } = useThemeStore();
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -56,7 +59,9 @@ export function TradingViewChart({
   // Track whether we've done the one-time initial fit for the current dataset, so
   // live updates don't keep snapping the user's zoom/pan back to "fit all".
   const fittedRef = useRef(false);
-  const [chartType, setChartType] = useState<ChartType>("candle");
+  const [internalChartType, setInternalChartType] = useState<ChartType>("candle");
+  // Controlled by the page's Line/Candle toggle when provided; else self-managed.
+  const chartType = chartTypeProp ?? internalChartType;
   const [chartReady, setChartReady] = useState(false);
 
   // Initialize chart - only recreate on theme change, NOT on timeframe change
@@ -273,10 +278,11 @@ export function TradingViewChart({
         )}
         {!showTimeframeSelector && <div />}
 
-        {/* Chart type toggle */}
+        {/* Chart type toggle — hidden when the page controls Line/Candle */}
+        {chartTypeProp ? <div /> : (
         <div className="flex gap-1">
           <button
-            onClick={() => setChartType("line")}
+            onClick={() => setInternalChartType("line")}
             className={`px-2 py-1 text-[10px] font-medium rounded transition-colors ${
               chartType === "line"
                 ? "bg-[#FF6B4A] text-white"
@@ -288,7 +294,7 @@ export function TradingViewChart({
             Line
           </button>
           <button
-            onClick={() => setChartType("candle")}
+            onClick={() => setInternalChartType("candle")}
             className={`px-2 py-1 text-[10px] font-medium rounded transition-colors ${
               chartType === "candle"
                 ? "bg-[#FF6B4A] text-white"
@@ -300,6 +306,7 @@ export function TradingViewChart({
             Candle
           </button>
         </div>
+        )}
       </div>
 
       {/* Chart container — always mounted so the chart can attach even before data */}

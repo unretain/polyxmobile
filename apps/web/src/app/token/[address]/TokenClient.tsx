@@ -1045,6 +1045,7 @@ export default function TokenClient() {
                 data={ohlcv}
                 isLoading={chartLoading && ohlcv.length === 0}
                 timeframe={(chartPeriod || "1h") as "1s" | "1m" | "5m" | "15m" | "1h" | "4h" | "1d" | "1w" | "1M"}
+                chartType={chartType}
               />
             </div>
             {/* 3D Charts - only render when in 3D mode to save resources */}
