@@ -610,10 +610,18 @@ export function getCandles(mint: string, intervalSec: number, limit: number) {
     }
     out = Array.from(buckets.values()).sort((a, b) => a.t - b.t);
   }
-  // Real trade candles only — NO gap-fill. The 2D chart spaces bars evenly by
-  // index, so real candles pack together with no holes, and we don't drown a
-  // low-activity coin in meaningless flat filler candles.
-  return out.slice(-limit).map((c) => ({
+  // Real trade candles only — NO gap-fill. Enforce continuity: each candle opens
+  // where the previous closed (extend the wick to cover it) so bars connect with
+  // no price gaps between them, like a proper continuous-price chart. This is not
+  // fake filler — every candle is a real trade; we just fix the open so a bar
+  // starts where the last one ended instead of after its own first trade.
+  const win = out.slice(-limit);
+  for (let i = 1; i < win.length; i++) {
+    const prevClose = win[i - 1].c;
+    const c = win[i];
+    win[i] = { ...c, o: prevClose, h: Math.max(c.h, prevClose), l: Math.min(c.l, prevClose) };
+  }
+  return win.map((c) => ({
     timestamp: c.t,
     open: c.o * p,
     high: c.h * p,
