@@ -78,7 +78,7 @@ export async function startNfcScan(
     // we start. A real tag read can never complete that fast (the iOS sheet alone
     // takes ~1s), but a retained replay fires within a few ms of attaching.
     const scanStartedAt = Date.now();
-    const listener = await CapacitorNfc.addListener("nfcEvent", (event: NfcEvent) => {
+    const listener = await CapacitorNfc.addListener("nfcEvent", async (event: NfcEvent) => {
       if (Date.now() - scanStartedAt < 800) return; // stale replay — drop it
       if (settled) return;
       settled = true;
@@ -93,6 +93,14 @@ export async function startNfcScan(
       } catch (err) {
         console.error("Error parsing NFC tag:", err);
         onError("Failed to read NFC tag data");
+      } finally {
+        // We run with invalidateAfterFirstRead:false (see startScanning below), so
+        // the session does NOT auto-close after a read — close it ourselves.
+        try {
+          await CapacitorNfc.stopScanning();
+        } catch {
+          // already closed
+        }
       }
     });
 
@@ -106,9 +114,15 @@ export async function startNfcScan(
       onError("Scan cancelled");
     });
 
+    // invalidateAfterFirstRead:false is REQUIRED here: the plugin's real read path
+    // (connect → readNDEF → emit) lives in its didDetect(tags:) delegate, and iOS
+    // only calls that when invalidateAfterFirstRead is false. With the default
+    // (true) the scan session never drives that handler, so the sheet opens and
+    // nothing is ever read. This matches the (working) write path.
     await CapacitorNfc.startScanning({
       alertMessage: "Hold your ColdStick near the top of your phone",
-    });
+      invalidateAfterFirstRead: false,
+    } as any);
 
     return async () => {
       await listener.remove();
