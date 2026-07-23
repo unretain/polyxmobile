@@ -96,9 +96,13 @@ function upsertCandle(map: Map<number, Candle>, bucket: number, price: number, v
   }
 }
 
+// Last recorded price per mint (SOL), used to reject outlier PumpSwap decodes.
+const lastPrice = new Map<string, number>();
+
 // Record a trade into BOTH the 1s and 1m candle series (price in SOL).
 function recordCandle(mint: string, priceSol: number, solAmount: number) {
   if (priceSol <= 0) return;
+  lastPrice.set(mint, priceSol);
   let s = state.candles1s.get(mint);
   if (!s) { s = new Map(); state.candles1s.set(mint, s); }
   let m = state.candles1m.get(mint);
@@ -298,13 +302,27 @@ function handlePumpSwap(tx: any) {
   // Process if we track this token OR it's an on-demand watched (searched) mint.
   if (!token && !state.watched.has(mint)) return;
 
-  const maxUi = (list: any[], m: string) =>
-    Math.max(0, ...list.filter((b) => b.mint === m).map((b) => Number(b.uiTokenAmount?.uiAmount || 0)));
-  const baseRes = maxUi(post, mint);
-  const quoteRes = maxUi(post, WSOL);
-  if (baseRes <= 0 || quoteRes <= 0) return;
-  const priceSol = quoteRes / baseRes;
-  const volSol = Math.abs(quoteRes - maxUi(tx.meta.preTokenBalances || [], WSOL)); // pool WSOL delta
+  // Price from the actual swap DELTAS (balance changes), NOT absolute max reserves.
+  // Otherwise a large unrelated holder or a big wrapped-SOL account gets picked as
+  // the "reserve" and spikes the price. Only accounts involved in the swap have a
+  // non-zero delta; the pool leg is the largest delta on each side.
+  const preByIdx = new Map<number, any>();
+  for (const b of (tx.meta.preTokenBalances || [])) preByIdx.set(b.accountIndex, b);
+  let tokenDelta = 0, solDelta = 0;
+  for (const b of post) {
+    const pb = preByIdx.get(b.accountIndex);
+    const d = Number(b.uiTokenAmount?.uiAmount || 0) - Number(pb?.uiTokenAmount?.uiAmount || 0);
+    if (b.mint === mint) { if (Math.abs(d) > Math.abs(tokenDelta)) tokenDelta = d; }
+    else if (b.mint === WSOL) { if (Math.abs(d) > Math.abs(solDelta)) solDelta = d; }
+  }
+  const absTok = Math.abs(tokenDelta), absSol = Math.abs(solDelta);
+  if (absTok <= 0 || absSol <= 0) return;
+  const priceSol = absSol / absTok;
+  const volSol = absSol;
+
+  // Safety net: drop an egregious outlier so one bad decode can't spike the chart.
+  const ref = lastPrice.get(mint);
+  if (ref && ref > 0 && (priceSol > ref * 20 || priceSol < ref * 0.05)) return;
 
   if (token) {
     // Migration: was on the bonding curve, now trading on PumpSwap.
@@ -589,7 +607,23 @@ export function getCandles(mint: string, intervalSec: number, limit: number) {
     }
     out = Array.from(buckets.values()).sort((a, b) => a.t - b.t);
   }
-  return out.slice(-limit).map((c) => ({
+  // Gap-fill: candles only exist for intervals that had a trade, leaving holes on
+  // the time axis. Fill silent intervals with flat candles (O=H=L=C=last close,
+  // volume 0) so the chart is continuous. Windowed to the last `limit` buckets so
+  // a sparsely-traded token can't blow up into a huge array.
+  const iv = intervalSec * 1000;
+  const lastBucket = out[out.length - 1].t;
+  const firstBucket = Math.max(out[0].t, lastBucket - (limit - 1) * iv);
+  const byBucket = new Map(out.map((c) => [c.t, c]));
+  let lastClose = out[0].o;
+  for (const c of out) { if (c.t <= firstBucket) lastClose = c.c; else break; }
+  const filled: Candle[] = [];
+  for (let t = firstBucket; t <= lastBucket; t += iv) {
+    const real = byBucket.get(t);
+    if (real) { filled.push(real); lastClose = real.c; }
+    else filled.push({ t, o: lastClose, h: lastClose, l: lastClose, c: lastClose, v: 0 });
+  }
+  return filled.map((c) => ({
     timestamp: c.t,
     open: c.o * p,
     high: c.h * p,
