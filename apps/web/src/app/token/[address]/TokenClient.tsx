@@ -741,31 +741,28 @@ export default function TokenClient() {
     };
   }, [address, chartType, chartPeriod, fromPulse]);
 
-  // Fetch trades
+  // Seed recent trades ONCE from REST; live trades arrive over the WebSocket
+  // ("trade" events) and accumulate. Do NOT poll/replace — that was overwriting
+  // the socket-accumulated list every 2s and clearing it back to 1-2 rows.
   useEffect(() => {
     if (!address) return;
-
-    const fetchTrades = async () => {
+    let cancelled = false;
+    setTradesLoading(true);
+    (async () => {
       try {
         const response = await fetch(`/api/pulse/trades/${address}?limit=50`);
-        if (response.ok) {
+        if (response.ok && !cancelled) {
           const data = await response.json();
-          setTrades(data.trades || []);
+          // Only seed if the socket hasn't already populated the list.
+          setTrades((prev) => (prev.length ? prev : data.trades || []));
         }
-        setTradesLoading(false);
       } catch (err) {
         console.error("Failed to fetch trades:", err);
-        setTradesLoading(false);
+      } finally {
+        if (!cancelled) setTradesLoading(false);
       }
-    };
-
-    setTradesLoading(true);
-    fetchTrades();
-    tradesIntervalRef.current = setInterval(fetchTrades, 2000); // Live trades every 2 seconds
-
-    return () => {
-      if (tradesIntervalRef.current) clearInterval(tradesIntervalRef.current);
-    };
+    })();
+    return () => { cancelled = true; };
   }, [address]);
 
   // Fetch holder stats
