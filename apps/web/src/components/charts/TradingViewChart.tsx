@@ -8,12 +8,27 @@ import type { OHLCV } from "@/stores/pulseStore";
 export type Timeframe = "1s" | "1m" | "5m" | "15m" | "1h" | "4h" | "1d" | "1w" | "1M";
 type ChartType = "candle" | "line";
 
+// pump.fun tokens have a fixed 1B supply, so market cap = price * 1e9.
+const DEFAULT_SUPPLY = 1_000_000_000;
+
+// Compact USD (market cap) label for the price scale + crosshair.
+function formatCompactUsd(v: number): string {
+  const n = Math.abs(v);
+  if (n >= 1e9) return `$${(v / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `$${(v / 1e6).toFixed(2)}M`;
+  if (n >= 1e3) return `$${(v / 1e3).toFixed(2)}K`;
+  if (n >= 1) return `$${v.toFixed(2)}`;
+  return `$${v.toFixed(4)}`;
+}
+
 interface TradingViewChartProps {
   data: OHLCV[];
   isLoading?: boolean;
   timeframe?: Timeframe;
   onTimeframeChange?: (tf: Timeframe) => void;
   showTimeframeSelector?: boolean;
+  /** Total token supply used to render market cap instead of raw price. */
+  supply?: number;
 }
 
 const TIMEFRAMES: { value: Timeframe; label: string }[] = [
@@ -31,6 +46,7 @@ export function TradingViewChart({
   timeframe = "1m",
   onTimeframeChange,
   showTimeframeSelector = false,
+  supply = DEFAULT_SUPPLY,
 }: TradingViewChartProps) {
   const { isDark } = useThemeStore();
   const chartContainerRef = useRef<HTMLDivElement>(null);
@@ -102,6 +118,13 @@ export function TradingViewChart({
     });
 
     // Create both series but only show one at a time (v5 API)
+    // Market-cap values are large ($1K–$1M+), so format the axis compactly.
+    const mcapPriceFormat = {
+      type: "custom" as const,
+      formatter: formatCompactUsd,
+      minMove: 0.01,
+    };
+
     const candleSeries = chart.addSeries(CandlestickSeries, {
       upColor: "#22c55e",
       downColor: "#ef4444",
@@ -109,6 +132,7 @@ export function TradingViewChart({
       borderDownColor: "#ef4444",
       wickUpColor: "#22c55e",
       wickDownColor: "#ef4444",
+      priceFormat: mcapPriceFormat,
     });
 
     const lineSeries = chart.addSeries(LineSeries, {
@@ -121,6 +145,7 @@ export function TradingViewChart({
       priceLineVisible: true,
       priceLineColor: "#FF6B4A",
       lastValueVisible: true,
+      priceFormat: mcapPriceFormat,
     });
 
     chartRef.current = chart;
@@ -171,15 +196,17 @@ export function TradingViewChart({
       return;
     }
 
-    // Convert OHLCV data to lightweight-charts format
+    // Convert OHLCV to lightweight-charts format, scaling price -> market cap
+    // (price * supply) so the chart reads in dollars people recognize ($3.7K)
+    // instead of a per-token price that rounds to $0.00.
     const candleData: CandlestickData<Time>[] = data
       .filter((d) => d && typeof d.timestamp === "number")
       .map((d) => ({
         time: (d.timestamp / 1000) as Time, // Convert ms to seconds
-        open: d.open,
-        high: d.high,
-        low: d.low,
-        close: d.close,
+        open: d.open * supply,
+        high: d.high * supply,
+        low: d.low * supply,
+        close: d.close * supply,
       }))
       .sort((a, b) => (a.time as number) - (b.time as number));
 
@@ -197,7 +224,7 @@ export function TradingViewChart({
       chartRef.current.timeScale().fitContent();
       console.log("[TradingViewChart] Data set and fitted to view");
     }
-  }, [data, chartReady]); // Re-run when data changes or chart becomes ready
+  }, [data, chartReady, supply]); // Re-run when data changes or chart becomes ready
 
   // Toggle series visibility based on chart type
   useEffect(() => {
@@ -212,25 +239,12 @@ export function TradingViewChart({
     }
   }, [chartType, chartReady]);
 
-  if (isLoading && (!data || data.length === 0)) {
-    return (
-      <div className={`h-full w-full flex items-center justify-center ${isDark ? "bg-[#0a0a0a]" : "bg-gray-50"}`}>
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#FF6B4A] border-t-transparent" />
-          <span className={`text-sm ${isDark ? "text-white/50" : "text-gray-500"}`}>Loading chart...</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (!data || data.length === 0) {
-    return (
-      <div className={`h-full w-full flex items-center justify-center text-sm ${isDark ? "bg-[#0a0a0a] text-white/40" : "bg-gray-50 text-gray-400"}`}>
-        No price data available
-      </div>
-    );
-  }
-
+  // NOTE: no early returns for loading/empty — the chart container below must
+  // ALWAYS be in the DOM so lightweight-charts can initialize on mount. The 2D
+  // chart mounts (hidden) at page load before OHLCV arrives; if we early-return
+  // here the container never exists, createChart never runs, and the chart stays
+  // blank forever (the init effect only depends on [isDark]). Loading/empty are
+  // rendered as overlays instead.
   return (
     <div className={`h-full w-full relative ${isDark ? "bg-[#0a0a0a]" : "bg-gray-50"}`}>
       {/* Controls */}
@@ -286,8 +300,23 @@ export function TradingViewChart({
         </div>
       </div>
 
-      {/* Chart container */}
+      {/* Chart container — always mounted so the chart can attach even before data */}
       <div ref={chartContainerRef} className="h-full w-full" />
+
+      {/* Loading / empty as overlays (never early-return the container away) */}
+      {isLoading && (!data || data.length === 0) && (
+        <div className={`absolute inset-0 flex items-center justify-center ${isDark ? "bg-[#0a0a0a]" : "bg-gray-50"}`}>
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#FF6B4A] border-t-transparent" />
+            <span className={`text-sm ${isDark ? "text-white/50" : "text-gray-500"}`}>Loading chart...</span>
+          </div>
+        </div>
+      )}
+      {!isLoading && (!data || data.length === 0) && (
+        <div className={`absolute inset-0 flex items-center justify-center text-sm ${isDark ? "bg-[#0a0a0a] text-white/40" : "bg-gray-50 text-gray-400"}`}>
+          No price data available
+        </div>
+      )}
     </div>
   );
 }
