@@ -53,6 +53,9 @@ export function TradingViewChart({
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const lineSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  // Track whether we've done the one-time initial fit for the current dataset, so
+  // live updates don't keep snapping the user's zoom/pan back to "fit all".
+  const fittedRef = useRef(false);
   const [chartType, setChartType] = useState<ChartType>("candle");
   const [chartReady, setChartReady] = useState(false);
 
@@ -191,10 +194,8 @@ export function TradingViewChart({
   // Update data when it changes or when chart becomes ready
   useEffect(() => {
     console.log("[TradingViewChart] Data effect running, chartReady:", chartReady, "dataLen:", data?.length);
-    if (!chartReady || !candleSeriesRef.current || !lineSeriesRef.current || !data || data.length === 0) {
-      console.log("[TradingViewChart] Skipping data update - not ready or no data");
-      return;
-    }
+    if (!chartReady || !candleSeriesRef.current || !lineSeriesRef.current) return;
+    if (!data || data.length === 0) { fittedRef.current = false; return; }
 
     // Convert OHLCV to lightweight-charts format, scaling price -> market cap
     // (price * supply) so the chart reads in dollars people recognize ($3.7K)
@@ -219,10 +220,11 @@ export function TradingViewChart({
     candleSeriesRef.current.setData(candleData);
     lineSeriesRef.current.setData(lineData);
 
-    // Fit content to view
-    if (chartRef.current) {
+    // Fit to view only ONCE per dataset (initial load / coin switch), never on
+    // live updates — otherwise every new candle snaps zoom/pan back to "fit all".
+    if (chartRef.current && !fittedRef.current) {
       chartRef.current.timeScale().fitContent();
-      console.log("[TradingViewChart] Data set and fitted to view");
+      fittedRef.current = true;
     }
   }, [data, chartReady, supply]); // Re-run when data changes or chart becomes ready
 
