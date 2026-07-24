@@ -585,6 +585,11 @@ export function isBackfilling(mint: string): boolean {
 export function startPulseFeed() {
   const endpoint = process.env.GRPC_ENDPOINT;
   if (!endpoint) { console.log("[pulse] GRPC_ENDPOINT not set — feed disabled"); return; }
+  // Log our outbound IP so it can be whitelisted with the gRPC provider (Corvus).
+  fetch("https://api.ipify.org")
+    .then((r) => r.text())
+    .then((ip) => console.log(`[pulse] >>> OUTBOUND IP (whitelist this with the gRPC provider): ${ip} <<<`))
+    .catch(() => {});
   setInterval(() => { refreshSolPrice().catch(() => {}); }, 30000);
   setInterval(() => { checkGraduations().catch(() => {}); }, 15000);
   // Keep the PumpSwap filter in sync with the set of migrated tokens.
