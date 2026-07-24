@@ -28,34 +28,56 @@ class BirdeyeService {
         { headers: this.getHeaders() }
       );
 
-      if (!response.ok) {
-        throw new Error(`Birdeye API error: ${response.status}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data?.price != null) {
+          const tokenData = data.data;
+          return {
+            address: tokenData.address,
+            decimals: tokenData.decimals,
+            symbol: tokenData.symbol,
+            name: tokenData.name,
+            logoURI: tokenData.logoURI,
+            liquidity: tokenData.liquidity,
+            price: tokenData.price,
+            priceChange24h: tokenData.priceChange24hPercent,
+            volume24h: tokenData.volume24h,
+            // Birdeye uses 'mc' for market cap - fallback to other possible field names
+            marketCap: tokenData.mc || tokenData.marketCap || tokenData.realMc,
+          };
+        }
       }
 
-      const data = await response.json();
-      if (!data.success) {
-        return null;
-      }
-
-      const tokenData = data.data;
-
-      return {
-        address: tokenData.address,
-        decimals: tokenData.decimals,
-        symbol: tokenData.symbol,
-        name: tokenData.name,
-        logoURI: tokenData.logoURI,
-        liquidity: tokenData.liquidity,
-        price: tokenData.price,
-        priceChange24h: tokenData.priceChange24hPercent,
-        volume24h: tokenData.volume24h,
-        // Birdeye uses 'mc' for market cap - fallback to other possible field names
-        marketCap: tokenData.mc || tokenData.marketCap || tokenData.realMc,
-      };
+      // token_overview can be empty for low-liquidity/bridged tokens (e.g. Wormhole
+      // WETH) even when a price exists. Fall back to the lightweight price endpoint.
+      return await this.getPriceOnly(address);
     } catch (error) {
       console.error("Error fetching Birdeye token data:", error);
-      throw error;
+      try {
+        return await this.getPriceOnly(address);
+      } catch {
+        throw error;
+      }
     }
+  }
+
+  async getPriceOnly(address: string): Promise<BirdeyeTokenData | null> {
+    const r = await fetch(`${BIRDEYE_API_URL}/defi/price?address=${address}`, { headers: this.getHeaders() });
+    if (!r.ok) return null;
+    const j = await r.json();
+    if (!j.success || j.data?.value == null) return null;
+    return {
+      address,
+      decimals: 0,
+      symbol: "",
+      name: "",
+      logoURI: "",
+      liquidity: 0,
+      price: j.data.value,
+      priceChange24h: j.data.priceChange24h ?? 0,
+      volume24h: 0,
+      marketCap: 0,
+    };
   }
 
   // Get OHLCV data with automatic chunked fetching for large time ranges

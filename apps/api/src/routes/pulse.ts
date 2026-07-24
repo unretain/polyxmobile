@@ -302,11 +302,17 @@ pulseRoutes.get("/token/:address", async (req, res) => {
     const { address } = req.params;
     let tokenData: any = null;
 
-    // 1. FIRST: Check database (free, no API call)
-    // The sync service already stores all token data including social links and volume
-    const dbToken = await prisma.pulseToken.findUnique({
-      where: { address },
-    });
+    // 1. FIRST: Check database (free, no API call).
+    // Guarded: if the DB is unavailable, fall through to external APIs instead
+    // of failing the whole request.
+    let dbToken = null;
+    try {
+      dbToken = await prisma.pulseToken.findUnique({
+        where: { address },
+      });
+    } catch (dbErr) {
+      console.warn(`[pulse/token] DB unavailable, using external APIs for ${address}`);
+    }
     if (dbToken) {
       tokenData = {
         address: dbToken.address,

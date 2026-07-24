@@ -17,8 +17,8 @@ const tokenCache: Map<string, any> = new Map();
 let lastTokenTimestamp = 0;
 
 export async function GET(req: NextRequest) {
-  // Check if gRPC is configured
-  if (!GRPC_ENDPOINT || !GRPC_TOKEN) {
+  // Check if gRPC is configured (token optional - Corvus trial is IP-whitelisted)
+  if (!GRPC_ENDPOINT) {
     return new Response(
       JSON.stringify({ error: "gRPC not configured", data: [] }),
       { status: 500, headers: { "Content-Type": "application/json" } }
@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
 
         console.log(`[gRPC Stream] Connecting to ${GRPC_ENDPOINT}...`);
 
-        const client = new Client(GRPC_ENDPOINT, GRPC_TOKEN, {
+        const client = new Client(GRPC_ENDPOINT, GRPC_TOKEN || undefined, {
           "grpc.max_receive_message_length": 64 * 1024 * 1024,
         });
 

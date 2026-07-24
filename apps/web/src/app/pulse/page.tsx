@@ -31,11 +31,16 @@ function timeAgo(timestamp: number): string {
   return `${days}d`;
 }
 
-// Bonding curve progress (0-100%)
-function getBondingProgress(marketCap: number): number {
-  // Pump.fun graduation threshold is ~$69k market cap
-  const graduationMC = 69000;
-  return Math.min(100, (marketCap / graduationMC) * 100);
+// Bonding curve progress (0-100%).
+// Prefer the backend's curve-based progress (% of the curve's tokens actually
+// sold — price-independent). Only fall back to a market-cap estimate for legacy
+// data that predates the progress field.
+function getBondingProgress(token: PulseToken): number {
+  if (typeof token.progress === "number") return Math.min(100, Math.max(0, token.progress));
+  // Fallback: fixed curve migration cap ≈ 410.9 SOL. Without a SOL price here we
+  // approximate against ~$31k (SOL ~$76); real value comes from the backend.
+  const graduationMC = token.migrationMc || 31000;
+  return Math.min(100, (token.marketCap / graduationMC) * 100);
 }
 
 // Token Row Component - Compact row for the table
@@ -46,7 +51,7 @@ interface TokenRowProps {
 }
 
 function TokenRow({ token, showProgress = false, isDark }: TokenRowProps) {
-  const progress = getBondingProgress(token.marketCap);
+  const progress = getBondingProgress(token);
   const isPositive = token.priceChange24h >= 0;
 
   const copyAddress = (e: React.MouseEvent) => {
@@ -322,28 +327,14 @@ export default function PulsePage() {
     localStorage.removeItem("pulse-search-history");
   };
 
-  // Fetch all pairs on mount and connect to real-time
+  // Connect to the live WebSocket stream on mount (it does the initial fetch and
+  // then receives pushed snapshots ~1x/sec — no client polling needed).
   useEffect(() => {
-    fetchAllPairs();
     connectRealtime();
-
     return () => {
       disconnectRealtime();
     };
-  }, [fetchAllPairs, connectRealtime, disconnectRealtime]);
-
-  // Refresh pairs every 5 seconds
-  useEffect(() => {
-    refreshIntervalRef.current = setInterval(() => {
-      fetchAllPairs();
-    }, 5000);
-
-    return () => {
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-      }
-    };
-  }, [fetchAllPairs]);
+  }, [connectRealtime, disconnectRealtime]);
 
   const totalTokens = newPairs.length + graduatingPairs.length + graduatedPairs.length;
 

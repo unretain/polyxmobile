@@ -1,5 +1,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { io, Socket } from "socket.io-client";
+
+const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "http://localhost:3001";
+let _pulseSocket: Socket | null = null;
 
 export interface OHLCV {
   timestamp: number;
@@ -30,6 +34,11 @@ export interface PulseToken {
   complete?: boolean;
   replyCount?: number;
   ohlcv: OHLCV[];
+  // Curve-based bonding progress (% of curve tokens sold, price-independent)
+  progress?: number;
+  marketCapSol?: number;
+  // Live migration-target market cap in USD (fixed curve point × SOL price)
+  migrationMc?: number;
 }
 
 interface PulseStore {
@@ -84,6 +93,9 @@ const mapTokenData = (token: any): PulseToken => ({
   website: token.website,
   complete: token.complete,
   replyCount: token.replyCount,
+  progress: typeof token.progress === "number" ? token.progress : undefined,
+  marketCapSol: token.marketCapSol,
+  migrationMc: token.migrationMc,
   ohlcv: [],
 });
 
@@ -236,24 +248,51 @@ export const usePulseStore = create<PulseStore>()(
     );
   },
 
-  // Connect to real-time updates via HTTP polling (WebSocket disabled - using RPC polling instead)
+  // Connect to the ONE live stream: the API's WebSocket broadcast. Every user
+  // gets the same `pulse:snapshot` (built from the single server-side gRPC feed)
+  // pushed ~1x/sec — no per-client polling.
   connectRealtime: () => {
-    // WebSocket disabled - real-time updates handled by server-side RPC polling
-    // The API routes now poll the Solana RPC directly
-    console.log("[Pulse] Real-time via RPC polling (no WebSocket)");
-    set({ isRealtime: true });
+    if (_pulseSocket) return;
+    // Instant first paint from HTTP snapshot, then the socket takes over.
+    get().fetchAllPairs();
 
-    // Poll for updates every 15 seconds (client-side fallback)
-    const pollInterval = setInterval(() => {
-      get().fetchAllPairs();
-    }, 15000);
+    const socket = io(WS_URL, { transports: ["websocket"], reconnection: true, reconnectionDelay: 1000 });
+    _pulseSocket = socket;
 
-    // Store interval ID for cleanup (using socket field as workaround)
-    (window as any).__pulsePollingInterval = pollInterval;
+    socket.on("connect", () => {
+      socket.emit("subscribe:pulse");
+      set({ isRealtime: true });
+    });
+
+    const applySnapshot = (snap: any) => {
+      if (!snap) return;
+      set({
+        newPairs: (snap.newPairs || []).map(mapTokenData),
+        graduatingPairs: (snap.graduating || []).map(mapTokenData),
+        graduatedPairs: (snap.graduated || []).map(mapTokenData),
+        lastUpdate: Date.now(),
+      });
+    };
+    socket.on("pulse:snapshot", applySnapshot);
+    socket.on("pulse:new", (token: any) => {
+      if (token) get().addNewPair(mapTokenData(token));
+    });
+
+    socket.on("disconnect", () => set({ isRealtime: false }));
+    // If the socket can't connect, fall back to light polling.
+    socket.on("connect_error", () => {
+      if (!(window as any).__pulsePollingInterval) {
+        (window as any).__pulsePollingInterval = setInterval(() => get().fetchAllPairs(), 5000);
+      }
+    });
   },
 
-  // Disconnect - clear polling interval
   disconnectRealtime: () => {
+    if (_pulseSocket) {
+      _pulseSocket.emit("unsubscribe:pulse");
+      _pulseSocket.disconnect();
+      _pulseSocket = null;
+    }
     const interval = (window as any).__pulsePollingInterval;
     if (interval) {
       clearInterval(interval);
@@ -322,23 +361,12 @@ export const usePulseStore = create<PulseStore>()(
   },
     }),
     {
-      name: "pulse-store",
-      partialize: (state) => ({
-        // Only persist the token lists, not loading/socket state
-        newPairs: state.newPairs,
-        graduatingPairs: state.graduatingPairs,
-        graduatedPairs: state.graduatedPairs,
-        lastUpdate: state.lastUpdate,
-        sources: state.sources,
-      }),
-      // Filter out stale/invalid tokens when rehydrating from localStorage
-      onRehydrateStorage: () => (state) => {
-        if (state) {
-          state.newPairs = filterValidTokens(state.newPairs);
-          state.graduatingPairs = filterValidTokens(state.graduatingPairs);
-          state.graduatedPairs = filterValidTokens(state.graduatedPairs);
-        }
-      },
+      // v2 name intentionally abandons any previously-cached "pulse-store" data.
+      name: "pulse-store-v2",
+      // Do NOT persist the live token lists — new pairs is a realtime feed and
+      // must always come fresh from the server (ClickHouse). Persisting it made
+      // stale hours-old tokens rehydrate from localStorage on page load.
+      partialize: () => ({}),
     }
   )
 );

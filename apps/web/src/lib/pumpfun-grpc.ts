@@ -75,8 +75,8 @@ export class PumpFunGrpcMonitor {
 
   async start(): Promise<void> {
     if (this.isRunning) return;
-    if (!GRPC_ENDPOINT || !GRPC_TOKEN) {
-      console.error("[gRPC] Missing GRPC_ENDPOINT or GRPC_TOKEN");
+    if (!GRPC_ENDPOINT) {
+      console.error("[gRPC] Missing GRPC_ENDPOINT");
       return;
     }
 
@@ -84,7 +84,7 @@ export class PumpFunGrpcMonitor {
 
     try {
       // Create gRPC client
-      this.client = new Client(GRPC_ENDPOINT, GRPC_TOKEN, {
+      this.client = new Client(GRPC_ENDPOINT, GRPC_TOKEN || undefined, {
         "grpc.max_receive_message_length": 64 * 1024 * 1024, // 64MB
       });
 

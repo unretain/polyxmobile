@@ -121,6 +121,59 @@ export async function executeSwap(
 }
 
 /**
+ * Client-side pump.fun / PumpSwap swap using the persisted mobile wallet.
+ * Uses PumpPortal's local-trade API (returns a tx we sign locally), so buying a
+ * bonding-curve coin never needs a server session — same as the Jupiter path.
+ * `pool: "auto"` routes to the bonding curve OR the AMM if the coin migrated.
+ *
+ * amount is RAW: buy -> lamports of SOL; sell -> token base units (6 decimals).
+ */
+export async function executeClientPumpSwap(
+  mnemonic: string,
+  tokenMint: string,
+  amount: string,
+  slippageBps: number = 1000,
+  isBuy: boolean = true
+): Promise<{ signature: string; explorerUrl: string }> {
+  const { publicKey, secretKey } = deriveKeypairFromMnemonic(mnemonic);
+  const keypair = Keypair.fromSecretKey(secretKey);
+
+  const denominatedInSol = isBuy ? "true" : "false";
+  const amountValue = isBuy ? Number(amount) / 1e9 : Number(amount) / 1e6;
+
+  const res = await fetch("https://pumpportal.fun/api/trade-local", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      publicKey,
+      action: isBuy ? "buy" : "sell",
+      mint: tokenMint,
+      amount: amountValue,
+      denominatedInSol,
+      slippage: Math.max(1, Math.round(slippageBps / 100)),
+      priorityFee: 0.00001,
+      pool: "auto",
+    }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`Pump trade failed: ${t.slice(0, 120) || res.status}`);
+  }
+
+  const data = new Uint8Array(await res.arrayBuffer());
+  const transaction = VersionedTransaction.deserialize(data);
+  transaction.sign([keypair]);
+
+  const connection = new Connection(RPC_URL, "confirmed");
+  const signature = await connection.sendTransaction(transaction, { skipPreflight: true, maxRetries: 3 });
+  const bh = await connection.getLatestBlockhash();
+  await connection.confirmTransaction({ signature, blockhash: bh.blockhash, lastValidBlockHeight: bh.lastValidBlockHeight });
+
+  secretKey.fill(0);
+  return { signature, explorerUrl: `https://solscan.io/tx/${signature}` };
+}
+
+/**
  * Get wallet balance using RPC
  */
 export async function getWalletBalance(publicKey: string): Promise<number> {

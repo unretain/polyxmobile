@@ -4,9 +4,14 @@
 
 import { NextResponse } from "next/server";
 import { initPulseGrpc, getGraduatedTokens, getSolPrice, isConnected } from "@/lib/pulse-grpc";
+import { feedFetch } from "@/lib/feed";
 
 export async function GET() {
-  // Initialize shared gRPC if needed
+  const feed = await feedFetch(`/api/feed/graduated?limit=20`);
+  if (feed && Array.isArray(feed.data)) {
+    return NextResponse.json({ data: feed.data, sources: ["grpc"], realtime: true, solPrice: feed.solPrice ?? 0 });
+  }
+
   if (!isConnected()) {
     await initPulseGrpc();
   }

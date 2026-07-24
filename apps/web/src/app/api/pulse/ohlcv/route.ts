@@ -35,7 +35,8 @@ let grpcInitialized = false;
 let grpcStream: any = null;
 
 async function initGrpcStream() {
-  if (grpcInitialized || !GRPC_ENDPOINT || !GRPC_TOKEN) return;
+  // Token optional - Corvus trial is IP-whitelisted
+  if (grpcInitialized || !GRPC_ENDPOINT) return;
 
   try {
     const { default: Client, CommitmentLevel } = await import(
@@ -45,7 +46,7 @@ async function initGrpcStream() {
 
     console.log(`[gRPC ohlcv] Connecting...`);
 
-    const client = new Client(GRPC_ENDPOINT, GRPC_TOKEN, {
+    const client = new Client(GRPC_ENDPOINT, GRPC_TOKEN || undefined, {
       "grpc.max_receive_message_length": 64 * 1024 * 1024,
     });
 
