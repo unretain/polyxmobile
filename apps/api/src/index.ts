@@ -70,6 +70,7 @@ const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {
   console.log(`🚀 API server running on http://localhost:${PORT}`);
   console.log(`📡 WebSocket server ready on port ${PORT}`);
+  console.log(`✅ BUILD MARKER: gRPC feed active, pulseSync gated behind ENABLE_PG_SYNC`);
 
   // THE pulse feed: one Corvus gRPC connection -> in-memory live state ->
   // broadcast over WebSocket to every user (see websocket/index.ts).
