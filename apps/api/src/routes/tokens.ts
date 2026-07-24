@@ -150,6 +150,34 @@ const DASHBOARD_TOKENS = [
 // Track if initial sync has run (to avoid running multiple times per server start)
 let initialSyncComplete = false;
 let metadataSynced = false; // Only fetch metadata ONCE per server start
+
+// ---- Dashboard price warmer (works around Birdeye free-tier rate limits) ----
+// The free key 429s on bursts, so we trickle one token at a time into this cache
+// and the dashboard reads it instantly. Prices fill in over the first ~20s, then
+// refresh continuously. No DB required.
+let dashboardCache: any[] = DASHBOARD_TOKENS.map((t) => ({
+  address: t.address, symbol: t.symbol, name: t.name, decimals: t.decimals,
+  logoUri: null, price: 0, priceChange24h: 0, volume24h: 0, marketCap: 0, liquidity: 0,
+}));
+let warmerStarted = false;
+
+async function warmDashboardLoop() {
+  const idx = new Map(DASHBOARD_TOKENS.map((t, i) => [t.address, i]));
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    for (const t of DASHBOARD_TOKENS) {
+      try {
+        const bd = await birdeyeService.getPriceOnly(t.address);
+        if (bd && bd.price) {
+          const i = idx.get(t.address)!;
+          dashboardCache[i] = { ...dashboardCache[i], price: bd.price, priceChange24h: bd.priceChange24h };
+        }
+      } catch { /* keep last known price */ }
+      await new Promise((r) => setTimeout(r, 1500)); // ~0.67 req/s, under free-tier limit
+    }
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+}
 let dashboardSyncTimer: NodeJS.Timeout | null = null;
 const DASHBOARD_SYNC_INTERVAL = 60000; // 60 seconds for price updates
 
@@ -455,35 +483,46 @@ tokenRoutes.get("/", async (req, res) => {
     const query = listQuerySchema.parse(req.query);
     const { page, limit, sort, order, search } = query;
 
-    const where = search
-      ? {
-          OR: [
-            { symbol: { contains: search, mode: "insensitive" as const } },
-            { name: { contains: search, mode: "insensitive" as const } },
-            { address: { contains: search, mode: "insensitive" as const } },
-          ],
-        }
-      : {};
+    // 1. Try the DB (populated by the sync service when it's up).
+    try {
+      const where = search
+        ? {
+            OR: [
+              { symbol: { contains: search, mode: "insensitive" as const } },
+              { name: { contains: search, mode: "insensitive" as const } },
+              { address: { contains: search, mode: "insensitive" as const } },
+            ],
+          }
+        : {};
+      const [tokens, total] = await Promise.all([
+        prisma.token.findMany({ where, orderBy: { [sort]: order }, skip: (page - 1) * limit, take: limit }),
+        prisma.token.count({ where }),
+      ]);
+      if (tokens.length > 0) {
+        return res.json({ data: tokens, total, page, limit, hasMore: page * limit < total });
+      }
+    } catch {
+      /* DB unavailable — fall through to live Birdeye */
+    }
 
-    const [tokens, total] = await Promise.all([
-      prisma.token.findMany({
-        where,
-        orderBy: { [sort]: order },
-        skip: (page - 1) * limit,
-        take: limit,
-      }),
-      prisma.token.count({ where }),
-    ]);
+    // 2. DB down/empty → serve the curated tokens from the background warmer cache.
+    if (!warmerStarted) { warmerStarted = true; warmDashboardLoop(); }
+    const list: any[] = dashboardCache;
 
-    const response = {
-      data: tokens,
-      total,
-      page,
-      limit,
-      hasMore: page * limit < total,
-    };
-
-    res.json(response);
+    let filtered = list;
+    if (search) {
+      const q = search.toLowerCase();
+      filtered = list.filter(
+        (t) => t.symbol.toLowerCase().includes(q) || t.name.toLowerCase().includes(q) || t.address.toLowerCase().includes(q)
+      );
+    }
+    filtered = [...filtered].sort((a, b) => {
+      const av = Number(a[sort]) || 0, bv = Number(b[sort]) || 0;
+      return order === "asc" ? av - bv : bv - av;
+    });
+    const total = filtered.length;
+    const paged = filtered.slice((page - 1) * limit, page * limit);
+    res.json({ data: paged, total, page, limit, hasMore: page * limit < total });
   } catch (error) {
     console.error("Error fetching tokens:", error);
     res.status(500).json({ error: "Failed to fetch tokens" });
@@ -517,38 +556,55 @@ tokenRoutes.get("/:address", async (req, res) => {
     // Always try to fetch fresh data from Birdeye first
     const birdeyeData = await birdeyeService.getTokenData(address);
 
-    let token;
+    let token: any = null;
 
     if (birdeyeData) {
-      // Upsert token with fresh Birdeye data
-      token = await prisma.token.upsert({
-        where: { address },
-        update: {
-          price: birdeyeData.price,
-          priceChange24h: birdeyeData.priceChange24h,
-          volume24h: birdeyeData.volume24h,
-          marketCap: birdeyeData.marketCap,
-          liquidity: birdeyeData.liquidity,
-          logoUri: birdeyeData.logoURI,
-        },
-        create: {
-          address: birdeyeData.address,
-          symbol: birdeyeData.symbol,
-          name: birdeyeData.name,
-          decimals: birdeyeData.decimals,
-          logoUri: birdeyeData.logoURI,
-          price: birdeyeData.price,
-          priceChange24h: birdeyeData.priceChange24h,
-          volume24h: birdeyeData.volume24h,
-          marketCap: birdeyeData.marketCap,
-          liquidity: birdeyeData.liquidity,
-        },
-      });
+      // Build the response straight from Birdeye — never depend on the DB for it.
+      token = {
+        address: birdeyeData.address,
+        symbol: birdeyeData.symbol,
+        name: birdeyeData.name,
+        decimals: birdeyeData.decimals,
+        logoUri: birdeyeData.logoURI,
+        price: birdeyeData.price,
+        priceChange24h: birdeyeData.priceChange24h,
+        volume24h: birdeyeData.volume24h,
+        marketCap: birdeyeData.marketCap,
+        liquidity: birdeyeData.liquidity,
+      };
+      // Best-effort persist; a DB outage must not break the response.
+      prisma.token
+        .upsert({
+          where: { address },
+          update: {
+            price: birdeyeData.price,
+            priceChange24h: birdeyeData.priceChange24h,
+            volume24h: birdeyeData.volume24h,
+            marketCap: birdeyeData.marketCap,
+            liquidity: birdeyeData.liquidity,
+            logoUri: birdeyeData.logoURI,
+          },
+          create: {
+            address: birdeyeData.address,
+            symbol: birdeyeData.symbol,
+            name: birdeyeData.name,
+            decimals: birdeyeData.decimals,
+            logoUri: birdeyeData.logoURI,
+            price: birdeyeData.price,
+            priceChange24h: birdeyeData.priceChange24h,
+            volume24h: birdeyeData.volume24h,
+            marketCap: birdeyeData.marketCap,
+            liquidity: birdeyeData.liquidity,
+          },
+        })
+        .catch(() => {});
     } else {
-      // Fallback to DB if Birdeye fails
-      token = await prisma.token.findUnique({
-        where: { address },
-      });
+      // Fallback to DB only if Birdeye returned nothing.
+      try {
+        token = await prisma.token.findUnique({ where: { address } });
+      } catch {
+        token = null;
+      }
     }
 
     if (!token) {
@@ -772,8 +828,18 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
             }
           );
         } catch (birdeyeError) {
-          console.warn(`OHLCV failed for ${address}:`, birdeyeError instanceof Error ? birdeyeError.message : birdeyeError);
-          ohlcv = [];
+          // candleCacheService needs the DB. If it's down, go straight to Birdeye
+          // so the dashboard charts still work.
+          console.warn(`OHLCV cache path failed for ${address}, fetching Birdeye directly:`, birdeyeError instanceof Error ? birdeyeError.message : birdeyeError);
+          try {
+            ohlcv = await birdeyeService.getOHLCV(address, timeframe, {
+              from: Math.floor(fromMs / 1000),
+              to: Math.floor(toMs / 1000),
+              limit,
+            });
+          } catch {
+            ohlcv = [];
+          }
         }
       }
     }

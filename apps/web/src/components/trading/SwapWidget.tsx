@@ -6,7 +6,7 @@ import { Loader2, RefreshCw, RotateCcw, Pencil, X } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/utils";
-import { executeSwap as executeClientSwap } from "@/lib/mobileSwap";
+import { executeSwap as executeClientSwap, executeClientPumpSwap } from "@/lib/mobileSwap";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -265,18 +265,18 @@ export function SwapWidget({
         parseFloat(inputAmount) * Math.pow(10, inputDecimals)
       ).toString();
 
-      // Try client-side swap first (for mobile wallets with local mnemonic)
+      // Try client-side swap first (for mobile wallets with local mnemonic).
+      // Works for BOTH Jupiter (graduated) and pump.fun (bonding curve) so a buy
+      // never requires a server session — the persisted wallet signs locally.
       const mnemonic = await useMobileWalletStore.getState().getMnemonic();
 
-      if (mnemonic && tradingSource === "jupiter") {
-        // Client-side swap using Jupiter directly
-        const result = await executeClientSwap(
-          mnemonic,
-          inputMint!,
-          outputMint!,
-          rawAmount,
-          slippage
-        );
+      if (mnemonic) {
+        if (tradingSource === "jupiter") {
+          await executeClientSwap(mnemonic, inputMint!, outputMint!, rawAmount, slippage);
+        } else {
+          const tokenMint = isBuy ? outputMint! : inputMint!;
+          await executeClientPumpSwap(mnemonic, tokenMint, rawAmount, slippage, isBuy);
+        }
 
         // Success! Play sound and show toast
         playTradeSound(isBuy);

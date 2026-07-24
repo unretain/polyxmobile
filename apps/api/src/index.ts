@@ -1,18 +1,20 @@
+// MUST be first: load .env before any module that reads process.env at import
+// time (prisma client URL, auth middleware key, etc.).
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
-import dotenv from "dotenv";
 import { tokenRoutes } from "./routes/tokens";
 import { trendingRoutes } from "./routes/trending";
 import { pulseRoutes } from "./routes/pulse";
 import { ohlcvRoutes } from "./routes/ohlcv";
 import { videoRoutes } from "./routes/video";
+import { feedRoutes } from "./routes/feed";
 import { setupWebSocket } from "./websocket";
 import { pulseSyncService } from "./services/pulseSync";
 import { requireInternalApiKey, rateLimit } from "./middleware/auth";
-
-dotenv.config();
+import { startPulseFeed } from "./pulse/feed";
 
 const app = express();
 const httpServer = createServer(app);
@@ -45,6 +47,7 @@ app.use("/api/trending", trendingRoutes);
 app.use("/api/pulse", pulseRoutes);
 app.use("/api/ohlcv", ohlcvRoutes);
 app.use("/api/video", videoRoutes);
+app.use("/api/feed", feedRoutes);
 
 // WebSocket setup
 setupWebSocket(io);
@@ -68,11 +71,13 @@ httpServer.listen(PORT, () => {
   console.log(`🚀 API server running on http://localhost:${PORT}`);
   console.log(`📡 WebSocket server ready on port ${PORT}`);
 
-  // Start background Pulse sync (every 5 seconds)
-  // Syncs token data from Moralis to DB for enriched metadata (logos, market cap)
-  pulseSyncService.start();
-  console.log(`📊 Pulse background sync started`);
+  // THE pulse feed: one Corvus gRPC connection -> in-memory live state ->
+  // broadcast over WebSocket to every user (see websocket/index.ts).
+  startPulseFeed();
 
-  // Dashboard token sync DISABLED - not using Birdeye for dashboard tokens
-  // All data comes from DB, no external API calls needed
+  // Legacy Postgres (Supabase) pulse sync — OFF by default. Set ENABLE_PG_SYNC=true.
+  if (process.env.ENABLE_PG_SYNC === "true") {
+    pulseSyncService.start();
+    console.log(`📊 Pulse (Postgres) background sync started`);
+  }
 });

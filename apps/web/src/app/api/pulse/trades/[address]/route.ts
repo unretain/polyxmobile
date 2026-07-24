@@ -1,8 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchInternalApi } from "@/lib/config";
+import { feedFetch } from "@/lib/feed";
 
 // Solana address validation
 const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+// DexScreener recent trades fallback (when ClickHouse + internal API are down).
+async function dexTrades(address: string, limit: number) {
+  try {
+    const r = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${address}`, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const pair = (j?.pairs || []).filter((p: any) => p.chainId === "solana").sort((a: any, b: any) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0))[0];
+    if (!pair) return null;
+    // DexScreener doesn't expose a raw trade list; return an empty set with the
+    // pair so the UI shows "no recent trades" rather than an error.
+    return { address, trades: [], data: [], total: 0, source: "dexscreener" };
+  } catch { return null; }
+}
 
 // Proxy to internal API - protects Moralis API key
 export async function GET(
@@ -20,32 +35,30 @@ export async function GET(
       );
     }
 
-    // Get query params
     const limitParam = req.nextUrl.searchParams.get("limit");
-    const queryParams = new URLSearchParams();
-    if (limitParam && /^\d+$/.test(limitParam)) {
-      queryParams.set("limit", limitParam);
-    }
+    const limit = limitParam && /^\d+$/.test(limitParam) ? parseInt(limitParam) : 50;
 
-    const queryString = queryParams.toString();
-    const url = `/api/pulse/trades/${encodeURIComponent(address)}${queryString ? `?${queryString}` : ""}`;
-
-    const response = await fetchInternalApi(url);
-
-    if (!response.ok) {
+    // Prefer the shared ClickHouse trade history.
+    const feed = await feedFetch(`/api/feed/trades/${address}?limit=${limit}`);
+    if (feed && Array.isArray(feed.data)) {
       return NextResponse.json(
-        { error: "Failed to fetch trades" },
-        { status: response.status }
+        { address, trades: feed.data, data: feed.data, total: feed.data.length, source: "clickhouse" },
+        { headers: { "Cache-Control": "public, max-age=2" } }
       );
     }
 
-    const data = await response.json();
+    // Fallback: internal API (Postgres) if still available.
+    const response = await fetchInternalApi(`/api/pulse/trades/${encodeURIComponent(address)}?limit=${limit}`);
+    if (response.ok) {
+      const data = await response.json();
+      return NextResponse.json(data, { headers: { "Cache-Control": "public, max-age=2" } });
+    }
 
-    return NextResponse.json(data, {
-      headers: {
-        "Cache-Control": "public, max-age=2",
-      },
-    });
+    // Last resort: DexScreener (no raw trade list, returns empty set gracefully).
+    const dex = await dexTrades(address, limit);
+    if (dex) return NextResponse.json(dex, { headers: { "Cache-Control": "public, max-age=5" } });
+
+    return NextResponse.json({ address, trades: [], data: [], total: 0 }, { headers: { "Cache-Control": "public, max-age=5" } });
   } catch (error) {
     console.error("[pulse/trades] Error:", error);
     return NextResponse.json(
