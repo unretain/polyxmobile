@@ -1293,12 +1293,10 @@ export function setupWebSocket(io: Server) {
     });
   });
 
-  // Initialize Meteora polling
-  console.log("🔧 Initializing Meteora polling...");
-  initializeMeteoraPolling(io);
-
   // THE pulse stream: broadcast the in-memory snapshot to all "pulse" subscribers
   // once per second (one gRPC feed -> one broadcast -> every user, same data).
+  // Meteora polling, the price-update simulation, and the old duplicate gRPC-OHLCV
+  // service are all removed — the pulse feed is the single source now.
   setInterval(() => {
     io.to("pulse").emit("pulse:snapshot", getSnapshot());
   }, 1000);
@@ -1308,15 +1306,7 @@ export function setupWebSocket(io: Server) {
   // Per-trade fan-out to whoever has this token's page open (subscribe:token).
   feedEvents.on("trade", (t: any) => io.to(`token:${t.mint}`).emit("trade", t));
 
-  // Start price update simulation (replace with real data feeds later)
-  startPriceUpdates(io);
-
-  // Initialize gRPC OHLCV streaming
-  console.log("🔧 Initializing gRPC OHLCV streaming...");
-  initializeGrpcOhlcv(io);
-
-  // Initialize Dashboard price streaming (reads from DB, broadcasts to subscribers)
-  console.log("🔧 Initializing Dashboard price streaming...");
+  // Dashboard price streaming (SOL/ETH majors on the homepage).
   initializeDashboardPriceStreaming(io);
 }
 
