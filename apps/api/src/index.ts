@@ -18,9 +18,23 @@ import { startPulseFeed } from "./pulse/feed";
 
 const app = express();
 const httpServer = createServer(app);
+
+// Allow ONE shared API to serve multiple web deployments (e.g. the website + the
+// mobile web app). FRONTEND_URL is a comma-separated list of allowed origins.
+// Requests with no Origin (curl, server-to-server, some mobile webviews) are
+// allowed too — the REST API is still gated by INTERNAL_API_KEY, and the socket
+// only carries public feed data.
+const ALLOWED_ORIGINS = (process.env.FRONTEND_URL || "http://localhost:3000")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    origin: (origin, cb) => {
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+      cb(null, false);
+    },
     methods: ["GET", "POST"],
   },
 });
