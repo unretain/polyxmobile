@@ -151,51 +151,52 @@ const DASHBOARD_TOKENS = [
 let initialSyncComplete = false;
 let metadataSynced = false; // Only fetch metadata ONCE per server start
 
-// ---- Dashboard price warmer (works around Birdeye free-tier rate limits) ----
-// The free key 429s on bursts, so we trickle one token at a time into this cache
-// and the dashboard reads it instantly. Prices fill in over the first ~20s, then
-// refresh continuously. No DB required.
+// ---- On-demand dashboard prices (cached + coalesced, ZERO idle burn) ----------
+// No background loop. Birdeye is hit ONLY when the dashboard is actually requested
+// and the cache is older than the TTL, and concurrent requests share one in-flight
+// fetch. So: idle server = 0 CU; a burst of N users collapses to ONE multi_price
+// call per window (all tokens in a single request). User-facing request rate is
+// bounded only by this server's memory reads, NOT by Birdeye's 15 RPS.
+const DASHBOARD_PRICE_TTL = 15000; // 15s — feels live, caps burn to ~1 call / 15s
 let dashboardCache: any[] = DASHBOARD_TOKENS.map((t) => ({
   address: t.address, symbol: t.symbol, name: t.name, decimals: t.decimals,
   logoUri: null, price: 0, priceChange24h: 0, volume24h: 0, marketCap: 0, liquidity: 0,
 }));
-let warmerStarted = false;
+let dashboardCacheAt = 0;
+let dashboardInFlight: Promise<any[]> | null = null;
 
-async function warmDashboardLoop() {
-  const idx = new Map(DASHBOARD_TOKENS.map((t, i) => [t.address, i]));
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    for (const t of DASHBOARD_TOKENS) {
-      try {
-        const bd = await birdeyeService.getPriceOnly(t.address);
-        if (bd && bd.price) {
-          const i = idx.get(t.address)!;
-          dashboardCache[i] = { ...dashboardCache[i], price: bd.price, priceChange24h: bd.priceChange24h };
-        }
-      } catch { /* keep last known price */ }
-      await new Promise((r) => setTimeout(r, 1500)); // ~0.67 req/s, under free-tier limit
-    }
-    await new Promise((r) => setTimeout(r, 3000));
+async function refreshDashboardPrices(): Promise<any[]> {
+  const prices = await birdeyeService.getMultiPriceData(DASHBOARD_TOKENS.map((t) => t.address));
+  if (prices.size > 0) {
+    dashboardCache = dashboardCache.map((row) => {
+      const p = prices.get(row.address);
+      return p ? { ...row, price: p.price, priceChange24h: p.priceChange24h } : row;
+    });
   }
+  dashboardCacheAt = Date.now();
+  return dashboardCache;
 }
-let dashboardSyncTimer: NodeJS.Timeout | null = null;
-const DASHBOARD_SYNC_INTERVAL = 60000; // 60 seconds for price updates
 
-// Start background sync for dashboard tokens
+// Fresh cache -> serve it (0 Birdeye calls). Stale + a fetch already running ->
+// await that same one. Stale + nothing running -> fire exactly ONE fetch.
+export async function getDashboardPrices(): Promise<any[]> {
+  if (Date.now() - dashboardCacheAt < DASHBOARD_PRICE_TTL) return dashboardCache;
+  if (dashboardInFlight) return dashboardInFlight;
+  dashboardInFlight = refreshDashboardPrices().finally(() => { dashboardInFlight = null; });
+  return dashboardInFlight;
+}
+
+let dashboardSyncStarted = false;
+
+// One-time metadata (logos/names) into the DB. Prices are served on-demand by
+// getDashboardPrices() — no recurring Birdeye polling, so nothing burns when idle.
 export function startDashboardTokenSync() {
-  if (dashboardSyncTimer) return;
-
-  console.log("[Dashboard] Starting background token sync every 60s");
-
-  // Sync immediately (includes one-time metadata fetch)
+  if (dashboardSyncStarted) return;
+  dashboardSyncStarted = true;
+  console.log("[Dashboard] One-time metadata sync (prices now on-demand, cached 15s)");
   syncDashboardTokens().then(() => {
     initialSyncComplete = true;
   }).catch(console.error);
-
-  // Then sync every 60 seconds for price updates only
-  dashboardSyncTimer = setInterval(() => {
-    syncDashboardTokens().catch(console.error);
-  }, DASHBOARD_SYNC_INTERVAL);
 }
 
 // Sync ONLY curated dashboard tokens
@@ -483,31 +484,27 @@ tokenRoutes.get("/", async (req, res) => {
     const query = listQuerySchema.parse(req.query);
     const { page, limit, sort, order, search } = query;
 
-    // 1. Try the DB (populated by the sync service when it's up).
+    // Fresh prices, fetched on-demand and coalesced: 0 CU when idle, and any number
+    // of user requests collapse to ~1 Birdeye call per TTL window.
+    const priceRows = await getDashboardPrices();
+    const priceByAddr = new Map(priceRows.map((r) => [r.address, r]));
+
+    // Metadata (logos/names) from the DB if it's up; overlay the live prices on top.
+    // DB down/empty -> serve the on-demand rows as-is (logos may be null).
+    let list: any[] = priceRows;
     try {
-      const where = search
-        ? {
-            OR: [
-              { symbol: { contains: search, mode: "insensitive" as const } },
-              { name: { contains: search, mode: "insensitive" as const } },
-              { address: { contains: search, mode: "insensitive" as const } },
-            ],
-          }
-        : {};
-      const [tokens, total] = await Promise.all([
-        prisma.token.findMany({ where, orderBy: { [sort]: order }, skip: (page - 1) * limit, take: limit }),
-        prisma.token.count({ where }),
-      ]);
-      if (tokens.length > 0) {
-        return res.json({ data: tokens, total, page, limit, hasMore: page * limit < total });
+      const dbTokens = await prisma.token.findMany({
+        where: { address: { in: DASHBOARD_TOKENS.map((t) => t.address) } },
+      });
+      if (dbTokens.length > 0) {
+        list = dbTokens.map((t) => {
+          const p = priceByAddr.get(t.address);
+          return p ? { ...t, price: p.price, priceChange24h: p.priceChange24h } : t;
+        });
       }
     } catch {
-      /* DB unavailable — fall through to live Birdeye */
+      /* DB unavailable — serve on-demand rows as-is */
     }
-
-    // 2. DB down/empty → serve the curated tokens from the background warmer cache.
-    if (!warmerStarted) { warmerStarted = true; warmDashboardLoop(); }
-    const list: any[] = dashboardCache;
 
     let filtered = list;
     if (search) {
