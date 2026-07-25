@@ -618,12 +618,56 @@ tokenRoutes.get("/:address", async (req, res) => {
   }
 });
 
+// Free OHLCV for Binance-listed majors — keeps SOL/ETH/BTC/etc OFF Birdeye
+// entirely (Birdeye charges by datapoint; the dashboard's main chart is SOL).
+const BINANCE_SYMBOLS: Record<string, string> = {
+  "So11111111111111111111111111111111111111112": "SOLUSDT",  // SOL
+  "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs": "ETHUSDT",  // WETH
+  "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh": "BTCUSDT",  // WBTC
+  "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263": "BONKUSDT", // BONK
+  "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm": "WIFUSDT",  // WIF
+  "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN": "JUPUSDT",   // JUP
+  "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R": "RAYUSDT",  // RAY
+  "FUAfBo2jgks6gB4Z4LfZkqSZgzNucisEHqnNebaRxM1P": "ZECUSDT",  // ZEC
+};
+const BINANCE_INTERVALS: Record<string, string> = {
+  "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1d", "1w": "1w", "1M": "1M",
+};
+async function getBinanceOHLCV(mint: string, timeframe: string, limit: number): Promise<any[] | null> {
+  const symbol = BINANCE_SYMBOLS[mint];
+  const interval = BINANCE_INTERVALS[timeframe];
+  if (!symbol || !interval) return null;
+  try {
+    const n = Math.min(Math.max(limit || 100, 1), 1000);
+    const r = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${n}`);
+    if (!r.ok) return null;
+    const rows = await r.json();
+    if (!Array.isArray(rows)) return null;
+    const now = Date.now();
+    return rows.map((k: any[]) => ({
+      timestamp: k[0],
+      open: parseFloat(k[1]), high: parseFloat(k[2]), low: parseFloat(k[3]), close: parseFloat(k[4]),
+      volume: parseFloat(k[5]), quoteVolume: parseFloat(k[7]), trades: Number(k[8]) || 0,
+      isClosed: Number(k[6]) < now,
+    }));
+  } catch {
+    return null;
+  }
+}
+
 // GET /api/tokens/:address/ohlcv - Get OHLCV data
 tokenRoutes.get("/:address/ohlcv", async (req, res) => {
   try {
     const { address } = req.params;
     const query = ohlcvQuerySchema.parse(req.query);
     const { timeframe, from, to, limit, cacheOnly } = query;
+
+    // Majors (SOL/ETH/BTC/…): serve candles from Binance for FREE — never touch
+    // Birdeye for these. This is the dashboard's default chart, the biggest burner.
+    const binance = await getBinanceOHLCV(address, timeframe, limit);
+    if (binance && binance.length > 0) {
+      return res.json(limit && limit > 0 ? binance.slice(-limit) : binance);
+    }
 
     // NOTE: No Redis cache here - candleCacheService handles DB caching
     // cacheOnly=true means only read from DB, never fetch from Birdeye (for dashboard previews)
