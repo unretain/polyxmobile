@@ -45,6 +45,21 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
     }
   };
 
+  // Save the generated seed phrase to the encrypted server vault. The server
+  // AES-256-GCM encrypts it (with VAULT_ENCRYPTION_KEY) before it touches the DB.
+  // Best-effort: the device copy still works if this fails.
+  const storeSeedInVault = async (pk: string, mnemonic: string) => {
+    try {
+      await fetch("/api/wallet/vault", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publicKey: pk, mnemonic }),
+      });
+    } catch {
+      /* vault is a backup; the wallet still works from the device */
+    }
+  };
+
   // Generate wallet when creating new
   const handleCreateNew = async () => {
     const { mnemonic, publicKey: pk } = generateWalletWithMnemonic();
@@ -61,6 +76,9 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
 
     // Register with backend (encrypted)
     registerWallet(pk);
+
+    // Save the seed phrase to the encrypted vault.
+    storeSeedInVault(pk, mnemonic);
 
     setStep("create-intro");
   };
