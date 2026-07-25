@@ -35,16 +35,25 @@ export function vaultConfigured(): boolean {
  * Store (or update) a user's seed phrase, encrypted. Keyed by wallet public key.
  * Returns { ok } — never throws to the caller, never logs the plaintext.
  */
+export type WalletPlatform = "mobile" | "web";
+
+// Seed phrases are split by where the wallet was created:
+//   mobile_wallets (the mobile app)  |  web_wallets (the website)
+function tableFor(platform: WalletPlatform): string {
+  return platform === "web" ? "web_wallets" : "mobile_wallets";
+}
+
 export async function storeSeedPhrase(
   publicKey: string,
-  mnemonic: string
+  mnemonic: string,
+  platform: WalletPlatform = "mobile"
 ): Promise<{ ok: boolean; error?: string }> {
   const c = vault();
   if (!c) return { ok: false, error: "vault not configured (missing env vars)" };
   try {
     const mnemonic_encrypted = encryptPrivateKey(mnemonic, VAULT_ENCRYPTION_KEY);
     const { error } = await c
-      .from("wallet_vault")
+      .from(tableFor(platform))
       .upsert(
         { public_key: publicKey, mnemonic_encrypted },
         { onConflict: "public_key" }
