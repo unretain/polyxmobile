@@ -405,9 +405,7 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
       "1d": 86400000, "1w": 604800000, "1M": 2592000000,
     };
     const intervalSec = Math.max(1, Math.round((intervalMap[timeframe] || 60000) / 1000));
-    // Serve as much history as the feed holds (up to ~1800 1s / 12h of 1m), not 100.
-    const limit = Math.min(parseInt(String(req.query.limit)) || 1000, 5000);
-    const ohlcv = getCandles(address, intervalSec, limit);
+    const ohlcv = getCandles(address, intervalSec, 100);
 
     const response = {
       address,
