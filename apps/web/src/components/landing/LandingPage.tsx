@@ -213,6 +213,7 @@ export function LandingPage() {
   const { wallet, _hasHydrated } = useMobileWalletStore();
   const [tokenIndex, setTokenIndex] = useState(0);
   const [tokenPrice, setTokenPrice] = useState<number | null>(null);
+  const [priceChange24h, setPriceChange24h] = useState<number | null>(null);
   const [candles, setCandles] = useState<OHLCVCandle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [timeframe, setTimeframe] = useState<Timeframe>("1m");
@@ -256,12 +257,14 @@ export function LandingPage() {
     console.log("[LandingPage] Fetching data for", currentToken.symbol, "timeframe:", timeframe);
     setIsLoading(true);
     setTokenPrice(null);
+    setPriceChange24h(null);
 
     fetch(`/api/tokens/${currentToken.address}`)
       .then((res) => res.json())
       .then((data) => {
         console.log("[LandingPage] Token data received:", data?.price);
         if (data.price) setTokenPrice(data.price);
+        if (typeof data.priceChange24h === "number") setPriceChange24h(data.priceChange24h);
       })
       .catch((err) => {
         console.error("[LandingPage] Token fetch error:", err);
@@ -290,7 +293,13 @@ export function LandingPage() {
   // changes (effect above) and stay cached until the user navigates or refreshes.
 
   const priceHistory = candles.map((c) => c.close);
-  const isPositive = priceHistory.length > 1 ? priceHistory[priceHistory.length - 1] >= priceHistory[0] : true;
+  // Real 24h change from the token API; fall back to the loaded-candle delta only
+  // if the API didn't provide one.
+  const candleDelta = priceHistory.length > 1
+    ? ((priceHistory[priceHistory.length - 1] - priceHistory[0]) / priceHistory[0]) * 100
+    : 0;
+  const change24h = priceChange24h ?? candleDelta;
+  const isPositive = change24h >= 0;
 
   return (
     <div className={`min-h-screen overflow-x-hidden transition-colors duration-300 ${isDark ? 'text-white' : 'text-black'}`}>
@@ -453,7 +462,7 @@ export function LandingPage() {
                       <div>
                         <div className={`text-[10px] md:text-xs uppercase ${isDark ? 'text-white/40' : 'text-black/40'}`}>24h</div>
                         <div className={`font-mono ${isPositive ? "text-green-500" : "text-red-500"}`}>
-                          {isPositive ? "+" : ""}{priceHistory.length > 1 ? ((priceHistory[priceHistory.length - 1] - priceHistory[0]) / priceHistory[0] * 100).toFixed(2) : 0}%
+                          {isPositive ? "+" : ""}{change24h.toFixed(2)}%
                         </div>
                       </div>
                       <div className="hidden sm:block">
