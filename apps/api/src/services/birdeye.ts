@@ -15,8 +15,29 @@ class BirdeyeService {
     };
   }
 
-  // Get token market data
+  // Short TTL cache + in-flight coalescing. Repeated calls for the same token
+  // (a client polling a token page every second, or the pulse fallback for a
+  // pre-boot token) collapse to at most ONE Birdeye `token_overview` call per
+  // address per TTL. token_overview is an expensive endpoint — this is the hard
+  // backstop against runaway CU burn no matter how aggressively clients poll.
+  private tokenDataCache = new Map<string, { at: number; data: BirdeyeTokenData | null }>();
+  private tokenDataInFlight = new Map<string, Promise<BirdeyeTokenData | null>>();
+  private static readonly TOKEN_DATA_TTL = 15000;
+
   async getTokenData(address: string): Promise<BirdeyeTokenData | null> {
+    const cached = this.tokenDataCache.get(address);
+    if (cached && Date.now() - cached.at < BirdeyeService.TOKEN_DATA_TTL) return cached.data;
+    const inflight = this.tokenDataInFlight.get(address);
+    if (inflight) return inflight;
+    const p = this._fetchTokenData(address)
+      .then((data) => { this.tokenDataCache.set(address, { at: Date.now(), data }); return data; })
+      .finally(() => { this.tokenDataInFlight.delete(address); });
+    this.tokenDataInFlight.set(address, p);
+    return p;
+  }
+
+  // Get token market data
+  private async _fetchTokenData(address: string): Promise<BirdeyeTokenData | null> {
     if (!this.apiKey) {
       console.warn("BIRDEYE_API_KEY not configured");
       return null;
