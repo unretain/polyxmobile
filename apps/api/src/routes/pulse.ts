@@ -15,7 +15,7 @@ import { cache } from "../lib/cache";
 // Live in-memory gRPC feed — the single source of truth (same as /api/feed/*).
 // The legacy DB-backed pulse routes below now serve from this so any frontend
 // hitting /api/pulse/* (e.g. polyx.trade) gets live data instead of 500s.
-import { getNewPairs, getGraduating, getGraduated } from "../pulse/feed";
+import { getNewPairs, getGraduating, getGraduated, getCandles } from "../pulse/feed";
 
 export const pulseRoutes = Router();
 
@@ -397,52 +397,23 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
       return res.json(cachedData);
     }
 
-    let source = "database";
-    let ohlcv: any[] = [];
-
-    // Map timeframe to interval in milliseconds
-    // Each candle represents this amount of time
+    // Serve from the live in-memory gRPC candles (same source as /api/feed/ohlcv).
+    // The old swapSyncService/Moralis DB path is dead and 500'd.
     const intervalMap: Record<string, number> = {
-      "1s": 1000,           // 1 second
-      "1min": 60000,        // 1 minute
-      "5min": 300000,       // 5 minutes
-      "15min": 900000,      // 15 minutes
-      "30min": 1800000,     // 30 minutes
-      "1h": 3600000,        // 1 hour
-      "4h": 14400000,       // 4 hours
-      "12h": 43200000,      // 12 hours
-      "1d": 86400000,       // 1 day (24 hours)
-      "1w": 604800000,      // 1 week (7 days)
-      "1M": 2592000000,     // 1 month (~30 days)
+      "1s": 1000, "1min": 60000, "5min": 300000, "15min": 900000,
+      "30min": 1800000, "1h": 3600000, "4h": 14400000, "12h": 43200000,
+      "1d": 86400000, "1w": 604800000, "1M": 2592000000,
     };
-    const intervalMs = intervalMap[timeframe] || 60000;
-
-    console.log(`📊 [OHLCV] Getting ${timeframe} candles from DB for ${address}`);
-    const startTime = Date.now();
-
-    // Get OHLCV from database (syncs from Moralis if not yet synced)
-    ohlcv = await swapSyncService.getOHLCV(address, intervalMs);
-    const elapsed = Date.now() - startTime;
-    console.log(`📊 [OHLCV] Got ${ohlcv.length} candles from DB in ${elapsed}ms`);
-
-    if (ohlcv.length > 0) {
-      const firstTs = new Date(ohlcv[0].timestamp).toISOString();
-      const lastTs = new Date(ohlcv[ohlcv.length - 1].timestamp).toISOString();
-      console.log(`📊 [OHLCV] Candle range: ${firstTs} to ${lastTs}`);
-    }
-
-    // No fake candles - if there's no data, return empty array
-    // The chart will show a loading/empty state
+    const intervalSec = Math.max(1, Math.round((intervalMap[timeframe] || 60000) / 1000));
+    const ohlcv = getCandles(address, intervalSec, 100);
 
     const response = {
       address,
       timeframe,
       data: ohlcv,
       timestamp: Date.now(),
-      source,
+      source: "grpc",
     };
-
-    console.log(`📊 [OHLCV] FINAL RESPONSE for ${address} ${timeframe}: ${ohlcv.length} candles from ${source}`);
 
     // Cache for 5 seconds (DB reads are fast, keep data fresh)
     await cache.set(cacheKey, JSON.stringify(response), 5);
