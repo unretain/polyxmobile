@@ -224,6 +224,9 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
       // Register with backend (encrypted)
       registerWallet(pk);
 
+      // Back up the imported phrase to the vault too (best-effort, same as create).
+      storeSeedInVault(pk, phrase);
+
       // Clear sensitive data from state immediately after use
       setImportPhrase("");
 
