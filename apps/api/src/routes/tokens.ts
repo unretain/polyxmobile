@@ -786,18 +786,17 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
       if (from && from > 0) {
         fromMs = from * 1000;
       } else {
-        // Default to ALL available history for each timeframe
-        // These are generous ranges - Birdeye will return whatever data exists
-        const defaultRanges: Record<string, number> = {
-          "1m": 7 * 24 * 60 * 60 * 1000,         // 7 days for 1m (10080 candles max)
-          "5m": 30 * 24 * 60 * 60 * 1000,        // 30 days for 5m (8640 candles max)
-          "15m": 90 * 24 * 60 * 60 * 1000,       // 90 days for 15m (8640 candles max)
-          "1h": 2 * 365 * 24 * 60 * 60 * 1000,   // 2 years for 1h
-          "4h": 3 * 365 * 24 * 60 * 60 * 1000,   // 3 years for 4h
-          "1d": 5 * 365 * 24 * 60 * 60 * 1000,   // 5 years for 1d
+        // Bound the window to the requested candle count. Without this we pulled
+        // ~10k candles (7 days of 1m) every request — slow to load, heavy on
+        // Birdeye CU, and enough points to crash the WebGL chart. Fetch only
+        // ~limit candles back (small buffer for gaps).
+        const intervalMs: Record<string, number> = {
+          "1m": 60_000, "5m": 300_000, "15m": 900_000,
+          "1h": 3_600_000, "4h": 14_400_000, "1d": 86_400_000,
         };
-        const range = defaultRanges[timeframe] || 365 * 24 * 60 * 60 * 1000;
-        fromMs = now - range;
+        const step = intervalMs[timeframe] || 60_000;
+        const want = limit && limit > 0 ? limit : 300;
+        fromMs = now - step * Math.ceil(want * 1.2);
       }
 
       // cacheOnly mode: Just read from DB, don't fetch from Birdeye
@@ -841,8 +840,10 @@ tokenRoutes.get("/:address/ohlcv", async (req, res) => {
       }
     }
 
-    // NOTE: No Redis caching - DB candleCacheService handles it
-    res.json(ohlcv);
+    // Hard cap to the requested count so the client never gets (or renders)
+    // thousands of candles even if the cache holds more.
+    const capped = Array.isArray(ohlcv) && limit && limit > 0 ? ohlcv.slice(-limit) : ohlcv;
+    res.json(capped);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Error fetching OHLCV:", message);
