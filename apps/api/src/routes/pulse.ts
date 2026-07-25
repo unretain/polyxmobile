@@ -12,6 +12,10 @@ import { swapSyncService } from "../services/swapSync";
 import { prisma } from "../lib/prisma";
 import { PulseCategory } from "@prisma/client";
 import { cache } from "../lib/cache";
+// Live in-memory gRPC feed — the single source of truth (same as /api/feed/*).
+// The legacy DB-backed pulse routes below now serve from this so any frontend
+// hitting /api/pulse/* (e.g. polyx.trade) gets live data instead of 500s.
+import { getNewPairs, getGraduating, getGraduated } from "../pulse/feed";
 
 export const pulseRoutes = Router();
 
@@ -27,41 +31,8 @@ pulseRoutes.get("/new-pairs", async (req, res) => {
     const query = newPairsQuerySchema.parse(req.query);
     const { limit } = query;
 
-    // Get enriched tokens from DB (has logos, market cap from Moralis)
-    const dbTokens = await prisma.pulseToken.findMany({
-      where: { category: PulseCategory.NEW },
-      orderBy: { tokenCreatedAt: "desc" },
-      take: limit,
-    });
-
-    const data = dbTokens.map((dbt) => ({
-      address: dbt.address,
-      symbol: dbt.symbol,
-      name: dbt.name,
-      logoUri: dbt.logoUri,
-      description: dbt.description,
-      price: dbt.price,
-      priceChange24h: dbt.priceChange24h,
-      volume24h: dbt.volume24h,
-      marketCap: dbt.marketCap,
-      liquidity: dbt.liquidity,
-      txCount: dbt.txCount,
-      replyCount: dbt.replyCount,
-      createdAt: dbt.tokenCreatedAt?.getTime() || dbt.createdAt.getTime(),
-      twitter: dbt.twitter,
-      telegram: dbt.telegram,
-      website: dbt.website,
-      source: "database",
-    }));
-
-    const response = {
-      data,
-      total: data.length,
-      timestamp: Date.now(),
-      sources: ["database"],
-    };
-
-    res.json(response);
+    const data = getNewPairs(limit);
+    res.json({ data, total: data.length, timestamp: Date.now(), sources: ["grpc"] });
   } catch (error) {
     console.error("Error fetching new pairs:", error);
     res.status(500).json({ error: "Failed to fetch new pairs" });
@@ -73,42 +44,8 @@ pulseRoutes.get("/new-pairs", async (req, res) => {
 // Uses DB for enriched data - shows NEWEST tokens first, filters out anything > 1 hour old
 pulseRoutes.get("/graduating", async (req, res) => {
   try {
-    const oneHourAgo = Date.now() - 60 * 60 * 1000;
-
-    // Get from DB (enriched with Moralis data)
-    // Sort by creation time descending - newest first
-    const dbTokens = await prisma.pulseToken.findMany({
-      where: {
-        category: PulseCategory.GRADUATING,
-        tokenCreatedAt: { gte: new Date(oneHourAgo) },
-      },
-      orderBy: { tokenCreatedAt: "desc" },
-    });
-
-    const data = dbTokens.map((dbt) => ({
-      address: dbt.address,
-      symbol: dbt.symbol,
-      name: dbt.name,
-      logoUri: dbt.logoUri,
-      price: dbt.price,
-      priceChange24h: dbt.priceChange24h,
-      volume24h: dbt.volume24h,
-      marketCap: dbt.marketCap,
-      liquidity: dbt.liquidity,
-      bondingProgress: dbt.bondingProgress || 0,
-      txCount: dbt.txCount,
-      createdAt: dbt.tokenCreatedAt?.getTime() || dbt.createdAt.getTime(),
-      source: "database",
-    }));
-
-    const response = {
-      data,
-      total: data.length,
-      timestamp: Date.now(),
-      sources: ["database"],
-    };
-
-    res.json(response);
+    const data = getGraduating(100);
+    res.json({ data, total: data.length, timestamp: Date.now(), sources: ["grpc"] });
   } catch (error) {
     console.error("Error fetching graduating coins:", error);
     res.status(500).json({ error: "Failed to fetch graduating coins" });
@@ -119,53 +56,8 @@ pulseRoutes.get("/graduating", async (req, res) => {
 // Uses DB for enriched data - shows NEWEST tokens first, filters out anything > 1 hour old
 pulseRoutes.get("/graduated", async (req, res) => {
   try {
-    const oneHourAgo = Date.now() - 60 * 60 * 1000;
-
-    // Get from DB (enriched with Moralis data) - only tokens from last 1 hour
-    const dbTokens = await prisma.pulseToken.findMany({
-      where: {
-        category: PulseCategory.GRADUATED,
-        OR: [
-          { graduatedAt: { gte: new Date(oneHourAgo) } },
-          { tokenCreatedAt: { gte: new Date(oneHourAgo) } },
-        ],
-      },
-      orderBy: { graduatedAt: "desc" },
-      take: 50,
-    });
-
-    const data = dbTokens.map((dbt) => ({
-      address: dbt.address,
-      symbol: dbt.symbol,
-      name: dbt.name,
-      logoUri: dbt.logoUri,
-      price: dbt.price,
-      priceChange24h: dbt.priceChange24h,
-      volume24h: dbt.volume24h,
-      marketCap: dbt.marketCap,
-      liquidity: dbt.liquidity,
-      txCount: dbt.txCount,
-      createdAt: dbt.tokenCreatedAt?.getTime() || dbt.createdAt.getTime(),
-      graduatedAt: dbt.graduatedAt?.getTime(),
-      complete: true,
-      source: "database",
-    }));
-
-    // Sort by graduated time (most recent first)
-    data.sort((a, b) => {
-      const aTime = a.graduatedAt || a.createdAt || 0;
-      const bTime = b.graduatedAt || b.createdAt || 0;
-      return bTime - aTime;
-    });
-
-    const response = {
-      data,
-      total: data.length,
-      timestamp: Date.now(),
-      sources: ["database"],
-    };
-
-    res.json(response);
+    const data = getGraduated(50);
+    res.json({ data, total: data.length, timestamp: Date.now(), sources: ["grpc"] });
   } catch (error) {
     console.error("Error fetching graduated coins:", error);
     res.status(500).json({ error: "Failed to fetch graduated coins" });
