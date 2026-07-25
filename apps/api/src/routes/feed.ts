@@ -11,7 +11,7 @@ import { Router } from "express";
 import {
   isPulseConnected, getSolPrice,
   getNewPairs, getGraduating, getGraduated, getToken, getSnapshot,
-  getCandles, hasCandles, backfillToken, isBackfilling,
+  getCandles, hasCandles,
 } from "../pulse/feed";
 
 export const feedRoutes = Router();
@@ -62,14 +62,12 @@ feedRoutes.get("/token/:mint", (req, res) => {
   res.json(data);
 });
 
-// OHLCV built from OUR gRPC stream (in-memory candles). Empty if we never tracked
-// this token — the web then falls back to GeckoTerminal for old/migrated tokens.
+// OHLCV built purely from OUR gRPC/websocket stream (in-memory candles). No RPC
+// backfill — the chart just keeps building live as trades stream in.
 feedRoutes.get("/ohlcv/:mint", (req, res) => {
   const mint = req.params.mint;
   const iv = timeframeToSeconds(String(req.query.timeframe || "1m"));
   const limit = Math.min(parseInt(String(req.query.limit)) || 1000, 5000);
   const data = getCandles(mint, iv, limit);
-  // Never seen it live → reconstruct from RPC (fire-and-forget; ready next poll).
-  if (data.length === 0) backfillToken(mint).catch(() => {});
-  res.json({ data, source: "grpc", hasHistory: hasCandles(mint), backfilling: isBackfilling(mint) });
+  res.json({ data, source: "grpc", hasHistory: hasCandles(mint) });
 });
