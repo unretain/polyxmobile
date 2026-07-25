@@ -286,21 +286,8 @@ export function LandingPage() {
       });
   }, [timeframe, currentToken.address, currentToken.symbol]);
 
-  // Auto-refresh data
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetch(`/api/tokens/${currentToken.address}/ohlcv?timeframe=${timeframe}&limit=100`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (Array.isArray(data) && data.length > 0) {
-            setCandles(data);
-          }
-        })
-        .catch(() => {});
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [timeframe, currentToken.address]);
+  // No auto-refresh polling. Candles are fetched once when the token/timeframe
+  // changes (effect above) and stay cached until the user navigates or refreshes.
 
   const priceHistory = candles.map((c) => c.close);
   const isPositive = priceHistory.length > 1 ? priceHistory[priceHistory.length - 1] >= priceHistory[0] : true;

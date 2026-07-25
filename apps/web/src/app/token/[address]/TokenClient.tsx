@@ -519,9 +519,9 @@ export default function TokenClient() {
     if (!address) return;
 
     if (fromPulse) {
-      // For Pulse tokens, fetch immediately and poll every 1 second for real-time trading
+      // Fetch ONCE on load; live price/market cap/trades arrive over the WebSocket
+      // ("trade" events). No polling — data stays cached until navigation/refresh.
       fetchPulseToken(false);
-      tokenDataIntervalRef.current = setInterval(() => fetchPulseToken(true), 1000);
     } else {
       // For Dashboard tokens, fetch fresh data from Birdeye API (no polling needed)
       fetchDashboardToken();
@@ -622,14 +622,9 @@ export default function TokenClient() {
     setChartLoading(true);
     fetchOhlcv();
 
-    // Poll interval depends on timeframe:
-    // - 1s real-time: poll every 1 second for live data
-    // - Short timeframes (1min-15min): poll every 2 seconds
-    // - Longer timeframes: poll every 5 seconds
-    const pollInterval = chartPeriod === "1s" ? 1000 :
-                         ["1m", "5m", "15m", "1h"].includes(chartPeriod) ? 2000 : 5000;
-    ohlcvIntervalRef.current = setInterval(fetchOhlcv, pollInterval);
-
+    // Fetch ONCE per token/timeframe. Live candles arrive over the WebSocket
+    // ("ohlcv:update"). No polling — the chart stays cached until the user
+    // switches timeframe/token or refreshes.
     return () => {
       if (ohlcvIntervalRef.current) clearInterval(ohlcvIntervalRef.current);
     };
