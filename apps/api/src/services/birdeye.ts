@@ -284,6 +284,34 @@ class BirdeyeService {
     return prices;
   }
 
+  // One request for many tokens: price + 24h change. Cheap (single call) — used by
+  // the on-demand dashboard fetcher so a burst of users costs one multi_price call.
+  async getMultiPriceData(
+    addresses: string[]
+  ): Promise<Map<string, { price: number; priceChange24h: number }>> {
+    const out = new Map<string, { price: number; priceChange24h: number }>();
+    if (!this.apiKey || addresses.length === 0) return out;
+    try {
+      const response = await fetch(
+        `${BIRDEYE_API_URL}/defi/multi_price?list_address=${addresses.join(",")}`,
+        { headers: this.getHeaders() }
+      );
+      if (!response.ok) throw new Error(`Birdeye multi_price error: ${response.status}`);
+      const data = await response.json();
+      if (data.success && data.data) {
+        for (const [address, info] of Object.entries(data.data)) {
+          const p = info as { value?: number; priceChange24h?: number };
+          if (p && typeof p.value === "number") {
+            out.set(address, { price: p.value, priceChange24h: p.priceChange24h ?? 0 });
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching Birdeye multi_price:", error);
+    }
+    return out;
+  }
+
   // Get trending tokens - using the correct endpoint
   async getTopTokens(limit: number = 20): Promise<BirdeyeTokenData[]> {
     if (!this.apiKey) {
