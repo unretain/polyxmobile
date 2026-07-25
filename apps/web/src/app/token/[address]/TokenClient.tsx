@@ -306,6 +306,16 @@ export default function TokenClient() {
   const tradesIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const tokenDataIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  // Real USD-per-SOL rate, derived from the token snapshot (the API computes it with
+  // the live SOL price). Cached so the socket trade handler never falls back to 200.
+  const solRateRef = useRef<number | null>(null);
+  useEffect(() => {
+    const p = pulseToken as any;
+    if (!p) return;
+    const rate = p.marketCapSol > 0 ? p.marketCap / p.marketCapSol
+               : (p.priceSol > 0 ? p.price / p.priceSol : 0);
+    if (rate && isFinite(rate) && rate > 0) solRateRef.current = rate;
+  }, [pulseToken]);
 
   useEffect(() => {
     setHasMounted(true);
@@ -338,7 +348,8 @@ export default function TokenClient() {
       // Add new trade to the top of the list. Use the REAL SOL price the API sent
       // (fall back to 200 only if an old build omits it) — hardcoding it made the
       // market cap flicker to the wrong multiple on every trade.
-      const solPrice = data.solPrice || 200;
+      const rate = data.solPrice || solRateRef.current || 0;
+      const solPrice = rate || 200; // last resort, only for a single trade row's USD
       const priceUsd = data.priceUsd ?? (data.tokenAmount > 0 ? (data.solAmount * solPrice) / data.tokenAmount : 0);
       const totalValueUsd = data.solAmount * solPrice;
 
@@ -360,8 +371,9 @@ export default function TokenClient() {
 
       // Update token market cap using functional update to avoid stale closure.
       // Prefer the USD value the API computed with the live SOL price.
-      const marketCapUsd = data.marketCap ?? (data.marketCapSol * solPrice);
-      setPulseToken((prev) => prev ? { ...prev, marketCap: marketCapUsd } : null);
+      // Only update market cap with a REAL rate — never a 200-based number.
+      const marketCapUsd = data.marketCap ?? (rate > 0 ? data.marketCapSol * rate : null);
+      setPulseToken((prev) => prev ? { ...prev, marketCap: marketCapUsd ?? prev.marketCap } : null);
     });
 
     // LIVE: Handle real-time OHLCV candle updates (1-second candles)
