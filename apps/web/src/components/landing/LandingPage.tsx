@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -215,6 +215,8 @@ export function LandingPage() {
   const [tokenPrice, setTokenPrice] = useState<number | null>(null);
   const [priceChange24h, setPriceChange24h] = useState<number | null>(null);
   const [candles, setCandles] = useState<OHLCVCandle[]>([]);
+  // Cache candles per (token, timeframe) so switching back is instant — no reload.
+  const candleCacheRef = useRef<Map<string, OHLCVCandle[]>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [timeframe, setTimeframe] = useState<Timeframe>("1m");
   const [isWalletOnboardingOpen, setIsWalletOnboardingOpen] = useState(false);
@@ -252,42 +254,43 @@ export function LandingPage() {
     setTokenIndex((prev) => (prev === FEATURED_TOKENS.length - 1 ? 0 : prev + 1));
   };
 
-  // Fetch candles when timeframe or token changes
+  // Token price/24h — fetch once per TOKEN (not per timeframe change).
   useEffect(() => {
-    console.log("[LandingPage] Fetching data for", currentToken.symbol, "timeframe:", timeframe);
-    setIsLoading(true);
     setTokenPrice(null);
     setPriceChange24h(null);
-
     fetch(`/api/tokens/${currentToken.address}`)
       .then((res) => res.json())
       .then((data) => {
-        console.log("[LandingPage] Token data received:", data?.price);
         if (data.price) setTokenPrice(data.price);
         if (typeof data.priceChange24h === "number") setPriceChange24h(data.priceChange24h);
       })
-      .catch((err) => {
-        console.error("[LandingPage] Token fetch error:", err);
+      .catch(() => {
         setTokenPrice(currentToken.symbol === "SOL" ? 235 : 3018);
       });
+  }, [currentToken.address, currentToken.symbol]);
 
+  // Candles — cached per (token, timeframe). If we've already loaded this combo,
+  // show it instantly with no reload; otherwise fetch once and cache it.
+  useEffect(() => {
+    const key = `${currentToken.address}:${timeframe}`;
+    const cached = candleCacheRef.current.get(key);
+    if (cached && cached.length > 0) {
+      setCandles(cached);
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
     fetch(`/api/tokens/${currentToken.address}/ohlcv?timeframe=${timeframe}&limit=100`)
       .then((res) => res.json())
       .then((data) => {
-        console.log("[LandingPage] OHLCV data received, isArray:", Array.isArray(data), "length:", data?.length);
         if (Array.isArray(data) && data.length > 0) {
+          candleCacheRef.current.set(key, data);
           setCandles(data);
-          console.log("[LandingPage] Candles set:", data.length);
-        } else {
-          console.warn("[LandingPage] OHLCV data invalid or empty:", data);
         }
         setIsLoading(false);
       })
-      .catch((err) => {
-        console.error("[LandingPage] OHLCV fetch error:", err);
-        setIsLoading(false);
-      });
-  }, [timeframe, currentToken.address, currentToken.symbol]);
+      .catch(() => setIsLoading(false));
+  }, [timeframe, currentToken.address]);
 
   // No auto-refresh polling. Candles are fetched once when the token/timeframe
   // changes (effect above) and stay cached until the user navigates or refreshes.
