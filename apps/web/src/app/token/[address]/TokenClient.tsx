@@ -182,30 +182,6 @@ interface Trade {
   exchangeName?: string;
 }
 
-// Holder stats type - matches Moralis API response
-interface HolderChangeEntry {
-  change: number;
-  changePercent: number;
-}
-
-interface HolderStats {
-  totalHolders: number;
-  holderChange?: Record<string, HolderChangeEntry>;
-  holdersByAcquisition?: {
-    swap?: number;
-    transfer?: number;
-    airdrop?: number;
-  };
-  holderDistribution?: Record<string, number>;
-}
-
-interface TopHolder {
-  address: string;
-  balance: string;
-  percentOfSupply: number;
-  usdValue?: number;
-}
-
 // Format large numbers for display
 function formatTokenAmount(amount: string | number): string {
   const num = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -302,88 +278,6 @@ function TradesTable({ trades, isLoading, symbol, isDark = true }: { trades: Tra
   );
 }
 
-// Holder Stats Sidebar Component
-function HoldersSidebar({
-  stats,
-  topHolders,
-  isLoading,
-  isDark = true
-}: {
-  stats: HolderStats | null;
-  topHolders: TopHolder[];
-  isLoading: boolean;
-  isDark?: boolean;
-}) {
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-48">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#FF6B4A] border-t-transparent" />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* Holder Stats */}
-      <div className="space-y-3">
-        <div className="flex justify-between items-center">
-          <span className={`text-sm ${isDark ? 'text-white/50' : 'text-black/50'}`}>Total Holders</span>
-          <span className={`font-bold text-lg ${isDark ? 'text-white' : 'text-gray-900'}`}>{stats?.totalHolders?.toLocaleString() || "—"}</span>
-        </div>
-
-        {stats?.holderChange && Object.keys(stats.holderChange).length > 0 && (
-          <div className="space-y-2">
-            <span className={`text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>Holder Change</span>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              {stats.holderChange["1h"] && (
-                <div className={`flex justify-between px-2 py-1 ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
-                  <span className={isDark ? 'text-white/50' : 'text-black/50'}>1h</span>
-                  <span className={stats.holderChange["1h"].change >= 0 ? "text-up" : "text-down"}>
-                    {stats.holderChange["1h"].change >= 0 ? "+" : ""}{stats.holderChange["1h"].change}
-                  </span>
-                </div>
-              )}
-              {stats.holderChange["24h"] && (
-                <div className={`flex justify-between px-2 py-1 ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
-                  <span className={isDark ? 'text-white/50' : 'text-black/50'}>24h</span>
-                  <span className={stats.holderChange["24h"].change >= 0 ? "text-up" : "text-down"}>
-                    {stats.holderChange["24h"].change >= 0 ? "+" : ""}{stats.holderChange["24h"].change}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Top Holders */}
-      {topHolders.length > 0 && (
-        <div className="space-y-2">
-          <h4 className={`text-sm font-medium ${isDark ? 'text-white/50' : 'text-black/50'}`}>Top Holders</h4>
-          <div className="space-y-1">
-            {topHolders.slice(0, 10).map((holder, i) => (
-              <div key={holder.address} className={`flex items-center justify-between text-xs py-1.5 border-b ${isDark ? 'border-white/10' : 'border-black/10'}`}>
-                <div className="flex items-center gap-2">
-                  <span className={`w-4 ${isDark ? 'text-white/50' : 'text-black/50'}`}>{i + 1}.</span>
-                  <a
-                    href={`https://solscan.io/account/${holder.address}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-mono text-[#FF6B4A] hover:underline"
-                  >
-                    {shortenAddress(holder.address, 4)}
-                  </a>
-                </div>
-                <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{holder.percentOfSupply?.toFixed(2)}%</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function TokenClient() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -397,9 +291,6 @@ export default function TokenClient() {
   const [chartLoading, setChartLoading] = useState(false);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [tradesLoading, setTradesLoading] = useState(false);
-  const [holderStats, setHolderStats] = useState<HolderStats | null>(null);
-  const [topHolders, setTopHolders] = useState<TopHolder[]>([]);
-  const [holdersLoading, setHoldersLoading] = useState(false);
   const [chartType, setChartType] = useState<ChartType>("candle");
   const [chartPeriod, setChartPeriod] = useState<string | null>(null); // Loaded from localStorage
   const [chartMode, setChartMode] = useState<"3d" | "2d">("3d"); // 3D or 2D chart rendering
@@ -441,12 +332,14 @@ export default function TokenClient() {
     });
 
     // LIVE: Handle real-time trade events
-    socket.on("trade", (data: { mint: string; type: string; tokenAmount: number; solAmount: number; marketCapSol: number; trader: string; signature: string; timestamp: number }) => {
+    socket.on("trade", (data: { mint: string; type: string; tokenAmount: number; solAmount: number; marketCapSol: number; marketCap?: number; priceUsd?: number; solPrice?: number; trader: string; signature: string; timestamp: number }) => {
       if (data.mint !== address) return;
 
-      // Add new trade to the top of the list
-      const solPrice = 200; // TODO: Get from price service
-      const priceUsd = data.tokenAmount > 0 ? (data.solAmount * solPrice) / data.tokenAmount : 0;
+      // Add new trade to the top of the list. Use the REAL SOL price the API sent
+      // (fall back to 200 only if an old build omits it) — hardcoding it made the
+      // market cap flicker to the wrong multiple on every trade.
+      const solPrice = data.solPrice || 200;
+      const priceUsd = data.priceUsd ?? (data.tokenAmount > 0 ? (data.solAmount * solPrice) / data.tokenAmount : 0);
       const totalValueUsd = data.solAmount * solPrice;
 
       const newTrade: Trade = {
@@ -465,8 +358,9 @@ export default function TokenClient() {
 
       setTrades((prev) => [newTrade, ...prev].slice(0, 50));
 
-      // Update token market cap using functional update to avoid stale closure
-      const marketCapUsd = data.marketCapSol * solPrice;
+      // Update token market cap using functional update to avoid stale closure.
+      // Prefer the USD value the API computed with the live SOL price.
+      const marketCapUsd = data.marketCap ?? (data.marketCapSol * solPrice);
       setPulseToken((prev) => prev ? { ...prev, marketCap: marketCapUsd } : null);
     });
 
@@ -763,29 +657,6 @@ export default function TokenClient() {
       }
     })();
     return () => { cancelled = true; };
-  }, [address]);
-
-  // Fetch holder stats
-  useEffect(() => {
-    if (!address) return;
-
-    const fetchHolders = async () => {
-      try {
-        const response = await fetch(`/api/pulse/holders/${address}`);
-        if (response.ok) {
-          const data = await response.json();
-          setHolderStats(data.stats || null);
-          setTopHolders(data.topHolders || []);
-        }
-        setHoldersLoading(false);
-      } catch (err) {
-        console.error("Failed to fetch holders:", err);
-        setHoldersLoading(false);
-      }
-    };
-
-    setHoldersLoading(true);
-    fetchHolders();
   }, [address]);
 
   const [copied, setCopied] = useState(false);
@@ -1154,14 +1025,6 @@ export default function TokenClient() {
                 isGraduated={(token as PulseTokenData)?.complete !== false}
                 compactMobile={true}
               />
-            </div>
-
-            {/* Holder Stats - hidden on mobile */}
-            <div className={`hidden md:block border backdrop-blur-md p-4 ${
-              isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'
-            }`}>
-              <h3 className={`font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>Holder Stats</h3>
-              <HoldersSidebar stats={holderStats} topHolders={topHolders} isLoading={holdersLoading} isDark={isDark} />
             </div>
           </div>
         ) : (

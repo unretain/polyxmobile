@@ -256,7 +256,7 @@ function handleTransaction(update: any) {
         const tsSec = Number(data.readBigInt64LE(o)); o += 8; // on-chain block time (i64 seconds)
         const vSol = Number(data.readBigUInt64LE(o)); o += 8;
         const vTok = Number(data.readBigUInt64LE(o)); o += 8;
-        o += 8; // real sol reserves
+        const realSol = Number(data.readBigUInt64LE(o)); o += 8; // real sol reserves
         const realTok = Number(data.readBigUInt64LE(o)); o += 8;
         if (vTok <= 0) continue;
         const token = state.newTokens.get(mint) || state.graduatingTokens.get(mint);
@@ -264,6 +264,8 @@ function handleTransaction(update: any) {
         const priceSol = (vSol / 1e9) / (vTok / 1e6);
         token.priceSol = priceSol;
         token.marketCapSol = priceSol * TOTAL_SUPPLY;
+        // Liquidity = real SOL locked in the curve, valued both sides (DexScreener convention).
+        token.liquidity = (realSol / 1e9) * state.solPrice * 2;
         token.progress = Math.max(0, Math.min(100, (1 - realTok / INITIAL_REAL_TOKEN_RAW) * 100));
         if (!token.launchPriceSol) token.launchPriceSol = priceSol;
         token.priceChange24h = token.launchPriceSol > 0 ? ((priceSol - token.launchPriceSol) / token.launchPriceSol) * 100 : 0;
@@ -276,7 +278,10 @@ function handleTransaction(update: any) {
         // Per-trade event for the token page's live "recent trades" panel.
         feedEvents.emit("trade", {
           mint, type: isBuy ? "buy" : "sell", tokenAmount: tokenRaw / 1e6,
-          solAmount: solLamports / 1e9, marketCapSol: token.marketCapSol, trader, signature,
+          solAmount: solLamports / 1e9, marketCapSol: token.marketCapSol,
+          marketCap: token.marketCapSol * state.solPrice,
+          priceUsd: priceSol * state.solPrice, solPrice: state.solPrice,
+          trader, signature,
           timestamp: (tsSec > 0 ? tsSec : Math.floor(Date.now() / 1000)) * 1000,
         });
         state.stats.trades++;
@@ -374,6 +379,8 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = []) {
   feedEvents.emit("trade", {
     mint, type: poolPost < poolPre ? "buy" : "sell", tokenAmount: absTok,
     solAmount: volSol, marketCapSol: priceSol * TOTAL_SUPPLY,
+    marketCap: priceSol * TOTAL_SUPPLY * state.solPrice,
+    priceUsd: priceSol * state.solPrice, solPrice: state.solPrice,
     trader: keys[0] ? b58(Buffer.from(keys[0])) : "", signature, timestamp: Date.now(),
   });
   state.stats.pumpswap++;
