@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
+import { useDemoStore } from "@/stores/demoStore";
 import { Loader2, RefreshCw, RotateCcw, Pencil, X } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import { useToast } from "@/components/ui/Toast";
@@ -131,6 +132,26 @@ export function SwapWidget({
   const [noWallet, setNoWallet] = useState(false);
 
   const fetchBalance = useCallback(async () => {
+    // Demo mode: synth a balance from the paper-trading store, no network.
+    const demo = useDemoStore.getState();
+    if (demo.isDemo) {
+      setBalance({
+        walletAddress: wallet?.publicKey || "",
+        sol: {
+          mint: "So11111111111111111111111111111111111111112",
+          balance: String(Math.round(demo.solBalance * 1e9)),
+          uiBalance: demo.solBalance,
+          decimals: 9,
+        },
+        tokens: Object.values(demo.positions).map((p) => ({
+          mint: p.mint,
+          balance: String(Math.round(p.uiAmount * 1e6)),
+          uiBalance: p.uiAmount,
+          decimals: 6,
+        })),
+      });
+      return;
+    }
     if (!wallet || noWallet) return;
     try {
       const res = await fetch("/api/trading/balance");
@@ -147,6 +168,7 @@ export function SwapWidget({
   }, [wallet, noWallet]);
 
   const fetchTokenStats = useCallback(async () => {
+    if (useDemoStore.getState().isDemo) return; // demo: no server stats
     if (!wallet || !defaultOutputMint) return;
     try {
       const res = await fetch(`/api/trading/pnl?tokenMint=${defaultOutputMint}`);
@@ -255,6 +277,25 @@ export function SwapWidget({
 
   const handleSwap = async () => {
     if (!quote || !inputMint || !outputMint || !tradingSource) return;
+
+    // Demo mode: simulate the trade against the paper balance — never hits chain.
+    const demo = useDemoStore.getState();
+    if (demo.isDemo) {
+      const outUi = Number(quote.outAmount) / Math.pow(10, isBuy ? outputDecimals : 9);
+      if (isBuy) demo.paperBuy(outputMint, outputSymbol, parseFloat(inputAmount), outUi);
+      else demo.paperSell(inputMint, outUi, parseFloat(inputAmount));
+      playTradeSound(isBuy);
+      showToast(
+        isBuy ? `Bought ${formatOutputAmount()} ${outputSymbol}` : `Sold ${inputAmount} ${outputSymbol}`,
+        "success"
+      );
+      setSuccess("Transaction successful!");
+      setInputAmount("");
+      setQuote(null);
+      setTradingSource(null);
+      fetchBalance();
+      return;
+    }
 
     setSwapping(true);
     setError(null);
