@@ -280,6 +280,19 @@ export function SwapWidget({
     // Demo mode: simulate the trade against the paper balance — never hits chain.
     const demo = useDemoStore.getState();
     if (demo.isDemo) {
+      const spend = parseFloat(inputAmount) || 0;
+      // Can't spend SOL / tokens you don't have.
+      if (isBuy && spend > demo.solBalance + 1e-9) {
+        setError(`Insufficient balance — you have ${demo.solBalance.toFixed(3)} SOL`);
+        return;
+      }
+      if (!isBuy) {
+        const held = demo.positions[inputMint]?.uiAmount || 0;
+        if (spend > held + 1e-6) {
+          setError("Insufficient token balance");
+          return;
+        }
+      }
       const outUi = Number(quote.outAmount) / Math.pow(10, isBuy ? outputDecimals : 9);
       if (isBuy) demo.paperBuy(outputMint, outputSymbol, parseFloat(inputAmount), outUi);
       else demo.paperSell(inputMint, outUi, parseFloat(inputAmount));

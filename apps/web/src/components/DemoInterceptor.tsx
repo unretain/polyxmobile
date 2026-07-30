@@ -1,18 +1,16 @@
 "use client";
 
 import { useEffect } from "react";
-import { useDemoStore, DemoPosition } from "@/stores/demoStore";
+import { useDemoStore, DemoPosition, DemoTrade } from "@/stores/demoStore";
 
 /**
- * Apple App Review demo mode ONLY. While `isDemo` is true, this transparently
- * intercepts the server trading endpoints (balance / pnl / holdings / withdraw)
- * and answers them from the in-memory paper-trading store PLUS a synthetic but
- * realistic trading history — so the token-page HOLDING, the /wallet balance,
- * and the /portfolio (PnL, volume, win rate, streaks, daily chart, positions)
- * are all fully populated and consistent, with zero changes to those pages.
+ * Apple App Review demo mode ONLY. While `isDemo` is true, this intercepts the
+ * server trading endpoints and answers them from the paper-trading store — real
+ * accounting driven by the actual trade log, so token HOLDING, /wallet balance,
+ * and /portfolio (PnL, volume, win rate, streaks, daily chart, positions) all
+ * reflect what was actually traded. No fabricated numbers.
  *
- * Not active for real users: no-ops unless demo mode is on, restores the
- * original fetch on cleanup, and only touches /api/trading/*.
+ * No-ops unless demo mode is on; restores fetch on cleanup; only /api/trading/*.
  */
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -23,9 +21,7 @@ function json(data: unknown): Response {
   });
 }
 
-// Positions carry a pretend +25% unrealized gain so the Positions tab looks alive.
 function toFullPosition(p: DemoPosition) {
-  const unrealizedPnl = Number((p.costSol * 0.25).toFixed(4));
   return {
     mint: p.mint,
     symbol: p.symbol,
@@ -36,53 +32,66 @@ function toFullPosition(p: DemoPosition) {
     totalBuyCost: p.costSol,
     totalSellRevenue: 0,
     currentBalance: p.uiAmount,
-    currentValue: Number((p.costSol * 1.25).toFixed(4)),
+    currentValue: p.costSol, // valued at cost (no live price in paper mode)
     realizedPnl: 0,
-    unrealizedPnl,
-    pnlPercent: 25,
+    unrealizedPnl: 0,
+    pnlPercent: 0,
     trades: 1,
     lastTradeAt: new Date().toISOString(),
     isOpen: p.uiAmount > 0.000001,
   };
 }
 
-// Deterministic, realistic daily P&L history so the portfolio isn't empty.
-function demoPortfolio(period: string) {
-  const days = period === "1d" ? 1 : period === "7d" ? 7 : 30;
-  let s = 1337; // fixed seed -> stable across reloads
-  const rnd = () => {
-    s = (s * 1103515245 + 12345) & 0x7fffffff;
-    return s / 0x7fffffff;
-  };
-  const today = new Date();
-  const dailyPnL: Array<{ date: string; pnl: number; trades: number; volume: number }> = [];
-  for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const trades = 1 + Math.floor(rnd() * 4); // 1–4 trades/day
-    const win = rnd() < 0.65; // ~65% win days
-    const mag = 0.005 + rnd() * 0.05;
-    const pnl = Number((win ? mag : -mag * 0.7).toFixed(4));
-    const volume = Number((trades * (0.02 + rnd() * 0.06)).toFixed(4));
-    dailyPnL.push({ date: d.toISOString().slice(0, 10), pnl, trades, volume });
+// Everything below is computed from the REAL trade log — nothing invented.
+function computePortfolio(trades: DemoTrade[], positions: Record<string, DemoPosition>, period: string) {
+  const now = Date.now();
+  const days = period === "1d" ? 1 : period === "7d" ? 7 : period === "all" ? 3650 : 30;
+  const cutoff = now - days * 86_400_000;
+  const inPeriod = trades.filter((t) => t.ts >= cutoff);
+
+  const volume = inPeriod.reduce((a, t) => a + t.solAmount, 0);
+  const sells = inPeriod.filter((t) => t.side === "sell");
+  const totalRealizedPnl = sells.reduce((a, t) => a + (t.realized || 0), 0);
+  const totalTrades = inPeriod.length;
+  const winRate = sells.length ? sells.filter((t) => (t.realized || 0) > 0).length / sells.length : 0;
+
+  const dayMap = new Map<string, { date: string; pnl: number; trades: number; volume: number }>();
+  for (const t of inPeriod) {
+    const date = new Date(t.ts).toISOString().slice(0, 10);
+    const d = dayMap.get(date) || { date, pnl: 0, trades: 0, volume: 0 };
+    d.pnl += t.side === "sell" ? t.realized || 0 : 0;
+    d.trades += 1;
+    d.volume += t.solAmount;
+    dayMap.set(date, d);
   }
-  const totalRealizedPnl = Number(dailyPnL.reduce((a, x) => a + x.pnl, 0).toFixed(4));
-  const totalVolume = Number(dailyPnL.reduce((a, x) => a + x.volume, 0).toFixed(4));
-  const totalTrades = dailyPnL.reduce((a, x) => a + x.trades, 0);
-  const winRate = dailyPnL.filter((x) => x.pnl > 0).length / Math.max(dailyPnL.length, 1);
+  const dailyPnL = Array.from(dayMap.values())
+    .map((d) => ({ ...d, pnl: Number(d.pnl.toFixed(4)), volume: Number(d.volume.toFixed(4)) }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
   let currentStreak = 0;
   for (let i = dailyPnL.length - 1; i >= 0; i--) {
     if (dailyPnL[i].pnl > 0) currentStreak++;
-    else break;
+    else if (dailyPnL[i].pnl < 0) break;
   }
   let bestStreak = 0, run = 0;
-  for (const x of dailyPnL) {
-    if (x.pnl > 0) { run++; bestStreak = Math.max(bestStreak, run); }
-    else run = 0;
+  for (const d of dailyPnL) {
+    if (d.pnl > 0) { run++; bestStreak = Math.max(bestStreak, run); }
+    else if (d.pnl < 0) run = 0;
   }
-  const calendarData: Record<string, { date: string; pnl: number; trades: number; volume: number }> = {};
-  for (const x of dailyPnL) calendarData[x.date] = x;
-  return { dailyPnL, calendarData, summary: { totalRealizedPnl, totalVolume, totalTrades, currentStreak, bestStreak, winRate } };
+
+  const posArr = Object.values(positions).map(toFullPosition);
+  return {
+    dailyPnL,
+    positions: posArr,
+    summary: {
+      totalRealizedPnl: Number(totalRealizedPnl.toFixed(4)),
+      totalVolume: Number(volume.toFixed(4)),
+      totalTrades,
+      currentStreak,
+      bestStreak,
+      winRate,
+    },
+  };
 }
 
 export function DemoInterceptor() {
@@ -97,7 +106,6 @@ export function DemoInterceptor() {
         typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
       const demo = useDemoStore.getState();
 
-      // Wallet balance (used by /wallet, SwapWidget, header)
       if (url.includes("/api/trading/balance")) {
         return json({
           walletAddress: "",
@@ -117,7 +125,6 @@ export function DemoInterceptor() {
         });
       }
 
-      // PnL — token-specific (token page HOLDING/PNL) or portfolio-wide
       if (url.includes("/api/trading/pnl")) {
         let tokenMint: string | null = null;
         let period = "30d";
@@ -129,12 +136,10 @@ export function DemoInterceptor() {
 
         if (tokenMint) {
           const p = demo.positions[tokenMint];
-          return json({ bought: p?.uiAmount || 0, sold: 0, holding: p?.uiAmount || 0, pnlPercent: p ? 25 : 0 });
+          return json({ bought: p?.uiAmount || 0, sold: 0, holding: p?.uiAmount || 0, pnlPercent: 0 });
         }
 
-        const { dailyPnL, calendarData, summary } = demoPortfolio(period);
-        const positions = Object.values(demo.positions).map(toFullPosition);
-        const posVolume = positions.reduce((a, p) => a + p.totalBuyCost, 0);
+        const { dailyPnL, positions, summary } = computePortfolio(demo.trades, demo.positions, period);
         const now = new Date();
         const start = new Date(now);
         start.setDate(start.getDate() - (period === "1d" ? 1 : period === "7d" ? 7 : 30));
@@ -143,20 +148,14 @@ export function DemoInterceptor() {
           startDate: start.toISOString(),
           endDate: now.toISOString(),
           cumulativePnLBaseline: 0,
-          summary: {
-            ...summary,
-            totalVolume: Number((summary.totalVolume + posVolume).toFixed(4)),
-          },
+          summary,
           dailyPnL,
-          calendarData: period === "calendar" ? calendarData : undefined,
           positions,
           activePositions: positions,
           closedPositions: [],
         });
       }
 
-      // Withdraw / swap should never really run in demo (handled client-side),
-      // but answer success defensively so nothing errors.
       if (url.includes("/api/trading/withdraw") || url.includes("/api/trading/swap") || url.includes("/api/trading/pump-swap")) {
         return json({ success: true, demo: true, txSignature: "DEMO" });
       }
