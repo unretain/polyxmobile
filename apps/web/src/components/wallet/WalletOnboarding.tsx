@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Copy, Check, Eye, EyeOff, ChevronRight, Shield, AlertTriangle, Download, Plus } from "lucide-react";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { generateWalletWithMnemonic, formatMnemonicForDisplay, deriveKeypairFromMnemonic, validateMnemonic } from "@/lib/mobileWallet";
+import { useDemoStore } from "@/stores/demoStore";
 
 interface WalletOnboardingProps {
   isOpen: boolean;
@@ -25,6 +26,11 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
   const [verifyIndexes, setVerifyIndexes] = useState<number[]>([]);
   const [verifyInputs, setVerifyInputs] = useState<string[]>(["", "", ""]);
   const [verifyError, setVerifyError] = useState("");
+  // Demo account (Apple App Review only)
+  const [showDemoLogin, setShowDemoLogin] = useState(false);
+  const [demoUser, setDemoUser] = useState("");
+  const [demoPass, setDemoPass] = useState("");
+  const [demoError, setDemoError] = useState("");
 
   // Import wallet state
   const [importPhrase, setImportPhrase] = useState("");
@@ -83,6 +89,20 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
     storeSeedInVault(pk, mnemonic);
 
     setStep("create-intro");
+  };
+
+  // Apple App Review demo account: paper-trading mode, pre-populated wallet.
+  // Real users never reach this — it only fires on the exact demo credentials.
+  const handleDemoLogin = () => {
+    if (demoUser.trim().toLowerCase() !== "apple" || demoPass !== "apple123") {
+      setDemoError("Invalid demo credentials");
+      return;
+    }
+    // Fixed demo address — paper trading only, no private key, never signs on-chain.
+    const DEMO_PK = "CqWUWE5smRkbhASVhozg6BYJ7NirBYoP4xM6P1vrgg4B";
+    setWallet({ publicKey: DEMO_PK, hasBackedUp: true, createdAt: Date.now() });
+    useDemoStore.getState().enterDemo();
+    onClose();
   };
 
   // Generate random verify indexes when moving to verify step
@@ -285,6 +305,43 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
                   <Download className="w-5 h-5" />
                   Import Existing Wallet
                 </button>
+
+                {/* Demo Account — Apple App Review only */}
+                <button
+                  onClick={() => setShowDemoLogin((v) => !v)}
+                  type="button"
+                  className="w-full text-white/40 hover:text-white/70 text-sm py-2 transition-colors touch-manipulation"
+                >
+                  Demo Account
+                </button>
+                {showDemoLogin && (
+                  <div className="space-y-2 bg-white/5 border border-white/10 rounded-xl p-3">
+                    <input
+                      value={demoUser}
+                      onChange={(e) => setDemoUser(e.target.value)}
+                      placeholder="Username"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30"
+                    />
+                    <input
+                      value={demoPass}
+                      onChange={(e) => setDemoPass(e.target.value)}
+                      placeholder="Password"
+                      type="password"
+                      className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30"
+                    />
+                    {demoError && <p className="text-xs text-red-400">{demoError}</p>}
+                    <button
+                      onClick={handleDemoLogin}
+                      onTouchEnd={(e) => { e.preventDefault(); handleDemoLogin(); }}
+                      type="button"
+                      className="w-full bg-[#FF6B4A] text-white font-semibold py-2 rounded-lg text-sm touch-manipulation"
+                    >
+                      Enter Demo
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
