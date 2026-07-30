@@ -20,6 +20,7 @@ interface MobileWalletState {
   setPendingMnemonic: (mnemonic: string | null) => void;
   setOnboarding: (isOnboarding: boolean) => void;
   confirmBackup: () => void;
+  storeMnemonic: (mnemonic: string) => void; // persist encrypted key immediately (at create/import)
   clearWallet: () => void;
   setHasHydrated: (state: boolean) => void;
   getMnemonic: () => Promise<string | null>; // Decrypt and get mnemonic for signing
@@ -79,6 +80,15 @@ export const useMobileWalletStore = create<MobileWalletState>()(
           isOnboarding: false,
         };
       }),
+      // Persist the encrypted mnemonic on the wallet RIGHT AWAY (at create/import),
+      // so getMnemonic() — and therefore client-side signing — works even if the
+      // user never completes the backup-verify step. Without this, buys fall back
+      // to the (session-only) server path and fail with "Authentication required".
+      storeMnemonic: (mnemonic) => set((state) => ({
+        wallet: state.wallet
+          ? { ...state.wallet, encryptedMnemonic: encryptMnemonic(mnemonic) }
+          : state.wallet,
+      })),
       clearWallet: () => set({ wallet: null, pendingMnemonic: null, isOnboarding: false }),
       setHasHydrated: (state) => set({ _hasHydrated: state }),
       getMnemonic: async () => {

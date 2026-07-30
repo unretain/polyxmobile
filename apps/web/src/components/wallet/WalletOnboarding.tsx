@@ -15,7 +15,7 @@ type Step = "choose" | "create-intro" | "show-phrase" | "verify" | "complete" | 
 
 export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
   const router = useRouter();
-  const { setWallet, setPendingMnemonic, pendingMnemonic, confirmBackup } = useMobileWalletStore();
+  const { setWallet, setPendingMnemonic, pendingMnemonic, confirmBackup, storeMnemonic } = useMobileWalletStore();
 
   const [step, setStep] = useState<Step>("choose");
   const [words, setWords] = useState<string[]>([]);
@@ -73,6 +73,8 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
       hasBackedUp: false,
       createdAt: Date.now(),
     });
+    // Persist the encrypted key NOW so signing works even if backup is skipped.
+    storeMnemonic(mnemonic);
 
     // Register with backend (encrypted)
     registerWallet(pk);
@@ -217,6 +219,8 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
         hasBackedUp: true, // Assume they have it backed up since they're importing
         createdAt: Date.now(),
       });
+      // Persist the encrypted key immediately so signing works right away.
+      storeMnemonic(phrase);
 
       // Call confirmBackup to encrypt and store the mnemonic
       confirmBackup();
