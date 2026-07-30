@@ -126,6 +126,12 @@ const MORALIS_CANDLE_CONFIG: Record<string, { interval: string; seconds: number 
 };
 
 // Get the appropriate config based on API source, chart type, and period
+// Candle bucket size per timeframe — used to tick the live candle from trades.
+const CANDLE_INTERVAL_MS: Record<string, number> = {
+  "1s": 1000, "1m": 60000, "5m": 300000, "15m": 900000,
+  "1h": 3600000, "4h": 14400000, "1d": 86400000, "1w": 604800000, "1M": 2592000000,
+};
+
 function getChartConfig(chartType: ChartType, period: string, isPulse: boolean) {
   if (isPulse) {
     // Pulse tokens use Moralis API
@@ -374,6 +380,35 @@ export default function TokenClient() {
       // Only update market cap with a REAL rate — never a 200-based number.
       const marketCapUsd = data.marketCap ?? (rate > 0 ? data.marketCapSol * rate : null);
       setPulseToken((prev) => prev ? { ...prev, marketCap: marketCapUsd ?? prev.marketCap } : null);
+
+      // LIVE chart: tick the current candle from this trade. The feed emits no
+      // ohlcv:update, so we build the live candle from the trade stream — works
+      // on every timeframe with no polling.
+      if (data.tokenAmount > 0 && data.solAmount > 0) {
+        const priceSol = data.solAmount / data.tokenAmount;
+        const intervalMs = CANDLE_INTERVAL_MS[chartPeriod || "1s"] || 1000;
+        const ts = data.timestamp || Date.now();
+        const bucket = Math.floor(ts / intervalMs) * intervalMs;
+        setOhlcv((prev) => {
+          if (prev.length === 0) return prev;
+          const last = prev[prev.length - 1];
+          if (last.timestamp === bucket) {
+            const u = [...prev];
+            u[u.length - 1] = {
+              ...last,
+              high: Math.max(last.high, priceSol),
+              low: Math.min(last.low, priceSol),
+              close: priceSol,
+              volume: (last.volume || 0) + data.solAmount,
+            };
+            return u;
+          }
+          if (bucket > last.timestamp) {
+            return [...prev, { timestamp: bucket, open: last.close, high: priceSol, low: priceSol, close: priceSol, volume: data.solAmount }];
+          }
+          return prev;
+        });
+      }
     });
 
     // LIVE: Handle real-time OHLCV candle updates (1-second candles)
