@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
 import { useDemoStore, DemoPosition, DemoTrade } from "@/stores/demoStore";
 
 /**
@@ -94,19 +93,21 @@ function computePortfolio(trades: DemoTrade[], positions: Record<string, DemoPos
   };
 }
 
-export function DemoInterceptor() {
-  const isDemo = useDemoStore((s) => s.isDemo);
+// Patch fetch at MODULE LOAD (not in an effect) so interception is installed
+// before any page component runs its fetch. It only acts when isDemo is true, so
+// real users are never affected. The true original is preserved across HMR.
+if (typeof window !== "undefined") {
+  const w = window as unknown as { __demoOrigFetch?: typeof window.fetch };
+  if (!w.__demoOrigFetch) w.__demoOrigFetch = window.fetch.bind(window);
+  const original = w.__demoOrigFetch;
 
-  useEffect(() => {
-    if (!isDemo || typeof window === "undefined") return;
-    const original = window.fetch.bind(window);
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const demo = useDemoStore.getState();
+    if (!demo.isDemo) return original(input, init);
+    const url =
+      typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
 
-    window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      const url =
-        typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
-      const demo = useDemoStore.getState();
-
-      if (url.includes("/api/trading/balance")) {
+    if (url.includes("/api/trading/balance")) {
         return json({
           walletAddress: "",
           sol: {
@@ -139,7 +140,7 @@ export function DemoInterceptor() {
           return json({ bought: p?.uiAmount || 0, sold: 0, holding: p?.uiAmount || 0, pnlPercent: 0 });
         }
 
-        const { dailyPnL, positions, summary } = computePortfolio(demo.trades, demo.positions, period);
+        const { dailyPnL, positions, summary } = computePortfolio(demo.trades || [], demo.positions || {}, period);
         const now = new Date();
         const start = new Date(now);
         start.setDate(start.getDate() - (period === "1d" ? 1 : period === "7d" ? 7 : 30));
@@ -160,13 +161,12 @@ export function DemoInterceptor() {
         return json({ success: true, demo: true, txSignature: "DEMO" });
       }
 
-      return original(input, init);
-    };
+    return original(input, init);
+  };
+}
 
-    return () => {
-      window.fetch = original;
-    };
-  }, [isDemo]);
-
+// Mounted in the root layout so this module is imported (and the patch above
+// installed) on the client. Rendering nothing.
+export function DemoInterceptor() {
   return null;
 }
