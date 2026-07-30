@@ -6,13 +6,13 @@ import { useDemoStore, DemoPosition } from "@/stores/demoStore";
 /**
  * Apple App Review demo mode ONLY. While `isDemo` is true, this transparently
  * intercepts the server trading endpoints (balance / pnl / holdings / withdraw)
- * and answers them from the in-memory paper-trading store — so the token-page
- * HOLDING, the /wallet balance, and the /portfolio positions all reflect the
- * simulated wallet consistently, with zero changes to those pages.
+ * and answers them from the in-memory paper-trading store PLUS a synthetic but
+ * realistic trading history — so the token-page HOLDING, the /wallet balance,
+ * and the /portfolio (PnL, volume, win rate, streaks, daily chart, positions)
+ * are all fully populated and consistent, with zero changes to those pages.
  *
- * Not active for real users: the effect no-ops unless demo mode is on, and it
- * restores the original fetch on cleanup. Only /api/trading/* is touched; every
- * other request (quotes, feed, etc.) passes straight through.
+ * Not active for real users: no-ops unless demo mode is on, restores the
+ * original fetch on cleanup, and only touches /api/trading/*.
  */
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -23,7 +23,9 @@ function json(data: unknown): Response {
   });
 }
 
+// Positions carry a pretend +25% unrealized gain so the Positions tab looks alive.
 function toFullPosition(p: DemoPosition) {
+  const unrealizedPnl = Number((p.costSol * 0.25).toFixed(4));
   return {
     mint: p.mint,
     symbol: p.symbol,
@@ -34,12 +36,53 @@ function toFullPosition(p: DemoPosition) {
     totalBuyCost: p.costSol,
     totalSellRevenue: 0,
     currentBalance: p.uiAmount,
+    currentValue: Number((p.costSol * 1.25).toFixed(4)),
     realizedPnl: 0,
-    unrealizedPnl: 0,
+    unrealizedPnl,
+    pnlPercent: 25,
     trades: 1,
     lastTradeAt: new Date().toISOString(),
     isOpen: p.uiAmount > 0.000001,
   };
+}
+
+// Deterministic, realistic daily P&L history so the portfolio isn't empty.
+function demoPortfolio(period: string) {
+  const days = period === "1d" ? 1 : period === "7d" ? 7 : 30;
+  let s = 1337; // fixed seed -> stable across reloads
+  const rnd = () => {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    return s / 0x7fffffff;
+  };
+  const today = new Date();
+  const dailyPnL: Array<{ date: string; pnl: number; trades: number; volume: number }> = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const trades = 1 + Math.floor(rnd() * 4); // 1–4 trades/day
+    const win = rnd() < 0.65; // ~65% win days
+    const mag = 0.005 + rnd() * 0.05;
+    const pnl = Number((win ? mag : -mag * 0.7).toFixed(4));
+    const volume = Number((trades * (0.02 + rnd() * 0.06)).toFixed(4));
+    dailyPnL.push({ date: d.toISOString().slice(0, 10), pnl, trades, volume });
+  }
+  const totalRealizedPnl = Number(dailyPnL.reduce((a, x) => a + x.pnl, 0).toFixed(4));
+  const totalVolume = Number(dailyPnL.reduce((a, x) => a + x.volume, 0).toFixed(4));
+  const totalTrades = dailyPnL.reduce((a, x) => a + x.trades, 0);
+  const winRate = dailyPnL.filter((x) => x.pnl > 0).length / Math.max(dailyPnL.length, 1);
+  let currentStreak = 0;
+  for (let i = dailyPnL.length - 1; i >= 0; i--) {
+    if (dailyPnL[i].pnl > 0) currentStreak++;
+    else break;
+  }
+  let bestStreak = 0, run = 0;
+  for (const x of dailyPnL) {
+    if (x.pnl > 0) { run++; bestStreak = Math.max(bestStreak, run); }
+    else run = 0;
+  }
+  const calendarData: Record<string, { date: string; pnl: number; trades: number; volume: number }> = {};
+  for (const x of dailyPnL) calendarData[x.date] = x;
+  return { dailyPnL, calendarData, summary: { totalRealizedPnl, totalVolume, totalTrades, currentStreak, bestStreak, winRate } };
 }
 
 export function DemoInterceptor() {
@@ -77,28 +120,35 @@ export function DemoInterceptor() {
       // PnL — token-specific (token page HOLDING/PNL) or portfolio-wide
       if (url.includes("/api/trading/pnl")) {
         let tokenMint: string | null = null;
+        let period = "30d";
         try {
-          tokenMint = new URL(url, "http://x").searchParams.get("tokenMint");
+          const params = new URL(url, "http://x").searchParams;
+          tokenMint = params.get("tokenMint");
+          period = params.get("period") || "30d";
         } catch { /* ignore */ }
 
         if (tokenMint) {
           const p = demo.positions[tokenMint];
-          return json({ bought: p?.uiAmount || 0, sold: 0, holding: p?.uiAmount || 0, pnlPercent: 0 });
+          return json({ bought: p?.uiAmount || 0, sold: 0, holding: p?.uiAmount || 0, pnlPercent: p ? 25 : 0 });
         }
 
+        const { dailyPnL, calendarData, summary } = demoPortfolio(period);
         const positions = Object.values(demo.positions).map(toFullPosition);
+        const posVolume = positions.reduce((a, p) => a + p.totalBuyCost, 0);
+        const now = new Date();
+        const start = new Date(now);
+        start.setDate(start.getDate() - (period === "1d" ? 1 : period === "7d" ? 7 : 30));
         return json({
-          period: "30d",
+          period,
+          startDate: start.toISOString(),
+          endDate: now.toISOString(),
           cumulativePnLBaseline: 0,
           summary: {
-            totalRealizedPnl: 0,
-            totalVolume: positions.reduce((s, p) => s + p.totalBuyCost, 0),
-            totalTrades: positions.length,
-            currentStreak: 0,
-            bestStreak: 0,
-            winRate: 0,
+            ...summary,
+            totalVolume: Number((summary.totalVolume + posVolume).toFixed(4)),
           },
-          dailyPnL: [],
+          dailyPnL,
+          calendarData: period === "calendar" ? calendarData : undefined,
           positions,
           activePositions: positions,
           closedPositions: [],
