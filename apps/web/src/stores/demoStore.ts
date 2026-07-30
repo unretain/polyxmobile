@@ -35,8 +35,6 @@ interface DemoState {
   paperSell: (mint: string, solReceived: number, tokensSold: number) => void;
 }
 
-const SEED_MINT = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"; // BONK
-
 export const useDemoStore = create<DemoState>()(
   persist(
     (set) => ({
@@ -45,21 +43,15 @@ export const useDemoStore = create<DemoState>()(
       positions: {},
       trades: [],
 
-      // Funded with 5 SOL plus one pre-existing BONK buy so the wallet/portfolio
-      // aren't empty. Fully consistent: total deposited 5.15 SOL, 0.15 spent on BONK.
-      enterDemo: () => {
-        const now = Date.now();
+      // Clean start: a funded 5 SOL wallet, nothing else. Everything (positions,
+      // volume, PnL, history) populates from the reviewer's own paper trades.
+      enterDemo: () =>
         set({
           isDemo: true,
           solBalance: 5,
-          positions: {
-            [SEED_MINT]: { mint: SEED_MINT, symbol: "BONK", uiAmount: 1_250_000, costSol: 0.15 },
-          },
-          trades: [
-            { mint: SEED_MINT, symbol: "BONK", side: "buy", solAmount: 0.15, tokenAmount: 1_250_000, ts: now - 2 * 86_400_000 },
-          ],
-        });
-      },
+          positions: {},
+          trades: [],
+        }),
 
       exitDemo: () => set({ isDemo: false, solBalance: 0, positions: {}, trades: [] }),
 

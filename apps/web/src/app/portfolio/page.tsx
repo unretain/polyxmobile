@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useThemeStore } from "@/stores/themeStore";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { formatNumber, shortenAddress, cn } from "@/lib/utils";
@@ -842,12 +843,16 @@ function PnLCalendar({
 
 // Position Card Component
 function PositionCard({ position, isDark }: { position: Position; isDark: boolean }) {
+  const router = useRouter();
   const pnlPercent = position.totalBuyCost > 0
     ? ((position.realizedPnl / position.totalBuyCost) * 100)
     : 0;
 
   return (
-    <div className={`p-3 rounded-xl border ${isDark ? "bg-white/5 border-white/10" : "bg-white border-gray-200"}`}>
+    <div
+      onClick={() => router.push(`/token/${position.mint}?source=pulse`)}
+      className={`p-3 rounded-xl border cursor-pointer transition-colors ${isDark ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-white border-gray-200 hover:bg-gray-50"}`}
+    >
       <div className="flex items-center gap-3">
         {/* Token Image */}
         <div className="w-10 h-10 rounded-full overflow-hidden bg-white/10 flex-shrink-0">
@@ -870,6 +875,7 @@ function PositionCard({ position, isDark }: { position: Position; isDark: boolea
               href={`https://solscan.io/token/${position.mint}`}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
               className="text-[#FF6B4A]"
             >
               <ExternalLink className="w-3 h-3" />
