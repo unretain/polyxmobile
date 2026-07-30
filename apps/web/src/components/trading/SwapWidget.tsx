@@ -168,7 +168,6 @@ export function SwapWidget({
   }, [wallet, noWallet]);
 
   const fetchTokenStats = useCallback(async () => {
-    if (useDemoStore.getState().isDemo) return; // demo: no server stats
     if (!wallet || !defaultOutputMint) return;
     try {
       const res = await fetch(`/api/trading/pnl?tokenMint=${defaultOutputMint}`);
@@ -294,6 +293,7 @@ export function SwapWidget({
       setQuote(null);
       setTradingSource(null);
       fetchBalance();
+      fetchTokenStats();
       return;
     }
 
