@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, DM_Mono, Fragment_Mono } from "next/font/google";
 import { ToastProvider } from "@/components/ui/Toast";
+import { DemoInterceptor } from "@/components/DemoInterceptor";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -58,6 +59,7 @@ export default function RootLayout({
         />
       </head>
       <body className={`${inter.variable} ${dmMono.variable} ${fragmentMono.variable} font-sans`}>
+        <DemoInterceptor />
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
