@@ -9,7 +9,6 @@ import {
   ArrowUpRight,
   RefreshCw,
   ExternalLink,
-  QrCode,
   Wallet
 } from "lucide-react";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
@@ -223,10 +222,6 @@ export default function WalletPage() {
         {activeTab === "deposit" && (
           <div className={`rounded-2xl p-6 ${isDark ? 'bg-white/5 border border-white/10' : 'bg-white border border-black/10'}`}>
             <div className="text-center space-y-4">
-              <div className={`w-20 h-20 mx-auto rounded-2xl flex items-center justify-center ${isDark ? 'bg-[#FF6B4A]/20' : 'bg-[#FF6B4A]/10'}`}>
-                <QrCode className="h-10 w-10 text-[#FF6B4A]" />
-              </div>
-
               <div>
                 <p className={`text-sm mb-2 ${isDark ? 'text-white/50' : 'text-black/50'}`}>
                   Send SOL or SPL tokens to this address
