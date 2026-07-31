@@ -1,8 +1,16 @@
 import { Connection, VersionedTransaction, Keypair } from "@solana/web3.js";
 import { deriveKeypairFromMnemonic } from "./mobileWallet";
 
-// RPC endpoint - use public one for mobile
-const RPC_URL = "https://api.mainnet-beta.solana.com";
+// RPC endpoint — Tatum by default (env-overridable). The API key, if set, is
+// sent as the x-api-key header for the dedicated rate quota.
+const RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://solana-mainnet.gateway.tatum.io";
+const RPC_KEY = process.env.NEXT_PUBLIC_SOLANA_RPC_KEY || "";
+function getConnection(): Connection {
+  return new Connection(
+    RPC_URL,
+    RPC_KEY ? { commitment: "confirmed", httpHeaders: { "x-api-key": RPC_KEY } } : "confirmed"
+  );
+}
 
 // Jupiter API
 const JUPITER_API = "https://quote-api.jup.ag/v6";
@@ -97,7 +105,7 @@ export async function executeSwap(
   transaction.sign([keypair]);
 
   // 5. Send transaction
-  const connection = new Connection(RPC_URL, "confirmed");
+  const connection = getConnection();
   const signature = await connection.sendTransaction(transaction, {
     skipPreflight: true,
     maxRetries: 3,
@@ -164,7 +172,7 @@ export async function executeClientPumpSwap(
   const transaction = VersionedTransaction.deserialize(data);
   transaction.sign([keypair]);
 
-  const connection = new Connection(RPC_URL, "confirmed");
+  const connection = getConnection();
   const signature = await connection.sendTransaction(transaction, { skipPreflight: true, maxRetries: 3 });
   const bh = await connection.getLatestBlockhash();
   await connection.confirmTransaction({ signature, blockhash: bh.blockhash, lastValidBlockHeight: bh.lastValidBlockHeight });
@@ -177,7 +185,7 @@ export async function executeClientPumpSwap(
  * Get wallet balance using RPC
  */
 export async function getWalletBalance(publicKey: string): Promise<number> {
-  const connection = new Connection(RPC_URL, "confirmed");
+  const connection = getConnection();
   const balance = await connection.getBalance(new (await import("@solana/web3.js")).PublicKey(publicKey));
   return balance / 1e9; // Convert lamports to SOL
 }
