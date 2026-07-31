@@ -88,12 +88,16 @@ export class JupiterService {
     const rpcUrl = config.solanaRpcUrl || "https://api.mainnet-beta.solana.com";
     console.log("[JupiterService] RPC URL:", rpcUrl);
 
-    // Warn if not using Helius
-    if (!rpcUrl.includes("helius")) {
-      console.warn("[JupiterService] WARNING: Not using Helius RPC. Set SOLANA_RPC_URL to https://mainnet.helius-rpc.com/?api-key=YOUR_KEY");
+    if (rpcUrl.includes("api.mainnet-beta.solana.com")) {
+      console.warn("[JupiterService] WARNING: using the public RPC — set SOLANA_RPC_URL to a dedicated provider (Tatum/Helius) + SOLANA_RPC_KEY.");
     }
 
-    this.connection = new Connection(rpcUrl, "confirmed");
+    // Tatum (and similar) authenticate via an x-api-key header.
+    const rpcKey = process.env.SOLANA_RPC_KEY || "";
+    this.connection = new Connection(
+      rpcUrl,
+      rpcKey ? { commitment: "confirmed", httpHeaders: { "x-api-key": rpcKey } } : "confirmed"
+    );
 
     // Extract Helius API key from RPC URL if present
     this.heliusApiKey = this.extractHeliusApiKey(rpcUrl);
