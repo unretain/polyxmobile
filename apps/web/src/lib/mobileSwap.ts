@@ -13,7 +13,9 @@ function getConnection(): Connection {
 }
 
 // Jupiter API
-const JUPITER_API = "https://quote-api.jup.ag/v6";
+// Jupiter deprecated quote-api.jup.ag (DNS now dead → ERR_NAME_NOT_RESOLVED).
+// Current free endpoint is lite-api.jup.ag/swap/v1 (same /quote and /swap paths).
+const JUPITER_API = "https://lite-api.jup.ag/swap/v1";
 
 export interface SwapQuote {
   inputMint: string;
