@@ -377,9 +377,15 @@ export default function TokenClient() {
 
       // Update token market cap using functional update to avoid stale closure.
       // Prefer the USD value the API computed with the live SOL price.
-      // Only update market cap with a REAL rate — never a 200-based number.
-      const marketCapUsd = data.marketCap ?? (rate > 0 ? data.marketCapSol * rate : null);
-      setPulseToken((prev) => prev ? { ...prev, marketCap: marketCapUsd ?? prev.marketCap } : null);
+      // Only update with a POSITIVE value — a bad feed trade can emit marketCap:0
+      // (?? doesn't catch 0), which would nuke the displayed cap to $0. Ignore those
+      // and keep the last good number instead.
+      const feedMc = (data.marketCap && data.marketCap > 0)
+        ? data.marketCap
+        : (rate > 0 && data.marketCapSol > 0 ? data.marketCapSol * rate : null);
+      if (feedMc && feedMc > 0) {
+        setPulseToken((prev) => prev ? { ...prev, marketCap: feedMc } : null);
+      }
 
       // LIVE chart: tick the current candle from this trade. The feed emits no
       // ohlcv:update, so we build the live candle from the trade stream — works
@@ -392,6 +398,9 @@ export default function TokenClient() {
         setOhlcv((prev) => {
           if (prev.length === 0) return prev;
           const last = prev[prev.length - 1];
+          // Reject absurd ticks (a bad trade > 20x or < 5% of the last close) so a
+          // single garbage event can't spike or nuke the candle to ~0.
+          if (last.close > 0 && (priceSol > last.close * 20 || priceSol < last.close * 0.05)) return prev;
           if (last.timestamp === bucket) {
             const u = [...prev];
             u[u.length - 1] = {
