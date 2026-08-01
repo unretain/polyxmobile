@@ -439,7 +439,8 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
       "1d": 86400000, "1w": 604800000, "1M": 2592000000,
     };
     const intervalSec = Math.max(1, Math.round((intervalMap[timeframe] || 60000) / 1000));
-    let ohlcv = getCandles(address, intervalSec, 100);
+    // Fine tier is 250ms, so pull more candles to fill a usable window (~100s).
+    let ohlcv = getCandles(address, intervalSec, intervalSec <= 1 ? 400 : 100);
     let source = "grpc";
     // Evicted / pre-restart token with no live candles → durable ClickHouse history
     // (1m+ only; sub-minute lives only in memory). sol=1 keeps candles SOL-denominated.

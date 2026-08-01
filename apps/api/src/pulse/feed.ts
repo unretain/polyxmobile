@@ -73,9 +73,13 @@ export const feedEvents = new EventEmitter();
 //   - 1s candles: a new bar every second there's a trade (short window)
 //   - 1m candles: 12h window; 5m/15m/1h/... roll up from here
 interface Candle { t: number; o: number; h: number; l: number; c: number; v: number }
-const SEC_MS = 1_000;
+// Sub-minute candles are 250ms (4/sec) so a coin's trades spread into distinct
+// thin candles like Axiom, instead of merging into chunky 1s blocks. Block time
+// is only 1s-precise, so this fine tier is bucketed by RECEIVE time (the stream
+// is smooth end-to-end, verified, so this no longer mangles wicks).
+const FINE_MS = 250;
 const MIN_MS = 60_000;
-const MAX_1S = 1_800; // 30 min of per-second candles
+const MAX_1S = 7_200; // 30 min of 250ms candles
 const MAX_1M = 720;   // 12h of 1-minute candles
 
 const state = {
@@ -122,7 +126,7 @@ function recordCandle(mint: string, priceSol: number, solAmount: number) {
   let m = state.candles1m.get(mint);
   if (!m) { m = new Map(); state.candles1m.set(mint, m); }
   const now = Date.now();
-  upsertCandle(s, Math.floor(now / SEC_MS) * SEC_MS, priceSol, solAmount, MAX_1S);
+  upsertCandle(s, Math.floor(now / FINE_MS) * FINE_MS, priceSol, solAmount, MAX_1S);
   upsertCandle(m, Math.floor(now / MIN_MS) * MIN_MS, priceSol, solAmount, MAX_1M);
 }
 
@@ -138,7 +142,7 @@ function recordCandleAt(mint: string, priceSol: number, solAmount: number, tsMs:
   if (!s) { s = new Map(); state.candles1s.set(mint, s); }
   let m = state.candles1m.get(mint);
   if (!m) { m = new Map(); state.candles1m.set(mint, m); }
-  upsertCandle(s, Math.floor(tsMs / SEC_MS) * SEC_MS, priceSol, solAmount, MAX_1S);
+  upsertCandle(s, Math.floor(tsMs / FINE_MS) * FINE_MS, priceSol, solAmount, MAX_1S);
   upsertCandle(m, Math.floor(tsMs / MIN_MS) * MIN_MS, priceSol, solAmount, MAX_1M);
 }
 
@@ -289,10 +293,10 @@ function handleTransaction(update: any) {
         token.priceChange24h = token.launchPriceSol > 0 ? ((priceSol - token.launchPriceSol) / token.launchPriceSol) * 100 : 0;
         token.volume24h += (solLamports / 1e9) * state.solPrice;
         token.txCount++;
-        // Bucket by ON-CHAIN block time (what Axiom/indexers use), NOT our processing
-        // clock — bursty gRPC delivery otherwise piles trades into one wrong second and
-        // mangles the candle wicks.
-        recordCandleAt(mint, priceSol, solLamports / 1e9, tsSec > 0 ? tsSec * 1000 : Date.now());
+        // Record at RECEIVE time so the 250ms fine candles get real sub-second
+        // resolution (block time is only 1s-precise). The stream is smooth end-to-end
+        // (verified), so this no longer piles a burst into one wrong bucket.
+        recordCandle(mint, priceSol, solLamports / 1e9);
         recordTrade({ mint, signature, slot: 0, ts: chDateTime(tsSec > 0 ? tsSec * 1000 : Date.now()), is_buy: isBuy ? 1 : 0, sol_amount: solLamports / 1e9, token_amount: tokenRaw / 1e6, price_sol: priceSol, mcap_sol: token.marketCapSol, real_token_reserves: realTok, trader });
         // Per-trade event for the token page's live "recent trades" panel.
         feedEvents.emit("trade", {
@@ -663,11 +667,13 @@ export function getCandles(mint: string, intervalSec: number, limit: number) {
   if (!src || src.size === 0) return [];
   const p = state.solPrice || 0;
   const base = Array.from(src.values()).sort((a, b) => a.t - b.t);
-  const baseSec = useSecond ? 1 : 60;
+  const baseSec = useSecond ? FINE_MS / 1000 : 60; // 0.25 for the fine tier
 
   let out: Candle[];
-  if (intervalSec <= baseSec) {
-    out = base; // no roll-up needed (1s->1s or 1m->1m)
+  // Serve the raw 250ms candles for the finest ("1s") view; roll up only for
+  // coarser intervals (5s/15s/... or 1m->5m).
+  if ((useSecond && intervalSec <= 1) || intervalSec <= baseSec) {
+    out = base; // no roll-up (fine 250ms, or exact tier match)
   } else {
     const iv = intervalSec * 1000;
     const buckets = new Map<number, Candle>();
