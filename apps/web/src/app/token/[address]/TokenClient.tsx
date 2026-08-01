@@ -401,21 +401,22 @@ export default function TokenClient() {
           // Reject absurd ticks (a bad trade > 20x or < 5% of the last close) so a
           // single garbage event can't spike or nuke the candle to ~0.
           if (last.close > 0 && (priceSol > last.close * 20 || priceSol < last.close * 0.05)) return prev;
-          if (last.timestamp === bucket) {
-            const u = [...prev];
-            u[u.length - 1] = {
-              ...last,
-              high: Math.max(last.high, priceSol),
-              low: Math.min(last.low, priceSol),
-              close: priceSol,
-              volume: (last.volume || 0) + data.solAmount,
-            };
-            return u;
-          }
+          // A newer 1s bucket → open a fresh candle. Otherwise (same bucket OR a
+          // few seconds of block-time jitter, common with PROCESSED commitment)
+          // update the current live candle — never drop the trade, so the chart
+          // always ticks on every trade.
           if (bucket > last.timestamp) {
             return [...prev, { timestamp: bucket, open: last.close, high: priceSol, low: priceSol, close: priceSol, volume: data.solAmount }];
           }
-          return prev;
+          const u = [...prev];
+          u[u.length - 1] = {
+            ...last,
+            high: Math.max(last.high, priceSol),
+            low: Math.min(last.low, priceSol),
+            close: priceSol,
+            volume: (last.volume || 0) + data.solAmount,
+          };
+          return u;
         });
       }
     });
