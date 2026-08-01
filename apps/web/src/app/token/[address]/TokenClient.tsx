@@ -350,7 +350,7 @@ export default function TokenClient() {
     });
 
     // LIVE: Handle real-time trade events
-    socket.on("trade", (data: { mint: string; type: string; tokenAmount: number; solAmount: number; marketCapSol: number; marketCap?: number; priceUsd?: number; solPrice?: number; trader: string; signature: string; timestamp: number }) => {
+    socket.on("trade", (data: { mint: string; type: string; tokenAmount: number; solAmount: number; marketCapSol: number; marketCap?: number; priceUsd?: number; solPrice?: number; volume24h?: number; liquidity?: number; trader: string; signature: string; timestamp: number }) => {
       if (data.mint !== address) return;
 
       // Add new trade to the top of the list. Use the REAL SOL price the API sent
@@ -386,7 +386,13 @@ export default function TokenClient() {
         ? data.marketCap
         : (rate > 0 && data.marketCapSol > 0 ? data.marketCapSol * rate : null);
       if (feedMc && feedMc > 0) {
-        setPulseToken((prev) => prev ? { ...prev, marketCap: feedMc } : null);
+        setPulseToken((prev) => prev ? {
+          ...prev,
+          marketCap: feedMc,
+          // Live volume + liquidity from the feed (only overwrite with real values).
+          volume24h: (data.volume24h && data.volume24h > 0) ? data.volume24h : prev.volume24h,
+          liquidity: (data.liquidity && data.liquidity > 0) ? data.liquidity : prev.liquidity,
+        } : null);
       }
 
       // LIVE chart: tick the current candle from this trade. The feed emits no

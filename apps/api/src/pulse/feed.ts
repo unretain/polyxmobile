@@ -304,6 +304,7 @@ function handleTransaction(update: any) {
           solAmount: solLamports / 1e9, marketCapSol: token.marketCapSol,
           marketCap: token.marketCapSol * state.solPrice,
           priceUsd: priceSol * state.solPrice, solPrice: state.solPrice,
+          volume24h: token.volume24h, liquidity: token.liquidity,
           trader, signature,
           timestamp: (tsSec > 0 ? tsSec : Math.floor(Date.now() / 1000)) * 1000,
         });
@@ -405,6 +406,7 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = []) {
     solAmount: volSol, marketCapSol: priceSol * TOTAL_SUPPLY,
     marketCap: priceSol * TOTAL_SUPPLY * state.solPrice,
     priceUsd: priceSol * state.solPrice, solPrice: state.solPrice,
+    volume24h: token?.volume24h ?? 0, liquidity: token?.liquidity ?? 0,
     trader: keys[0] ? b58(Buffer.from(keys[0])) : "", signature, timestamp: Date.now(),
   });
   state.stats.pumpswap++;
