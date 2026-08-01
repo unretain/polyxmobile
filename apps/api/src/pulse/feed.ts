@@ -465,10 +465,10 @@ async function connect(endpoint: string, token?: string) {
   try {
     await refreshSolPrice();
     const { default: Client, CommitmentLevel } = await import("@triton-one/yellowstone-grpc");
-    // PROCESSED = lowest latency (one confirmation earlier than CONFIRMED, ~0.5-1s
-    // faster) — what Axiom/Photon use for live trades. Trade-off: a processed trade
-    // can rarely be rolled back if its fork loses, acceptable for a live feed.
-    commitmentLevel = CommitmentLevel.PROCESSED;
+    // CONFIRMED, not PROCESSED. PROCESSED's faster/burstier firehose overwhelmed
+    // the single decoder and pushed the delay to 40s+ (backpressure) — a net loss.
+    // CONFIRMED keeps a stable ~2s, which is the realistic floor at this throughput.
+    commitmentLevel = CommitmentLevel.CONFIRMED;
     const client = new Client(endpoint, token || undefined, { "grpc.max_receive_message_length": 64 * 1024 * 1024 });
     state.stream = await client.subscribe();
     state.stream.on("data", (u: any) => { try { handleTransaction(u); } catch {} });
