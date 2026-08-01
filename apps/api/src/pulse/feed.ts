@@ -488,11 +488,12 @@ async function connect(endpoint: string, token?: string) {
   try {
     await refreshSolPrice();
     const { default: Client, CommitmentLevel } = await import("@triton-one/yellowstone-grpc");
-    // PROCESSED for lowest latency (axiom-style). It only stays fast because the
-    // decode hot path no longer base58-encodes every instruction key (see
-    // bytesEqual above) — that gave the CPU headroom to keep up with PROCESSED's
-    // higher volume. If delay ever climbs again, the decode is the ceiling.
-    commitmentLevel = CommitmentLevel.PROCESSED;
+    // CONFIRMED, not PROCESSED. PROCESSED is ~1s faster in calm periods but its
+    // heavier firehose overwhelms the single decode thread during volume spikes and
+    // the backlog balloons to 20s+. CONFIRMED stays a rock-solid ~2s under load.
+    // (To run PROCESSED reliably we'd need to parallelize the decode across worker
+    // threads — a bigger change.)
+    commitmentLevel = CommitmentLevel.CONFIRMED;
     const client = new Client(endpoint, token || undefined, { "grpc.max_receive_message_length": 64 * 1024 * 1024 });
     state.stream = await client.subscribe();
     state.stream.on("data", (u: any) => { try { handleTransaction(u); } catch {} });
