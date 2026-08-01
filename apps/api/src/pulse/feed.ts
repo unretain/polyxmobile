@@ -259,7 +259,10 @@ function handleTransaction(update: any) {
         const realSol = Number(data.readBigUInt64LE(o)); o += 8; // real sol reserves
         const realTok = Number(data.readBigUInt64LE(o)); o += 8;
         if (vTok <= 0) continue;
-        const token = state.newTokens.get(mint) || state.graduatingTokens.get(mint);
+        // Include graduatedTokens: a coin can get a (sometimes premature) complete
+        // event yet keep trading on the bonding curve. Without this lookup its price
+        // froze the moment it was marked complete (the "nukes/stops working" bug).
+        const token = state.newTokens.get(mint) || state.graduatingTokens.get(mint) || state.graduatedTokens.get(mint);
         if (!token) continue; // only tokens we saw created (no fake entries)
         const priceSol = (vSol / 1e9) / (vTok / 1e6);
         token.priceSol = priceSol;
