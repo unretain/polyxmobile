@@ -136,6 +136,39 @@ export async function getTokenData(mint: string, solPrice: number) {
   return { ...shapePair({ ...r, progress }, solPrice), complete: !!r.complete };
 }
 
+// OHLCV built from the RAW trades table at any interval (down to 1s), converted to
+// USD. Finer than getOhlcv (which uses 1m aggregates) — used for the chart so a
+// wiped/stopped coin still shows detailed candles from its durable trade history.
+export async function getTradeCandles(mint: string, intervalSec: number, limit: number, solPrice: number) {
+  const iv = Math.max(1, Math.floor(intervalSec));
+  const rows = await q<any>(
+    `SELECT
+       toUnixTimestamp(toStartOfInterval(ts, INTERVAL {iv:UInt32} SECOND)) * 1000 AS timestamp,
+       argMin(price_sol, ts) AS open_sol,
+       max(price_sol)        AS high_sol,
+       min(price_sol)        AS low_sol,
+       argMax(price_sol, ts) AS close_sol,
+       sum(sol_amount)       AS vol_sol
+     FROM trades
+     WHERE mint = {mint:String} AND price_sol > 0
+     GROUP BY timestamp
+     ORDER BY timestamp DESC
+     LIMIT {limit:UInt32}`,
+    { mint, iv, limit }
+  );
+  const p = solPrice || 0;
+  return rows
+    .map((r) => ({
+      timestamp: Number(r.timestamp),
+      open: Number(r.open_sol) * p,
+      high: Number(r.high_sol) * p,
+      low: Number(r.low_sol) * p,
+      close: Number(r.close_sol) * p,
+      volume: Number(r.vol_sol) * p,
+    }))
+    .sort((a, b) => a.timestamp - b.timestamp);
+}
+
 // OHLCV rolled up from candles_1m (stored in SOL) to any timeframe, converted to USD.
 export async function getOhlcv(mint: string, intervalSec: number, limit: number, solPrice: number) {
   const rows = await q<any>(

@@ -105,11 +105,11 @@ feedRoutes.get("/ohlcv/:mint", async (req, res) => {
   const limit = Math.min(parseInt(String(req.query.limit)) || 1000, 5000);
   let data = getCandles(mint, iv, limit);
   let source = "grpc";
-  if (data.length === 0 && iv >= 60 && clickhouseEnabled()) {
+  if (data.length === 0 && clickhouseEnabled()) {
     try {
-      // In-memory candles are SOL-denominated and the web merges live ticks in
-      // SOL, so ask CH for SOL candles too (sol=1) — NOT USD — to keep units consistent.
-      const chData = await ch.getOhlcv(mint, iv, limit, 1);
+      // Build fine candles from the durable trade history (down to 1s), in USD to
+      // match the in-memory getCandles (which already multiplies by solPrice).
+      const chData = await ch.getTradeCandles(mint, iv, Math.min(limit, 600), getSolPrice());
       if (chData.length) { data = chData; source = "clickhouse"; }
     } catch (e) { console.error("[feed] CH ohlcv:", (e as Error).message); }
   }
