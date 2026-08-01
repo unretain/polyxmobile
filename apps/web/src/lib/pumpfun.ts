@@ -55,14 +55,20 @@ export class PumpFunService {
   private rpcUrl: string;
 
   constructor() {
+    // Reads via Helius (SOLANA_RPC_URL, key in the URL).
     this.rpcUrl = config.solanaRpcUrl || "https://api.mainnet-beta.solana.com";
-    console.log("[PumpFunService] Initializing with RPC:", this.rpcUrl.substring(0, 40) + "...");
+    console.log("[PumpFunService] Read RPC:", this.rpcUrl.substring(0, 40) + "...");
     this.connection = new Connection(this.rpcUrl, "confirmed");
 
-    // Use separate RPC for sending (Helius free tier may not support sendTransaction)
-    const sendRpcUrl = process.env.SOLANA_SEND_RPC_URL || "https://api.mainnet-beta.solana.com";
-    console.log("[PumpFunService] Send RPC:", sendRpcUrl.substring(0, 40) + "...");
-    this.sendConnection = new Connection(sendRpcUrl, "confirmed");
+    // Sends via Tatum (SOLANA_SEND_RPC_URL) — Tatum's key goes in the x-api-key
+    // HEADER, not the URL. Fall back to the read RPC (Helius), never public.
+    const sendRpcUrl = process.env.SOLANA_SEND_RPC_URL || this.rpcUrl;
+    const sendKey = process.env.SOLANA_SEND_RPC_KEY || "";
+    console.log("[PumpFunService] Send RPC:", sendRpcUrl.substring(0, 40) + "...", sendKey ? "(keyed)" : "");
+    this.sendConnection = new Connection(
+      sendRpcUrl,
+      sendKey ? { commitment: "confirmed", httpHeaders: { "x-api-key": sendKey } } : "confirmed"
+    );
   }
 
   /**
