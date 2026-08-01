@@ -11,6 +11,8 @@
 import { EventEmitter } from "events";
 import { PublicKey, Connection } from "@solana/web3.js";
 import bs58 from "bs58";
+// Dual-write persistence: this single decoder feeds ClickHouse too (no 2nd gRPC).
+import { recordToken, recordTrade, recordGraduation, chDateTime } from "../clickhouse/writer";
 
 const PUMP_FUN_PROGRAM = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 // PumpSwap (pump.fun's AMM) — where tokens trade AFTER graduation. Verified live.
@@ -239,6 +241,7 @@ function handleTransaction(update: any) {
         if (state.newTokens.has(mint) || state.graduatingTokens.has(mint) || state.graduatedTokens.has(mint)) continue;
         const token = newToken(mint, name.trim(), symbol.trim(), uri.trim());
         state.newTokens.set(mint, token);
+        recordToken({ mint, name: name.trim(), symbol: symbol.trim(), uri: uri.trim(), image: "", creator: "", created_at: chDateTime(Date.now()), created_slot: 0 });
         if (uri.trim()) resolveImage(mint, uri.trim());
         if (state.newTokens.size > 200) {
           const oldest = state.newTokens.keys().next().value;
@@ -278,6 +281,7 @@ function handleTransaction(update: any) {
         // clock — bursty gRPC delivery otherwise piles trades into one wrong second and
         // mangles the candle wicks.
         recordCandleAt(mint, priceSol, solLamports / 1e9, tsSec > 0 ? tsSec * 1000 : Date.now());
+        recordTrade({ mint, signature, slot: 0, ts: chDateTime(tsSec > 0 ? tsSec * 1000 : Date.now()), is_buy: isBuy ? 1 : 0, sol_amount: solLamports / 1e9, token_amount: tokenRaw / 1e6, price_sol: priceSol, mcap_sol: token.marketCapSol, real_token_reserves: realTok, trader });
         // Per-trade event for the token page's live "recent trades" panel.
         feedEvents.emit("trade", {
           mint, type: isBuy ? "buy" : "sell", tokenAmount: tokenRaw / 1e6,
@@ -302,6 +306,7 @@ function handleTransaction(update: any) {
         token.progress = 100;
         token.destination = "pumpswap";
         state.graduatedTokens.set(mint, token);
+        recordGraduation({ mint, ts: chDateTime(Date.now()) });
         if (state.graduatedTokens.size > 100) {
           const oldest = state.graduatedTokens.keys().next().value;
           if (oldest) { state.graduatedTokens.delete(oldest); dropCandles(oldest); }
