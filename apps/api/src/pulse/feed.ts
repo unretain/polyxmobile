@@ -80,7 +80,8 @@ interface Candle { t: number; o: number; h: number; l: number; c: number; v: num
 // is smooth end-to-end, verified, so this no longer mangles wicks).
 const FINE_MS = 250;
 const MIN_MS = 60_000;
-const MAX_1S = 7_200; // 30 min of 250ms candles
+const MAX_1S = 1_200; // ~5 min of 250ms candles (matches the chart window; keeps
+                      // per-coin candle memory bounded so GC doesn't stall the loop)
 const MAX_1M = 720;   // 12h of 1-minute candles
 
 const state = {
@@ -488,12 +489,10 @@ async function connect(endpoint: string, token?: string) {
   try {
     await refreshSolPrice();
     const { default: Client, CommitmentLevel } = await import("@triton-one/yellowstone-grpc");
-    // CONFIRMED, not PROCESSED. PROCESSED is ~1s faster in calm periods but its
-    // heavier firehose overwhelms the single decode thread during volume spikes and
-    // the backlog balloons to 20s+. CONFIRMED stays a rock-solid ~2s under load.
-    // (To run PROCESSED reliably we'd need to parallelize the decode across worker
-    // threads — a bigger change.)
-    commitmentLevel = CommitmentLevel.CONFIRMED;
+    // PROCESSED for lowest latency. The stream itself is real-time (verified 0-lag
+    // through the relay); keeping the API able to keep up is about NOT choking the
+    // event loop — see the bounded candle memory (MAX_1S) and cheap decode hot path.
+    commitmentLevel = CommitmentLevel.PROCESSED;
     const client = new Client(endpoint, token || undefined, { "grpc.max_receive_message_length": 64 * 1024 * 1024 });
     state.stream = await client.subscribe();
     state.stream.on("data", (u: any) => { try { handleTransaction(u); } catch {} });
@@ -636,6 +635,7 @@ export function startPulseFeed() {
     .catch(() => {});
   setInterval(() => { refreshSolPrice().catch(() => {}); }, 30000);
   setInterval(() => { checkGraduations().catch(() => {}); }, 15000);
+  setInterval(() => sweepImages(), 5000); // retry missing logos off the hot path
   // Keep the PumpSwap filter in sync with the set of migrated tokens.
   setInterval(() => { maybeResubscribe().catch(() => {}); }, 3000);
   setInterval(() => {
@@ -648,20 +648,17 @@ export function startPulseFeed() {
 export function isPulseConnected() { return state.connected; }
 export function getSolPrice() { return state.solPrice; }
 
-// Fire a background image (re)fetch for any listed coin still missing its logo, so
-// transient metadata/IPFS failures recover on the next list poll instead of never.
-function retryImages(entries: [string, PulseToken][]) {
-  for (const [mint, t] of entries) if (!t.logoUri && t.uri) resolveImage(mint, t.uri).catch(() => {});
-}
 export function getNewPairs(limit = 50): PulseToken[] {
-  const entries = Array.from(state.newTokens.entries()).sort((a, b) => b[1].createdAt - a[1].createdAt).slice(0, limit);
-  retryImages(entries);
-  return entries.map(([, t]) => usd(t));
+  return Array.from(state.newTokens.values()).sort((a, b) => b.createdAt - a.createdAt).slice(0, limit).map(usd);
 }
 export function getGraduating(limit = 20): PulseToken[] {
-  const entries = Array.from(state.graduatingTokens.entries()).sort((a, b) => b[1].marketCapSol - a[1].marketCapSol).slice(0, limit);
-  retryImages(entries);
-  return entries.map(([, t]) => usd(t));
+  return Array.from(state.graduatingTokens.values()).sort((a, b) => b.marketCapSol - a.marketCapSol).slice(0, limit).map(usd);
+}
+// Retry missing logos on a slow timer — OFF the hot snapshot/decode path so it never
+// competes with stream processing (that's what was choking the loop under PROCESSED).
+export function sweepImages() {
+  for (const [mint, t] of state.newTokens) if (!t.logoUri && t.uri) resolveImage(mint, t.uri).catch(() => {});
+  for (const [mint, t] of state.graduatingTokens) if (!t.logoUri && t.uri) resolveImage(mint, t.uri).catch(() => {});
 }
 export function getGraduated(limit = 20): PulseToken[] {
   // Migrated list = RECENT migrations only (last 30 min), newest-first. Drops the
