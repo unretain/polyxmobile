@@ -60,6 +60,7 @@ export interface PulseToken {
   complete: boolean;
   progress: number;
   destination?: string;
+  graduatedAt?: number; // when it migrated (for recency filtering of the migrated list)
   // internal
   priceSol?: number;
   launchPriceSol?: number;
@@ -322,6 +323,7 @@ function handleTransaction(update: any) {
         token.complete = true;
         token.progress = 100;
         token.destination = "pumpswap";
+    token.graduatedAt = Date.now();
         state.graduatedTokens.set(mint, token);
         recordGraduation({ mint, ts: chDateTime(Date.now()) });
         if (state.graduatedTokens.size > 100) {
@@ -382,6 +384,7 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = []) {
       token.complete = true;
       token.progress = 100;
       token.destination = "pumpswap";
+    token.graduatedAt = Date.now();
       state.graduatedTokens.set(mint, token);
       feedEvents.emit("graduated", usd(token));
     }
@@ -543,6 +546,7 @@ async function checkGraduations() {
         token.complete = true;
         token.progress = 100;
         token.destination = "pumpswap";
+    token.graduatedAt = Date.now();
         state.graduatedTokens.set(mint, token);
         state.stats.graduations++;
         feedEvents.emit("graduated", usd(token));
@@ -648,7 +652,14 @@ export function getGraduating(limit = 20): PulseToken[] {
   return Array.from(state.graduatingTokens.values()).sort((a, b) => b.marketCapSol - a.marketCapSol).slice(0, limit).map(usd);
 }
 export function getGraduated(limit = 20): PulseToken[] {
-  return Array.from(state.graduatedTokens.values()).sort((a, b) => b.createdAt - a.createdAt).slice(0, limit).map(usd);
+  // Migrated list = RECENT migrations only (last 30 min), newest-first. Drops the
+  // stale hour-old coins that used to linger just because they once graduated.
+  const cutoff = Date.now() - 30 * 60 * 1000;
+  return Array.from(state.graduatedTokens.values())
+    .filter((t) => (t.graduatedAt ?? t.createdAt) > cutoff)
+    .sort((a, b) => (b.graduatedAt ?? b.createdAt) - (a.graduatedAt ?? a.createdAt))
+    .slice(0, limit)
+    .map(usd);
 }
 export function getToken(mint: string): PulseToken | null {
   const t = state.newTokens.get(mint) || state.graduatingTokens.get(mint) || state.graduatedTokens.get(mint);
