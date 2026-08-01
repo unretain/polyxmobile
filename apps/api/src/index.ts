@@ -15,6 +15,8 @@ import { setupWebSocket } from "./websocket";
 import { pulseSyncService } from "./services/pulseSync";
 import { requireInternalApiKey, rateLimit } from "./middleware/auth";
 import { startPulseFeed } from "./pulse/feed";
+import { initClickHouseSchema } from "./clickhouse/client";
+import { startIngestor } from "./ingestor";
 
 const app = express();
 const httpServer = createServer(app);
@@ -89,6 +91,13 @@ httpServer.listen(PORT, () => {
   // THE pulse feed: one Corvus gRPC connection -> in-memory live state ->
   // broadcast over WebSocket to every user (see websocket/index.ts).
   startPulseFeed();
+
+  // ClickHouse persistence: create schema, then run the ingestor so tokens/
+  // trades/graduations are stored durably (survives restarts, no 200-cap drops).
+  // Both no-op if CLICKHOUSE_URL is unset — safe to leave in.
+  initClickHouseSchema()
+    .then((ready) => { if (ready) startIngestor(); })
+    .catch((e) => console.error("[clickhouse] init failed:", (e as Error)?.message));
 
   // Legacy Postgres (Supabase) pulse sync — OFF by default. Set ENABLE_PG_SYNC=true.
   if (process.env.ENABLE_PG_SYNC === "true") {

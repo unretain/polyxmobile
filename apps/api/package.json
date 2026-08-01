@@ -13,6 +13,7 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@clickhouse/client": "^1.23.1",
     "@grpc/grpc-js": "^1.14.2",
     "@prisma/client": "^5.22.0",
     "@shared/types": "*",
