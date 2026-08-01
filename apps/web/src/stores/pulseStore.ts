@@ -266,10 +266,17 @@ export const usePulseStore = create<PulseStore>()(
 
     const applySnapshot = (snap: any) => {
       if (!snap) return;
+      const st = get();
+      const nn = (snap.newPairs || []).map(mapTokenData);
+      const ng = (snap.graduating || []).map(mapTokenData);
+      const nd = (snap.graduated || []).map(mapTokenData);
+      // Never let an EMPTY in-memory snapshot (e.g. right after an API redeploy,
+      // before the live feed refills) wipe the ClickHouse-backed list we already
+      // loaded over HTTP. Keep the existing list until the socket has real data.
       set({
-        newPairs: (snap.newPairs || []).map(mapTokenData),
-        graduatingPairs: (snap.graduating || []).map(mapTokenData),
-        graduatedPairs: (snap.graduated || []).map(mapTokenData),
+        newPairs: nn.length ? nn : st.newPairs,
+        graduatingPairs: ng.length ? ng : st.graduatingPairs,
+        graduatedPairs: nd.length ? nd : st.graduatedPairs,
         lastUpdate: Date.now(),
       });
     };
