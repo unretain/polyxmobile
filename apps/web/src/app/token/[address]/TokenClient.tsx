@@ -390,8 +390,11 @@ export default function TokenClient() {
       // LIVE chart: tick the current candle from this trade. The feed emits no
       // ohlcv:update, so we build the live candle from the trade stream — works
       // on every timeframe with no polling.
-      if (data.tokenAmount > 0 && data.solAmount > 0) {
-        const priceSol = data.solAmount / data.tokenAmount;
+      // The fetched candles are in USD price (chart renders close * supply as the
+      // dollar market cap), so the live tick MUST use the USD price too. Using
+      // priceSol (solAmount/tokenAmount) is ~73x smaller and collapses/freezes the
+      // candle. priceUsd was already computed above from data.priceUsd.
+      if (data.tokenAmount > 0 && data.solAmount > 0 && priceUsd > 0) {
         const intervalMs = CANDLE_INTERVAL_MS[chartPeriod || "1s"] || 1000;
         const ts = data.timestamp || Date.now();
         const bucket = Math.floor(ts / intervalMs) * intervalMs;
@@ -399,21 +402,21 @@ export default function TokenClient() {
           if (prev.length === 0) return prev;
           const last = prev[prev.length - 1];
           // Reject absurd ticks (a bad trade > 20x or < 5% of the last close) so a
-          // single garbage event can't spike or nuke the candle to ~0.
-          if (last.close > 0 && (priceSol > last.close * 20 || priceSol < last.close * 0.05)) return prev;
+          // single garbage event can't spike or nuke the candle. Same units now (USD).
+          if (last.close > 0 && (priceUsd > last.close * 20 || priceUsd < last.close * 0.05)) return prev;
           // A newer 1s bucket → open a fresh candle. Otherwise (same bucket OR a
           // few seconds of block-time jitter, common with PROCESSED commitment)
           // update the current live candle — never drop the trade, so the chart
           // always ticks on every trade.
           if (bucket > last.timestamp) {
-            return [...prev, { timestamp: bucket, open: last.close, high: priceSol, low: priceSol, close: priceSol, volume: data.solAmount }];
+            return [...prev, { timestamp: bucket, open: last.close, high: priceUsd, low: priceUsd, close: priceUsd, volume: data.solAmount }];
           }
           const u = [...prev];
           u[u.length - 1] = {
             ...last,
-            high: Math.max(last.high, priceSol),
-            low: Math.min(last.low, priceSol),
-            close: priceSol,
+            high: Math.max(last.high, priceUsd),
+            low: Math.min(last.low, priceUsd),
+            close: priceUsd,
             volume: (last.volume || 0) + data.solAmount,
           };
           return u;
