@@ -128,7 +128,9 @@ const MORALIS_CANDLE_CONFIG: Record<string, { interval: string; seconds: number 
 // Get the appropriate config based on API source, chart type, and period
 // Candle bucket size per timeframe — used to tick the live candle from trades.
 const CANDLE_INTERVAL_MS: Record<string, number> = {
-  "1s": 1000, "1m": 60000, "5m": 300000, "15m": 900000,
+  // "1s" builds 250ms candles (4/sec) to match the server's fine tier, so trades
+  // spread into thin distinct candles like Axiom instead of chunky 1s blocks.
+  "1s": 250, "1m": 60000, "5m": 300000, "15m": 900000,
   "1h": 3600000, "4h": 14400000, "1d": 86400000, "1w": 604800000, "1M": 2592000000,
 };
 
@@ -395,8 +397,10 @@ export default function TokenClient() {
       // priceSol (solAmount/tokenAmount) is ~73x smaller and collapses/freezes the
       // candle. priceUsd was already computed above from data.priceUsd.
       if (data.tokenAmount > 0 && data.solAmount > 0 && priceUsd > 0) {
-        const intervalMs = CANDLE_INTERVAL_MS[chartPeriod || "1s"] || 1000;
-        const ts = data.timestamp || Date.now();
+        const intervalMs = CANDLE_INTERVAL_MS[chartPeriod || "1s"] || 250;
+        // Bucket by RECEIVE time to match the server's receive-time fine candles,
+        // so live ticks line up with the fetched history and give sub-second detail.
+        const ts = Date.now();
         const bucket = Math.floor(ts / intervalMs) * intervalMs;
         setOhlcv((prev) => {
           if (prev.length === 0) return prev;
