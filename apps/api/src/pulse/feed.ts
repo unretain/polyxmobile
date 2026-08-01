@@ -23,6 +23,18 @@ const CREATE_EVENT_DISC = "1b72a94ddeeb6376";
 const TRADE_EVENT_DISC = "bddb7fd34ee661ee";
 const COMPLETE_EVENT_DISC = "5f72619cd42e9808";
 
+// Precomputed program-id bytes + a byte comparator so the HOT decode path compares
+// pubkeys by raw bytes instead of base58-encoding every instruction key per tx.
+// base58 (via new PublicKey().toBase58()) was the throughput bottleneck — this is
+// what lets one thread keep up at high volume.
+const PUMP_FUN_PROGRAM_BYTES = bs58.decode(PUMP_FUN_PROGRAM);
+const PUMPSWAP_PROGRAM_BYTES = bs58.decode(PUMPSWAP_PROGRAM);
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 const TOTAL_SUPPLY = 1_000_000_000;
 const INITIAL_REAL_TOKEN_RAW = 793_100_000 * 1e6;
 const MIGRATION_MC_SOL = 410.9;
@@ -225,7 +237,7 @@ function handleTransaction(update: any) {
     const progIdx = ix.programIdIndex;
     if (progIdx === undefined || !ix.data) continue;
     const pk = keys[progIdx];
-    if (!pk || b58(Buffer.from(pk)) !== PUMP_FUN_PROGRAM) continue;
+    if (!pk || !bytesEqual(pk, PUMP_FUN_PROGRAM_BYTES)) continue;
     const data = typeof ix.data === "string" ? Buffer.from(ix.data, "base64") : Buffer.from(ix.data);
     if (data.length < 16 || data.slice(0, 8).toString("hex") !== SELF_CPI_DISC) continue;
     const disc = data.slice(8, 16).toString("hex");
@@ -318,7 +330,7 @@ function handleTransaction(update: any) {
   }
 
   // PumpSwap (post-graduation AMM). A token we track trading here = it MIGRATED.
-  if (keys.some((k) => b58(Buffer.from(k)) === PUMPSWAP_PROGRAM)) handlePumpSwap(tx, signature, keys);
+  if (keys.some((k) => bytesEqual(k, PUMPSWAP_PROGRAM_BYTES))) handlePumpSwap(tx, signature, keys);
 }
 
 // Price from pool reserves (uiAmount handles decimals) — IDL-independent, robust
@@ -465,10 +477,11 @@ async function connect(endpoint: string, token?: string) {
   try {
     await refreshSolPrice();
     const { default: Client, CommitmentLevel } = await import("@triton-one/yellowstone-grpc");
-    // CONFIRMED, not PROCESSED. PROCESSED's faster/burstier firehose overwhelmed
-    // the single decoder and pushed the delay to 40s+ (backpressure) — a net loss.
-    // CONFIRMED keeps a stable ~2s, which is the realistic floor at this throughput.
-    commitmentLevel = CommitmentLevel.CONFIRMED;
+    // PROCESSED for lowest latency (axiom-style). It only stays fast because the
+    // decode hot path no longer base58-encodes every instruction key (see
+    // bytesEqual above) — that gave the CPU headroom to keep up with PROCESSED's
+    // higher volume. If delay ever climbs again, the decode is the ceiling.
+    commitmentLevel = CommitmentLevel.PROCESSED;
     const client = new Client(endpoint, token || undefined, { "grpc.max_receive_message_length": 64 * 1024 * 1024 });
     state.stream = await client.subscribe();
     state.stream.on("data", (u: any) => { try { handleTransaction(u); } catch {} });
