@@ -15,7 +15,12 @@ import { cache } from "../lib/cache";
 // Live in-memory gRPC feed — the single source of truth (same as /api/feed/*).
 // The legacy DB-backed pulse routes below now serve from this so any frontend
 // hitting /api/pulse/* (e.g. polyx.trade) gets live data instead of 500s.
-import { getNewPairs, getGraduating, getGraduated, getCandles } from "../pulse/feed";
+import { getNewPairs, getGraduating, getGraduated, getCandles, getToken, getSolPrice } from "../pulse/feed";
+// ClickHouse: durable store of every token/trade the ingestor has seen. Used as
+// the preferred source (no 200-cap eviction, survives restarts) with the live
+// in-memory feed as fallback, so coins stop randomly dropping.
+import * as ch from "../clickhouse/queries";
+import { clickhouseEnabled } from "../clickhouse/client";
 
 export const pulseRoutes = Router();
 
@@ -31,6 +36,12 @@ pulseRoutes.get("/new-pairs", async (req, res) => {
     const query = newPairsQuerySchema.parse(req.query);
     const { limit } = query;
 
+    if (clickhouseEnabled()) {
+      try {
+        const chData = await ch.getNewPairs(limit, getSolPrice());
+        if (chData.length) return res.json({ data: chData, total: chData.length, timestamp: Date.now(), sources: ["clickhouse"] });
+      } catch (e) { console.error("[pulse] CH new-pairs:", (e as Error).message); }
+    }
     const data = getNewPairs(limit);
     res.json({ data, total: data.length, timestamp: Date.now(), sources: ["grpc"] });
   } catch (error) {
@@ -44,6 +55,12 @@ pulseRoutes.get("/new-pairs", async (req, res) => {
 // Uses DB for enriched data - shows NEWEST tokens first, filters out anything > 1 hour old
 pulseRoutes.get("/graduating", async (req, res) => {
   try {
+    if (clickhouseEnabled()) {
+      try {
+        const chData = await ch.getGraduatingPairs(100, getSolPrice());
+        if (chData.length) return res.json({ data: chData, total: chData.length, timestamp: Date.now(), sources: ["clickhouse"] });
+      } catch (e) { console.error("[pulse] CH graduating:", (e as Error).message); }
+    }
     const data = getGraduating(100);
     res.json({ data, total: data.length, timestamp: Date.now(), sources: ["grpc"] });
   } catch (error) {
@@ -56,6 +73,12 @@ pulseRoutes.get("/graduating", async (req, res) => {
 // Uses DB for enriched data - shows NEWEST tokens first, filters out anything > 1 hour old
 pulseRoutes.get("/graduated", async (req, res) => {
   try {
+    if (clickhouseEnabled()) {
+      try {
+        const chData = await ch.getGraduatedPairs(50, getSolPrice());
+        if (chData.length) return res.json({ data: chData, total: chData.length, timestamp: Date.now(), sources: ["clickhouse"] });
+      } catch (e) { console.error("[pulse] CH graduated:", (e as Error).message); }
+    }
     const data = getGraduated(50);
     res.json({ data, total: data.length, timestamp: Date.now(), sources: ["grpc"] });
   } catch (error) {
@@ -193,6 +216,17 @@ pulseRoutes.get("/token/:address", async (req, res) => {
   try {
     const { address } = req.params;
     let tokenData: any = null;
+
+    // 0. Live in-memory feed (freshest), then ClickHouse (durable). Same data every
+    // user sees, and it covers coins evicted from memory — no stale DB / paid API call.
+    const live = getToken(address);
+    if (live) return res.json({ ...live, source: "grpc" });
+    if (clickhouseEnabled()) {
+      try {
+        const chTok = await ch.getTokenData(address, getSolPrice());
+        if (chTok) return res.json({ ...chTok, source: "clickhouse" });
+      } catch (e) { console.error("[pulse] CH token:", (e as Error).message); }
+    }
 
     // 1. FIRST: Check database (free, no API call).
     // Guarded: if the DB is unavailable, fall through to external APIs instead
@@ -405,14 +439,23 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
       "1d": 86400000, "1w": 604800000, "1M": 2592000000,
     };
     const intervalSec = Math.max(1, Math.round((intervalMap[timeframe] || 60000) / 1000));
-    const ohlcv = getCandles(address, intervalSec, 100);
+    let ohlcv = getCandles(address, intervalSec, 100);
+    let source = "grpc";
+    // Evicted / pre-restart token with no live candles → durable ClickHouse history
+    // (1m+ only; sub-minute lives only in memory). sol=1 keeps candles SOL-denominated.
+    if (ohlcv.length === 0 && intervalSec >= 60 && clickhouseEnabled()) {
+      try {
+        const chData = await ch.getOhlcv(address, intervalSec, 100, 1);
+        if (chData.length) { ohlcv = chData; source = "clickhouse"; }
+      } catch (e) { console.error("[pulse] CH ohlcv:", (e as Error).message); }
+    }
 
     const response = {
       address,
       timeframe,
       data: ohlcv,
       timestamp: Date.now(),
-      source: "grpc",
+      source,
     };
 
     // Cache for 5 seconds (DB reads are fast, keep data fresh)

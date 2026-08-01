@@ -11,8 +11,10 @@ import { Router } from "express";
 import {
   isPulseConnected, getSolPrice,
   getNewPairs, getGraduating, getGraduated, getToken, getSnapshot,
-  getCandles, hasCandles, backfillToken, isBackfilling,
+  getCandles, hasCandles,
 } from "../pulse/feed";
+import * as ch from "../clickhouse/queries";
+import { clickhouseEnabled } from "../clickhouse/client";
 
 export const feedRoutes = Router();
 
@@ -41,35 +43,75 @@ feedRoutes.get("/snapshot", (_req, res) => {
   res.json(getSnapshot());
 });
 
-feedRoutes.get("/new-pairs", (req, res) => {
+// The lists prefer ClickHouse — it holds EVERY token the ingestor has ever seen
+// (no 200-cap eviction, survives restarts), so coins stop randomly dropping.
+// In-memory is the fallback when CH is disabled or momentarily empty/erroring.
+feedRoutes.get("/new-pairs", async (req, res) => {
   const limit = Math.min(parseInt(String(req.query.limit)) || 50, 200);
-  res.json({ data: getNewPairs(limit), source: "grpc", solPrice: getSolPrice(), realtime: isPulseConnected() });
+  const sol = getSolPrice();
+  if (clickhouseEnabled()) {
+    try {
+      const data = await ch.getNewPairs(limit, sol);
+      if (data.length) return res.json({ data, source: "clickhouse", solPrice: sol, realtime: isPulseConnected() });
+    } catch (e) { console.error("[feed] CH new-pairs:", (e as Error).message); }
+  }
+  res.json({ data: getNewPairs(limit), source: "grpc", solPrice: sol, realtime: isPulseConnected() });
 });
 
-feedRoutes.get("/graduating", (req, res) => {
+feedRoutes.get("/graduating", async (req, res) => {
   const limit = Math.min(parseInt(String(req.query.limit)) || 20, 100);
-  res.json({ data: getGraduating(limit), source: "grpc", solPrice: getSolPrice() });
+  const sol = getSolPrice();
+  if (clickhouseEnabled()) {
+    try {
+      const data = await ch.getGraduatingPairs(limit, sol);
+      if (data.length) return res.json({ data, source: "clickhouse", solPrice: sol });
+    } catch (e) { console.error("[feed] CH graduating:", (e as Error).message); }
+  }
+  res.json({ data: getGraduating(limit), source: "grpc", solPrice: sol });
 });
 
-feedRoutes.get("/graduated", (req, res) => {
+feedRoutes.get("/graduated", async (req, res) => {
   const limit = Math.min(parseInt(String(req.query.limit)) || 20, 100);
-  res.json({ data: getGraduated(limit), source: "grpc", solPrice: getSolPrice() });
+  const sol = getSolPrice();
+  if (clickhouseEnabled()) {
+    try {
+      const data = await ch.getGraduatedPairs(limit, sol);
+      if (data.length) return res.json({ data, source: "clickhouse", solPrice: sol });
+    } catch (e) { console.error("[feed] CH graduated:", (e as Error).message); }
+  }
+  res.json({ data: getGraduated(limit), source: "grpc", solPrice: sol });
 });
 
-feedRoutes.get("/token/:mint", (req, res) => {
-  const data = getToken(req.params.mint);
-  if (!data) return res.status(404).json({ error: "not found" });
-  res.json(data);
+// Token detail: in-memory first (freshest live price), else ClickHouse so a coin
+// that was evicted or created before the last restart still loads its page.
+feedRoutes.get("/token/:mint", async (req, res) => {
+  const inMem = getToken(req.params.mint);
+  if (inMem) return res.json(inMem);
+  if (clickhouseEnabled()) {
+    try {
+      const data = await ch.getTokenData(req.params.mint, getSolPrice());
+      if (data) return res.json(data);
+    } catch (e) { console.error("[feed] CH token:", (e as Error).message); }
+  }
+  res.status(404).json({ error: "not found" });
 });
 
-// OHLCV built from OUR gRPC stream (in-memory candles). Empty if we never tracked
-// this token — the web then falls back to GeckoTerminal for old/migrated tokens.
-feedRoutes.get("/ohlcv/:mint", (req, res) => {
+// OHLCV: in-memory candles for the live view (down to 1s). For an evicted /
+// pre-restart token with no in-memory candles, fall back to ClickHouse's durable
+// 1m+ history (candles_1m). Sub-minute intervals only exist in memory.
+feedRoutes.get("/ohlcv/:mint", async (req, res) => {
   const mint = req.params.mint;
   const iv = timeframeToSeconds(String(req.query.timeframe || "1m"));
   const limit = Math.min(parseInt(String(req.query.limit)) || 1000, 5000);
-  const data = getCandles(mint, iv, limit);
-  // Never seen it live → reconstruct from RPC (fire-and-forget; ready next poll).
-  if (data.length === 0) backfillToken(mint).catch(() => {});
-  res.json({ data, source: "grpc", hasHistory: hasCandles(mint), backfilling: isBackfilling(mint) });
+  let data = getCandles(mint, iv, limit);
+  let source = "grpc";
+  if (data.length === 0 && iv >= 60 && clickhouseEnabled()) {
+    try {
+      // In-memory candles are SOL-denominated and the web merges live ticks in
+      // SOL, so ask CH for SOL candles too (sol=1) — NOT USD — to keep units consistent.
+      const chData = await ch.getOhlcv(mint, iv, limit, 1);
+      if (chData.length) { data = chData; source = "clickhouse"; }
+    } catch (e) { console.error("[feed] CH ohlcv:", (e as Error).message); }
+  }
+  res.json({ data, source, hasHistory: hasCandles(mint) || data.length > 0 });
 });
