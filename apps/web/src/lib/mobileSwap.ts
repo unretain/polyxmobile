@@ -12,6 +12,20 @@ function getConnection(): Connection {
   );
 }
 
+// Confirm by POLLING getSignatureStatus (plain HTTP) instead of connection.
+// confirmTransaction, which opens a WebSocket. Tatum has no WS endpoint, so the WS
+// path just spams "ws error" and never resolves. Polling uses the same HTTP RPC.
+async function confirmByPolling(connection: Connection, signature: string, timeoutMs = 45000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const { value } = await connection.getSignatureStatus(signature, { searchTransactionHistory: false });
+    if (value?.err) throw new Error("Transaction failed on-chain");
+    if (value?.confirmationStatus === "confirmed" || value?.confirmationStatus === "finalized") return;
+    await new Promise((r) => setTimeout(r, 1200));
+  }
+  throw new Error("Confirmation timed out — check the explorer link");
+}
+
 // Jupiter API
 // Jupiter deprecated quote-api.jup.ag (DNS now dead → ERR_NAME_NOT_RESOLVED).
 // Current free endpoint is lite-api.jup.ag/swap/v1 (same /quote and /swap paths).
@@ -113,13 +127,8 @@ export async function executeSwap(
     maxRetries: 3,
   });
 
-  // 6. Confirm transaction
-  const latestBlockhash = await connection.getLatestBlockhash();
-  await connection.confirmTransaction({
-    signature,
-    blockhash: latestBlockhash.blockhash,
-    lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-  });
+  // 6. Confirm by polling (no WebSocket — Tatum has no WS endpoint).
+  await confirmByPolling(connection, signature);
 
   // Clear sensitive data
   secretKey.fill(0);
@@ -176,8 +185,7 @@ export async function executeClientPumpSwap(
 
   const connection = getConnection();
   const signature = await connection.sendTransaction(transaction, { skipPreflight: true, maxRetries: 3 });
-  const bh = await connection.getLatestBlockhash();
-  await connection.confirmTransaction({ signature, blockhash: bh.blockhash, lastValidBlockHeight: bh.lastValidBlockHeight });
+  await confirmByPolling(connection, signature);
 
   secretKey.fill(0);
   return { signature, explorerUrl: `https://solscan.io/tx/${signature}` };
