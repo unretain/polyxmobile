@@ -449,7 +449,10 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
     // minute views get 1m bars — coarse but present. getSolPrice() -> USD scale.
     if (ohlcv.length === 0 && clickhouseEnabled()) {
       try {
-        const chData = await ch.getOhlcv(address, Math.max(intervalSec, 60), 200, getSolPrice());
+        // Build fine candles straight from the durable trade history (down to 1s),
+        // NOT the coarse 1m aggregate — so a wiped/stopped coin still shows detailed
+        // candles like Axiom instead of a dozen fat 1m blocks.
+        const chData = await ch.getTradeCandles(address, intervalSec, 600, getSolPrice());
         if (chData.length) { ohlcv = chData; source = "clickhouse"; }
       } catch (e) { console.error("[pulse] CH ohlcv:", (e as Error).message); }
     }
