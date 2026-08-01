@@ -172,6 +172,7 @@ function b58(buf: Buffer): string {
   return new PublicKey(buf).toBase58();
 }
 
+const NO_IMAGE = "\x00none"; // sentinel: metadata fetched OK but has no image (stop retrying)
 async function resolveImage(mint: string, uri: string) {
   if (!uri) return;
   const attach = (img: string) => {
@@ -179,16 +180,17 @@ async function resolveImage(mint: string, uri: string) {
     if (t && !t.logoUri) t.logoUri = img;
   };
   const cached = state.imageCache.get(uri);
-  if (cached) { attach(cached); return; } // already resolved — (re)attach
-  if (cached === "") return;              // fetch in flight — don't duplicate
-  state.imageCache.set(uri, "");          // mark in-flight
+  if (cached === "" || cached === NO_IMAGE) return; // in-flight, or metadata has no image — don't dup/retry
+  if (cached) { attach(cached); return; }           // already resolved — (re)attach
+  state.imageCache.set(uri, "");                     // mark in-flight
   try {
     const res = await fetch(uri, { signal: AbortSignal.timeout(8000) });
     const j = await res.json();
     const img = typeof j?.image === "string" ? j.image : "";
-    // On failure/no-image DELETE the marker (not leave "") so a later view retries,
-    // instead of caching an empty result forever after one transient blip.
-    if (!img) { state.imageCache.delete(uri); return; }
+    // Successful fetch but the metadata genuinely has no image -> cache a sentinel
+    // so we STOP retrying it. A network/fetch error (catch) DELETES the marker so
+    // the list-getter retry re-attempts it (transient blips like slow IPFS recover).
+    if (!img) { state.imageCache.set(uri, NO_IMAGE); return; }
     state.imageCache.set(uri, img);
     attach(img);
   } catch {
@@ -645,11 +647,20 @@ export function startPulseFeed() {
 export function isPulseConnected() { return state.connected; }
 export function getSolPrice() { return state.solPrice; }
 
+// Fire a background image (re)fetch for any listed coin still missing its logo, so
+// transient metadata/IPFS failures recover on the next list poll instead of never.
+function retryImages(entries: [string, PulseToken][]) {
+  for (const [mint, t] of entries) if (!t.logoUri && t.uri) resolveImage(mint, t.uri).catch(() => {});
+}
 export function getNewPairs(limit = 50): PulseToken[] {
-  return Array.from(state.newTokens.values()).sort((a, b) => b.createdAt - a.createdAt).slice(0, limit).map(usd);
+  const entries = Array.from(state.newTokens.entries()).sort((a, b) => b[1].createdAt - a[1].createdAt).slice(0, limit);
+  retryImages(entries);
+  return entries.map(([, t]) => usd(t));
 }
 export function getGraduating(limit = 20): PulseToken[] {
-  return Array.from(state.graduatingTokens.values()).sort((a, b) => b.marketCapSol - a.marketCapSol).slice(0, limit).map(usd);
+  const entries = Array.from(state.graduatingTokens.entries()).sort((a, b) => b[1].marketCapSol - a[1].marketCapSol).slice(0, limit);
+  retryImages(entries);
+  return entries.map(([, t]) => usd(t));
 }
 export function getGraduated(limit = 20): PulseToken[] {
   // Migrated list = RECENT migrations only (last 30 min), newest-first. Drops the
