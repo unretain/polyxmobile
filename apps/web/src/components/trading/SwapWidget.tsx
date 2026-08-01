@@ -211,48 +211,33 @@ export function SwapWidget({
       setError(null);
 
       try {
-        // Try Jupiter first for graduated tokens, or always try Jupiter
+        // Bonding-curve (not graduated) coins → pump.fun native route on OUR RPC,
+        // NO Jupiter. Only graduated coins (trading on the Raydium/PumpSwap AMM) fall
+        // through to Jupiter, where an aggregator is actually required to find a pool.
+        if (!isGraduated) {
+          const pumpRes = await fetch(
+            `/api/trading/pump-quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${rawAmount}&slippage=${slippage}`
+          );
+          const pumpData = await pumpRes.json();
+          if (pumpRes.ok) {
+            setQuote({ ...pumpData, source: "pumpfun" });
+            setTradingSource("pumpfun");
+            return;
+          }
+          // Not on the curve anymore (just graduated) → fall through to Jupiter.
+        }
+
+        // Graduated coin (on the AMM) → Jupiter router.
         const res = await fetch(
           `/api/trading/quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${rawAmount}&slippage=${slippage}`
         );
         const data = await res.json();
-
         if (res.ok) {
-          // Jupiter worked - use it
           setQuote({ ...data, source: "jupiter" });
           setTradingSource("jupiter");
           return;
         }
 
-        // Jupiter failed - try pump.fun for non-graduated tokens
-        if (!isGraduated || data.error?.includes("TOKEN_NOT_TRADABLE") || data.error?.includes("No route found")) {
-          console.log("[SwapWidget] Jupiter failed, trying pump.fun...");
-          try {
-            const pumpRes = await fetch(
-              `/api/trading/pump-quote?inputMint=${inputMint}&outputMint=${outputMint}&amount=${rawAmount}&slippage=${slippage}`
-            );
-            const pumpData = await pumpRes.json();
-            if (pumpRes.ok) {
-              setQuote({ ...pumpData, source: "pumpfun" });
-              setTradingSource("pumpfun");
-              return;
-            }
-            // Pump.fun also failed - show appropriate error
-            if (pumpData.code === "NOT_ON_CURVE") {
-              // Token graduated but Jupiter can't find route - likely no liquidity
-              throw new Error("No trading route available. Token may have low liquidity.");
-            }
-            throw new Error(pumpData.error || "Failed to get quote");
-          } catch (pumpErr) {
-            if (pumpErr instanceof Error && !pumpErr.message.includes("NOT_ON_CURVE")) {
-              throw pumpErr;
-            }
-            // Both failed - show Jupiter's original error
-            throw new Error(data.error || "Failed to get quote");
-          }
-        }
-
-        // Jupiter failed with other error
         let errorMsg = data.error || "Failed to get quote";
         if (errorMsg.includes("Unauthorized") || errorMsg.includes("401")) {
           errorMsg = "RPC connection error. Please try again later.";
