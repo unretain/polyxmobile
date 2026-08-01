@@ -101,7 +101,7 @@ export async function getGraduatedPairs(limit: number, solPrice: number) {
        coalesce(lt.mcap_sol, 0) * {sol:Float64} AS marketCap,
        coalesce(lt.vol_sol, 0) * {sol:Float64} AS volume24h,
        coalesce(lt.tx, 0) AS txCount
-     FROM (SELECT mint, max(ts) AS ts FROM graduations GROUP BY mint HAVING ts > now() - INTERVAL {maxAge:UInt16} DAY ORDER BY ts DESC LIMIT {limit:UInt32}) g
+     FROM (SELECT mint, max(ts) AS ts FROM graduations GROUP BY mint HAVING ts > now() - INTERVAL 30 MINUTE ORDER BY ts DESC LIMIT {limit:UInt32}) g
      LEFT JOIN tokens t FINAL ON g.mint = t.mint
      LEFT JOIN (${TRADE_AGG}) lt ON g.mint = lt.mint
      ORDER BY g.ts DESC
