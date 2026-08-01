@@ -10,6 +10,9 @@ const INITIAL_REAL_TOKEN_RAW = 793_100_000 * 1e6;
 const MIGRATION_MC_SOL = 410.9;
 const INITIAL_MC_SOL = 28;
 const FINAL_STRETCH_PROGRESS = 80;
+// Pulse only shows recent coins: anything older than this drops off automatically,
+// so stale/dead tokens never linger in the lists.
+const MAX_AGE_DAYS = 5;
 
 async function q<T>(sql: string, params: Record<string, unknown>): Promise<T[]> {
   const ch = getClickHouse();
@@ -64,13 +67,13 @@ async function activePairs(limit: number, solPrice: number) {
        coalesce(lt.tx, 0) AS txCount,
        if(lt.first_price_sol > 0, (lt.last_price_sol - lt.first_price_sol) / lt.first_price_sol * 100, 0) AS priceChange24h,
        greatest(0, least(100, (1 - coalesce(lt.real_tok, {init:Float64}) / {init:Float64}) * 100)) AS progress
-     FROM (SELECT * FROM tokens FINAL ORDER BY created_at DESC LIMIT {scan:UInt32}) t
+     FROM (SELECT * FROM tokens FINAL WHERE created_at > now() - INTERVAL {maxAge:UInt16} DAY ORDER BY created_at DESC LIMIT {scan:UInt32}) t
      LEFT JOIN (${TRADE_AGG}) lt ON t.mint = lt.mint
      WHERE t.mint NOT IN (SELECT mint FROM graduations)
      ORDER BY t.created_at DESC
      LIMIT {scan:UInt32}
      SETTINGS join_use_nulls = 1`,
-    { scan: Math.max(limit * 3, 150), init: INITIAL_REAL_TOKEN_RAW, initMcSol: INITIAL_MC_SOL, sol: solPrice }
+    { scan: Math.max(limit * 3, 150), init: INITIAL_REAL_TOKEN_RAW, initMcSol: INITIAL_MC_SOL, sol: solPrice, maxAge: MAX_AGE_DAYS }
   );
   return rows.map((r) => shapePair(r, solPrice));
 }
@@ -98,12 +101,12 @@ export async function getGraduatedPairs(limit: number, solPrice: number) {
        coalesce(lt.mcap_sol, 0) * {sol:Float64} AS marketCap,
        coalesce(lt.vol_sol, 0) * {sol:Float64} AS volume24h,
        coalesce(lt.tx, 0) AS txCount
-     FROM (SELECT mint, max(ts) AS ts FROM graduations GROUP BY mint ORDER BY ts DESC LIMIT {limit:UInt32}) g
+     FROM (SELECT mint, max(ts) AS ts FROM graduations GROUP BY mint HAVING ts > now() - INTERVAL {maxAge:UInt16} DAY ORDER BY ts DESC LIMIT {limit:UInt32}) g
      LEFT JOIN tokens t FINAL ON g.mint = t.mint
      LEFT JOIN (${TRADE_AGG}) lt ON g.mint = lt.mint
      ORDER BY g.ts DESC
      SETTINGS join_use_nulls = 1`,
-    { limit, sol: solPrice }
+    { limit, sol: solPrice, maxAge: MAX_AGE_DAYS }
   );
   return rows.map((r) => ({ ...shapePair(r, solPrice), complete: true, progress: 100, destination: "pumpswap" }));
 }
