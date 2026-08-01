@@ -443,11 +443,13 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
     // shows real history like Axiom, not just the last 100s.
     let ohlcv = getCandles(address, intervalSec, intervalSec <= 1 ? 1200 : 100);
     let source = "grpc";
-    // Evicted / pre-restart token with no live candles → durable ClickHouse history
-    // (1m+ only; sub-minute lives only in memory). sol=1 keeps candles SOL-denominated.
-    if (ohlcv.length === 0 && intervalSec >= 60 && clickhouseEnabled()) {
+    // In-memory fine candles get wiped on restart and don't rebuild for coins that
+    // stopped trading. Fall back to CH's durable 1m candles (USD, matching getCandles)
+    // for ANY timeframe so the chart shows history instead of "No chart data". Sub-
+    // minute views get 1m bars — coarse but present. getSolPrice() -> USD scale.
+    if (ohlcv.length === 0 && clickhouseEnabled()) {
       try {
-        const chData = await ch.getOhlcv(address, intervalSec, 100, 1);
+        const chData = await ch.getOhlcv(address, Math.max(intervalSec, 60), 200, getSolPrice());
         if (chData.length) { ohlcv = chData; source = "clickhouse"; }
       } catch (e) { console.error("[pulse] CH ohlcv:", (e as Error).message); }
     }
@@ -529,49 +531,28 @@ pulseRoutes.get("/trades/:address", async (req, res) => {
       return res.json(JSON.parse(cached));
     }
 
-    // Ensure swaps are synced for this token
-    const syncStatus = await swapSyncService.getSyncStatus(address);
-    if (!syncStatus?.swapsSynced) {
-      // Sync in background, return empty for now
-      swapSyncService.syncHistoricalSwaps(address).catch(() => {});
+    // Trades come from ClickHouse (durable, survives restarts). The old
+    // prisma.tokenSwap path queried a dead DB and always returned empty.
+    let trades: any[] = [];
+    if (clickhouseEnabled()) {
+      const chTrades = await ch.getTrades(address, limit, getSolPrice());
+      trades = chTrades.map((t: any) => ({
+        txHash: "",
+        timestamp: t.timestamp,
+        type: t.type,
+        wallet: t.wallet,
+        tokenAmount: t.tokenAmount,
+        tokenAmountUsd: t.totalValueUsd,
+        tokenSymbol: "",
+        otherAmount: t.otherAmount,
+        otherSymbol: t.otherSymbol,
+        otherAmountUsd: t.totalValueUsd,
+        priceUsd: t.priceUsd,
+        totalValueUsd: t.totalValueUsd,
+      }));
     }
 
-    // Get trades from database
-    const dbTrades = await prisma.tokenSwap.findMany({
-      where: { tokenAddress: address },
-      orderBy: { timestamp: "desc" },
-      take: limit,
-    });
-
-    // Get token info for symbol
-    const tokenInfo = await prisma.pulseToken.findUnique({
-      where: { address },
-      select: { symbol: true },
-    });
-
-    const trades = dbTrades.map((swap) => ({
-      txHash: swap.txHash,
-      timestamp: swap.timestamp.getTime(),
-      type: swap.type,
-      wallet: swap.walletAddress,
-      tokenAmount: swap.tokenAmount.toString(),
-      tokenAmountUsd: swap.totalValueUsd,
-      tokenSymbol: tokenInfo?.symbol || "???",
-      otherAmount: swap.solAmount.toString(),
-      otherSymbol: "SOL",
-      otherAmountUsd: swap.solAmount * (swap.priceUsd > 0 ? swap.totalValueUsd / (swap.tokenAmount * swap.priceUsd) : 200),
-      priceUsd: swap.priceUsd,
-      totalValueUsd: swap.totalValueUsd,
-    }));
-
-    const response = {
-      address,
-      trades,
-      total: trades.length,
-      timestamp: Date.now(),
-      source: "database",
-    };
-
+    const response = { address, trades, total: trades.length, timestamp: Date.now(), source: "clickhouse" };
     await cache.set(cacheKey, JSON.stringify(response), 5);
     res.json(response);
   } catch (error) {
