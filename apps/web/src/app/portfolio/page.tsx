@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useThemeStore } from "@/stores/themeStore";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
+import { useTradeLogStore, type LoggedTrade } from "@/stores/tradeLogStore";
 import { formatNumber, shortenAddress, cn } from "@/lib/utils";
 import {
   ChevronLeft,
@@ -72,9 +73,81 @@ interface PnLData {
   closedPositions: Position[];
 }
 
+// Build the portfolio straight from the locally-logged trades. This is the
+// reliable source for a client-side (mobile) wallet — the shared feed's trader
+// field is too flaky to reconstruct a wallet's history from.
+function buildLocalPortfolio(trades: LoggedTrade[]): PnLData {
+  const byMint = new Map<string, Position>();
+  const daily = new Map<string, DailyPnL>();
+  let totalVolume = 0;
+
+  for (const t of [...trades].sort((a, b) => a.ts - b.ts)) {
+    let pos = byMint.get(t.mint);
+    if (!pos) {
+      pos = {
+        mint: t.mint, symbol: t.symbol || t.mint.slice(0, 4), name: "", image: null,
+        totalBought: 0, totalSold: 0, avgBuyPrice: 0, avgSellPrice: 0,
+        totalBuyCost: 0, totalSellRevenue: 0, currentBalance: 0,
+        realizedPnl: 0, unrealizedPnl: 0, trades: 0, lastTradeAt: null, isOpen: false,
+      };
+      byMint.set(t.mint, pos);
+    }
+    pos.trades++;
+    pos.lastTradeAt = new Date(t.ts).toISOString();
+    totalVolume += t.solAmount;
+
+    const dateKey = new Date(t.ts).toISOString().split("T")[0];
+    let d = daily.get(dateKey);
+    if (!d) { d = { date: dateKey, pnl: 0, trades: 0, volume: 0 }; daily.set(dateKey, d); }
+    d.trades++;
+    d.volume += t.solAmount;
+
+    if (t.side === "buy") {
+      pos.totalBought += t.tokenAmount;
+      pos.totalBuyCost += t.solAmount;
+      pos.currentBalance += t.tokenAmount;
+      pos.avgBuyPrice = pos.totalBought > 0 ? pos.totalBuyCost / pos.totalBought : 0;
+    } else {
+      pos.totalSold += t.tokenAmount;
+      pos.totalSellRevenue += t.solAmount;
+      pos.currentBalance -= t.tokenAmount;
+      pos.avgSellPrice = pos.totalSold > 0 ? pos.totalSellRevenue / pos.totalSold : 0;
+      const costBasis = pos.avgBuyPrice * t.tokenAmount;
+      const tradePnl = t.solAmount - costBasis;
+      pos.realizedPnl += tradePnl;
+      d.pnl += tradePnl;
+    }
+  }
+
+  const positions = Array.from(byMint.values())
+    .map((p) => ({ ...p, isOpen: p.currentBalance > 0.000001 }))
+    .sort((a, b) => (new Date(b.lastTradeAt || 0).getTime()) - (new Date(a.lastTradeAt || 0).getTime()));
+  const dailyPnL = Array.from(daily.values()).sort((a, b) => a.date.localeCompare(b.date));
+
+  let currentStreak = 0, bestStreak = 0, temp = 0;
+  for (const d of dailyPnL) {
+    if (d.pnl > 0) { temp++; if (temp > bestStreak) bestStreak = temp; } else { temp = 0; }
+  }
+  for (const d of [...dailyPnL].reverse()) { if (d.pnl > 0) currentStreak++; else break; }
+
+  const totalRealizedPnl = positions.reduce((s, p) => s + p.realizedPnl, 0);
+  const winRate = dailyPnL.length ? dailyPnL.filter((d) => d.pnl > 0).length / dailyPnL.length : 0;
+
+  return {
+    period: "all", startDate: new Date(0).toISOString(), endDate: new Date().toISOString(),
+    cumulativePnLBaseline: 0,
+    summary: { totalRealizedPnl, totalVolume, totalTrades: trades.length, currentStreak, bestStreak, winRate },
+    dailyPnL,
+    positions,
+    activePositions: positions.filter((p) => p.isOpen),
+    closedPositions: positions.filter((p) => !p.isOpen && p.totalSold > 0),
+  };
+}
+
 export default function PortfolioPage() {
   const { isDark } = useThemeStore();
   const { wallet } = useMobileWalletStore();
+  const loggedTrades = useTradeLogStore((s) => s.trades);
   const [period, setPeriod] = useState<Period>("30d");
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth() + 1);
@@ -95,13 +168,22 @@ export default function PortfolioPage() {
     async function fetchPnL() {
       setIsLoading(true);
       try {
+        // Mobile wallet: build the portfolio from the local trade log (the reliable
+        // record of this wallet's own trades). The shared feed's trader field is too
+        // flaky to reconstruct history from, so we don't depend on it here.
+        if (wallet?.publicKey) {
+          const mine = loggedTrades.filter((t) => t.wallet === wallet.publicKey);
+          if (mine.length) {
+            setData(buildLocalPortfolio(mine));
+            return;
+          }
+        }
+
         const params = new URLSearchParams({ period });
         if (period === "calendar") {
           params.set("year", calendarYear.toString());
           params.set("month", calendarMonth.toString());
         }
-        // Client-side (mobile) wallets have no server session — pass the address so
-        // the portfolio is built from this wallet's on-chain trades in the feed.
         if (wallet?.publicKey) params.set("address", wallet.publicKey);
         const res = await fetch(`/api/trading/pnl?${params}`);
         if (res.ok) {
@@ -115,7 +197,7 @@ export default function PortfolioPage() {
       }
     }
     fetchPnL();
-  }, [period, calendarYear, calendarMonth, wallet?.publicKey]);
+  }, [period, calendarYear, calendarMonth, wallet?.publicKey, loggedTrades]);
 
   // Calculate cumulative PnL for chart
   const cumulativePnL = useMemo(() => {
