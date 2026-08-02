@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createChart, IChartApi, ISeriesApi, CandlestickData, LineData, Time, CandlestickSeries, LineSeries, createSeriesMarkers, ISeriesMarkersPluginApi, SeriesMarker } from "lightweight-charts";
+import { createChart, IChartApi, ISeriesApi, CandlestickData, LineData, Time, CandlestickSeries, LineSeries } from "lightweight-charts";
 import { useThemeStore } from "@/stores/themeStore";
 import type { OHLCV } from "@/stores/pulseStore";
 
@@ -59,7 +59,7 @@ export function TradingViewChart({
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const lineSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
-  const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const [bubbles, setBubbles] = useState<{ x: number; y: number; type: "buy" | "sell" }[]>([]);
   // Track whether we've done the one-time initial fit for the current dataset, so
   // live updates don't keep snapping the user's zoom/pan back to "fit all".
   const fittedRef = useRef(false);
@@ -237,25 +237,50 @@ export function TradingViewChart({
     }
   }, [data, chartReady, supply]); // Re-run when data changes or chart becomes ready
 
-  // Render the user's own buys/sells as B (green, below) / S (red, above) bubbles.
+  // Position the B/S bubbles as an HTML overlay at the EXACT buy/sell time+price.
+  // Recomputed on pan / zoom / resize / timeframe / data so each bubble stays pinned
+  // to its real transaction instead of snapping to whatever bar is nearest.
   useEffect(() => {
-    if (!chartReady || !candleSeriesRef.current) return;
-    const markers: SeriesMarker<Time>[] = (userTrades || [])
-      .filter((t) => typeof t.time === "number" && t.time > 0)
-      .sort((a, b) => a.time - b.time)
-      .map((t) => ({
-        time: t.time as Time,
-        position: t.type === "buy" ? "belowBar" : "aboveBar",
-        color: t.type === "buy" ? "#22c55e" : "#ef4444",
-        shape: "circle" as const,
-        text: t.type === "buy" ? "B" : "S",
-      }));
-    if (!markersRef.current) {
-      markersRef.current = createSeriesMarkers(candleSeriesRef.current, markers);
-    } else {
-      markersRef.current.setMarkers(markers);
-    }
-  }, [userTrades, chartReady]);
+    const chart = chartRef.current;
+    const series = candleSeriesRef.current;
+    if (!chartReady || !chart || !series) return;
+
+    const compute = () => {
+      const ts = chart.timeScale();
+      const cands = data.filter((d) => d && typeof d.timestamp === "number");
+      const out: { x: number; y: number; type: "buy" | "sell" }[] = [];
+      for (const t of userTrades || []) {
+        const timeSec = t.time;
+        if (!cands.length) continue;
+        // Snap to the nearest candle by time — the trade's time is often a few
+        // seconds ahead of the last candle (pipeline lag), which makes a raw
+        // timeToCoordinate return null. The nearest candle IS the trade's candle.
+        let nearest = cands[0];
+        let best = Infinity;
+        for (const c of cands) {
+          const d = Math.abs(c.timestamp / 1000 - timeSec);
+          if (d < best) { best = d; nearest = c; }
+        }
+        const x = ts.timeToCoordinate((nearest.timestamp / 1000) as Time);
+        if (x == null) continue;
+        // Both buy and sell bubbles sit ABOVE the candle (anchor to the high, offset up).
+        const yc = series.priceToCoordinate(nearest.high * supply);
+        if (yc == null) continue;
+        out.push({ x, y: yc - 16, type: t.type });
+      }
+      setBubbles(out);
+    };
+
+    compute();
+    const ts = chart.timeScale();
+    ts.subscribeVisibleTimeRangeChange(compute);
+    const ro = new ResizeObserver(compute);
+    if (chartContainerRef.current) ro.observe(chartContainerRef.current);
+    return () => {
+      ts.unsubscribeVisibleTimeRangeChange(compute);
+      ro.disconnect();
+    };
+  }, [userTrades, chartReady, data, supply]);
 
   // Toggle series visibility based on chart type
   useEffect(() => {
@@ -335,6 +360,38 @@ export function TradingViewChart({
 
       {/* Chart container — always mounted so the chart can attach even before data */}
       <div ref={chartContainerRef} className="h-full w-full" />
+
+      {/* B/S trade bubbles — custom overlay pinned to the exact tx time+price.
+          Bevel/emboss via radial gradient + inset highlight/shadow, white Inter letter. */}
+      <div className="absolute inset-0 z-20 pointer-events-none overflow-hidden">
+        {bubbles.map((b, i) => (
+          <div
+            key={i}
+            className="absolute flex items-center justify-center rounded-full"
+            style={{
+              left: `${b.x}px`,
+              top: `${b.y}px`,
+              width: 20,
+              height: 20,
+              transform: "translate(-50%, -50%)",
+              fontFamily: "Inter, system-ui, sans-serif",
+              fontWeight: 700,
+              fontSize: 11,
+              lineHeight: 1,
+              color: "#ffffff",
+              background:
+                b.type === "buy"
+                  ? "radial-gradient(circle at 35% 30%, #5cf08a, #16a34a 68%, #12833c)"
+                  : "radial-gradient(circle at 35% 30%, #fb8a8a, #dc2626 68%, #b01c1c)",
+              boxShadow:
+                "inset 1px 1px 1.5px rgba(255,255,255,0.55), inset -1.5px -1.5px 2px rgba(0,0,0,0.45), 0 1px 2px rgba(0,0,0,0.55)",
+              border: "1px solid rgba(0,0,0,0.25)",
+            }}
+          >
+            {b.type === "buy" ? "B" : "S"}
+          </div>
+        ))}
+      </div>
 
       {/* Loading / empty as overlays (never early-return the container away) */}
       {isLoading && (!data || data.length === 0) && (

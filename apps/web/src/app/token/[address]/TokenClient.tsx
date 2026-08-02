@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
+import { useDemoStore } from "@/stores/demoStore";
 import { useParams, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -300,16 +301,23 @@ export default function TokenClient() {
   const [chartLoading, setChartLoading] = useState(false);
   const [trades, setTrades] = useState<Trade[]>([]);
   const userWallet = useMobileWalletStore((s) => s.wallet?.publicKey);
+  const isDemo = useDemoStore((s) => s.isDemo);
+  const demoTrades = useDemoStore((s) => s.trades);
   // The user's OWN buys/sells on this coin → B/S bubbles on the chart (Axiom-style).
-  const userTradeMarkers = useMemo(
-    () =>
-      userWallet
-        ? trades
-            .filter((t) => t.wallet === userWallet)
-            .map((t) => ({ time: Math.floor(t.timestamp / 1000), type: t.type }))
-        : [],
-    [trades, userWallet]
-  );
+  // In demo mode the paper trades live in the demo store; otherwise match the real
+  // trade feed by the local wallet's pubkey.
+  const userTradeMarkers = useMemo(() => {
+    if (isDemo) {
+      return demoTrades
+        .filter((t) => t.mint === address)
+        .map((t) => ({ time: Math.floor(t.ts / 1000), type: t.side as "buy" | "sell" }));
+    }
+    return userWallet
+      ? trades
+          .filter((t) => t.wallet === userWallet)
+          .map((t) => ({ time: Math.floor(t.timestamp / 1000), type: t.type }))
+      : [];
+  }, [isDemo, demoTrades, address, trades, userWallet]);
   const [tradesLoading, setTradesLoading] = useState(false);
   const [chartType, setChartType] = useState<ChartType>("candle");
   const [chartPeriod, setChartPeriod] = useState<string | null>(null); // Loaded from localStorage
