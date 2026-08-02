@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { getPumpFunService } from "@/lib/pumpfun";
 import { config } from "@/lib/config";
 
@@ -8,15 +7,9 @@ const SOL_MINT = "So11111111111111111111111111111111111111112";
 // GET /api/trading/pump-quote?inputMint=...&outputMint=...&amount=...
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth();
-
-    if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
-    }
-
+    // No auth guard: a quote is read-only and touches no funds. The Jupiter quote
+    // route is public too — requiring a NextAuth session here 401'd demo/mobile
+    // wallet users (who have no server session) and silently forced them to Jupiter.
     const searchParams = req.nextUrl.searchParams;
     const inputMint = searchParams.get("inputMint");
     const outputMint = searchParams.get("outputMint");
