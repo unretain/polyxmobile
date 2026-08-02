@@ -85,7 +85,7 @@ function buildLocalPortfolio(trades: LoggedTrade[]): PnLData {
     let pos = byMint.get(t.mint);
     if (!pos) {
       pos = {
-        mint: t.mint, symbol: t.symbol || t.mint.slice(0, 4), name: "", image: null,
+        mint: t.mint, symbol: t.symbol || t.mint.slice(0, 4), name: "", image: t.image || null,
         totalBought: 0, totalSold: 0, avgBuyPrice: 0, avgSellPrice: 0,
         totalBuyCost: 0, totalSellRevenue: 0, currentBalance: 0,
         realizedPnl: 0, unrealizedPnl: 0, trades: 0, lastTradeAt: null, isOpen: false,

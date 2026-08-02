@@ -15,6 +15,7 @@ export interface LoggedTrade {
   ts: number; // ms
   wallet: string; // signer pubkey, so a wallet switch shows the right history
   signature?: string;
+  image?: string; // token logo, captured at trade time for the portfolio
 }
 
 interface TradeLogState {

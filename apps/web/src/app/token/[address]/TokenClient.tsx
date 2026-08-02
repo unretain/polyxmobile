@@ -1114,6 +1114,7 @@ export default function TokenClient() {
                 defaultOutputMint={address}
                 outputSymbol={token?.symbol || "TOKEN"}
                 outputDecimals={6}
+                outputImage={getTokenLogoUrl(token?.logoUri, address) || undefined}
                 isGraduated={(token as PulseTokenData)?.complete === true || (token as PulseTokenData)?.destination === "pumpswap"}
               />
             </div>
@@ -1123,6 +1124,7 @@ export default function TokenClient() {
                 defaultOutputMint={address}
                 outputSymbol={token?.symbol || "TOKEN"}
                 outputDecimals={6}
+                outputImage={getTokenLogoUrl(token?.logoUri, address) || undefined}
                 isGraduated={(token as PulseTokenData)?.complete === true || (token as PulseTokenData)?.destination === "pumpswap"}
                 compactMobile={true}
               />
