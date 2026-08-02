@@ -26,34 +26,63 @@ interface MobileWalletState {
   getMnemonic: () => Promise<string | null>; // Decrypt and get mnemonic for signing
 }
 
-// Simple encryption key derived from device info (in production, use secure enclave)
-const getEncryptionKey = (): string => {
-  // Use a combination of factors for the key
-  // In production, this should use iOS Keychain / Android Keystore
+// STABLE per-install key for at-rest obfuscation of the seed in localStorage. The
+// seed already lives on this device; the XOR just avoids storing it in the clear.
+// Previously the key was derived from navigator.userAgent — which changes on every
+// browser update and silently locked users out of their own wallet. This random
+// key is generated once and persisted, so it survives UA/browser changes.
+const DEVICE_KEY_NAME = 'polyx-device-key';
+const getStableKey = (): string => {
+  if (typeof localStorage === 'undefined') return 'polyx-mobile-default-key-0000';
+  let k = localStorage.getItem(DEVICE_KEY_NAME);
+  if (!k) {
+    const bytes = typeof crypto !== 'undefined' && crypto.getRandomValues
+      ? crypto.getRandomValues(new Uint8Array(24))
+      : new Uint8Array(24);
+    k = 'pk-' + Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+    localStorage.setItem(DEVICE_KEY_NAME, k);
+  }
+  return k;
+};
+// Legacy UA-derived key — used ONLY to migrate wallets encrypted before the switch.
+const getLegacyKey = (): string => {
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : 'default';
   return `polyx-mobile-${ua.slice(0, 32)}`;
 };
 
-// Encrypt mnemonic using AES-like XOR (simple for now, upgrade to WebCrypto in production)
-const encryptMnemonic = (mnemonic: string): string => {
-  const key = getEncryptionKey();
-  const encoded = btoa(mnemonic);
-  let result = '';
-  for (let i = 0; i < encoded.length; i++) {
-    result += String.fromCharCode(encoded.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+const xorCipher = (input: string, key: string): string => {
+  let out = '';
+  for (let i = 0; i < input.length; i++) {
+    out += String.fromCharCode(input.charCodeAt(i) ^ key.charCodeAt(i % key.length));
   }
-  return btoa(result);
+  return out;
 };
 
-// Decrypt mnemonic
-const decryptMnemonic = (encrypted: string): string => {
-  const key = getEncryptionKey();
-  const decoded = atob(encrypted);
-  let result = '';
-  for (let i = 0; i < decoded.length; i++) {
-    result += String.fromCharCode(decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+// A decoded blob is only accepted if it looks like a real BIP39 phrase. This
+// guards the legacy-key fallback: a wrong key yields garbage, and using a garbage
+// "mnemonic" would derive a different wallet and could send funds astray.
+const looksLikeMnemonic = (s: string): boolean => {
+  const words = s.trim().split(/\s+/);
+  return (words.length === 12 || words.length === 24) && words.every((w) => /^[a-z]+$/.test(w));
+};
+
+// Always encrypt with the stable key.
+const encryptMnemonic = (mnemonic: string): string => {
+  return btoa(xorCipher(btoa(mnemonic), getStableKey()));
+};
+
+// Try the stable key, then the legacy UA key (migration). Returns the phrase only
+// if it decodes to a valid-looking mnemonic — otherwise null.
+const decryptMnemonic = (encrypted: string): string | null => {
+  for (const key of [getStableKey(), getLegacyKey()]) {
+    try {
+      const phrase = atob(xorCipher(atob(encrypted), key));
+      if (looksLikeMnemonic(phrase)) return phrase;
+    } catch {
+      // wrong key produced non-base64 — try the next
+    }
   }
-  return atob(result);
+  return null;
 };
 
 export const useMobileWalletStore = create<MobileWalletState>()(
@@ -99,11 +128,17 @@ export const useMobileWalletStore = create<MobileWalletState>()(
         }
         // Then check encrypted mnemonic
         if (state.wallet?.encryptedMnemonic) {
-          try {
-            return decryptMnemonic(state.wallet.encryptedMnemonic);
-          } catch {
-            return null;
+          const phrase = decryptMnemonic(state.wallet.encryptedMnemonic);
+          if (!phrase) return null;
+          // Migrate: if it was stored under the legacy UA key, re-encrypt with the
+          // stable key so the next browser update doesn't lock the wallet again.
+          const reEncrypted = encryptMnemonic(phrase);
+          if (reEncrypted !== state.wallet.encryptedMnemonic) {
+            set((s) => ({
+              wallet: s.wallet ? { ...s.wallet, encryptedMnemonic: reEncrypted } : s.wallet,
+            }));
           }
+          return phrase;
         }
         return null;
       },
