@@ -406,31 +406,9 @@ export default function WalletPage() {
           </div>
         )}
 
-        {/* Token List */}
-        {balance && balance.tokens.length > 0 && (
-          <div className={`rounded-2xl overflow-hidden ${isDark ? 'bg-white/5 border border-white/10' : 'bg-white border border-black/10'}`}>
-            <div className={`px-4 py-3 border-b ${isDark ? 'border-white/10' : 'border-black/10'}`}>
-              <h3 className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>Tokens</h3>
-            </div>
-            <div className="divide-y divide-white/5">
-              {balance.tokens.map((token) => (
-                <div key={token.mint} className="px-4 py-3 flex items-center justify-between">
-                  <div>
-                    <p className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {token.symbol || shortenAddress(token.mint, 4)}
-                    </p>
-                    <p className={`text-xs ${isDark ? 'text-white/40' : 'text-black/40'}`}>
-                      {token.name || token.mint.slice(0, 12)}...
-                    </p>
-                  </div>
-                  <p className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {token.uiBalance.toFixed(4)}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Token holdings intentionally live in the Portfolio (Positions), not here.
+            The wallet widget is just SOL balance + deposit/withdraw, so on-chain
+            token accounts and portfolio positions don't show conflicting lists. */}
     </div>
   );
 }
