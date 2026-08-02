@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useThemeStore } from "@/stores/themeStore";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { useTradeLogStore, type LoggedTrade } from "@/stores/tradeLogStore";
+import { tokenPnl } from "@/lib/portfolio";
 import { formatNumber, shortenAddress, cn } from "@/lib/utils";
 import {
   ChevronLeft,
@@ -73,70 +74,92 @@ interface PnLData {
   closedPositions: Position[];
 }
 
-// Build the portfolio straight from the locally-logged trades. This is the
-// reliable source for a client-side (mobile) wallet — the shared feed's trader
-// field is too flaky to reconstruct a wallet's history from.
-function buildLocalPortfolio(trades: LoggedTrade[]): PnLData {
-  const byMint = new Map<string, Position>();
+// Build the portfolio straight from the locally-logged trades, valuing open
+// positions at the current price (priceMap: mint -> SOL price) for unrealized PnL.
+// This is the reliable source for a client-side wallet — the shared feed's trader
+// field is too flaky to reconstruct history from. Runs each mint through the same
+// tokenPnl() the swap panel uses, so the numbers always agree.
+function buildLocalPortfolio(trades: LoggedTrade[], priceMap: Map<string, number>): PnLData {
+  const byMint = new Map<string, LoggedTrade[]>();
+  const meta = new Map<string, { symbol: string; image: string | null; last: number }>();
   const daily = new Map<string, DailyPnL>();
   let totalVolume = 0;
 
-  for (const t of [...trades].sort((a, b) => a.ts - b.ts)) {
-    let pos = byMint.get(t.mint);
-    if (!pos) {
-      pos = {
-        mint: t.mint, symbol: t.symbol || t.mint.slice(0, 4), name: "", image: t.image || null,
-        totalBought: 0, totalSold: 0, avgBuyPrice: 0, avgSellPrice: 0,
-        totalBuyCost: 0, totalSellRevenue: 0, currentBalance: 0,
-        realizedPnl: 0, unrealizedPnl: 0, trades: 0, lastTradeAt: null, isOpen: false,
-      };
-      byMint.set(t.mint, pos);
+  for (const t of trades) {
+    if (!byMint.has(t.mint)) byMint.set(t.mint, []);
+    byMint.get(t.mint)!.push(t);
+    const m = meta.get(t.mint);
+    if (!m || t.ts > m.last) {
+      meta.set(t.mint, { symbol: t.symbol || t.mint.slice(0, 4), image: t.image || m?.image || null, last: t.ts });
+    } else if (t.image && !m.image) {
+      m.image = t.image;
     }
-    pos.trades++;
-    pos.lastTradeAt = new Date(t.ts).toISOString();
     totalVolume += t.solAmount;
 
+    // Daily realized PnL is dated by the sell; value each sell against its running avg.
     const dateKey = new Date(t.ts).toISOString().split("T")[0];
     let d = daily.get(dateKey);
     if (!d) { d = { date: dateKey, pnl: 0, trades: 0, volume: 0 }; daily.set(dateKey, d); }
     d.trades++;
     d.volume += t.solAmount;
+  }
 
-    if (t.side === "buy") {
-      pos.totalBought += t.tokenAmount;
-      pos.totalBuyCost += t.solAmount;
-      pos.currentBalance += t.tokenAmount;
-      pos.avgBuyPrice = pos.totalBought > 0 ? pos.totalBuyCost / pos.totalBought : 0;
-    } else {
-      pos.totalSold += t.tokenAmount;
-      pos.totalSellRevenue += t.solAmount;
-      pos.currentBalance -= t.tokenAmount;
-      pos.avgSellPrice = pos.totalSold > 0 ? pos.totalSellRevenue / pos.totalSold : 0;
-      const costBasis = pos.avgBuyPrice * t.tokenAmount;
-      const tradePnl = t.solAmount - costBasis;
-      pos.realizedPnl += tradePnl;
-      d.pnl += tradePnl;
+  const positions: Position[] = [];
+  for (const [mint, mintTrades] of byMint) {
+    const p = tokenPnl(mintTrades, priceMap.get(mint) || 0);
+    const m = meta.get(mint)!;
+    positions.push({
+      mint,
+      symbol: m.symbol,
+      name: "",
+      image: m.image,
+      totalBought: p.bought,
+      totalSold: p.sold,
+      avgBuyPrice: p.avgBuyPrice,
+      avgSellPrice: p.sold > 0 ? p.solReceived / p.sold : 0,
+      totalBuyCost: p.solSpent,
+      totalSellRevenue: p.solReceived,
+      currentBalance: p.holding,
+      realizedPnl: p.realizedPnl,
+      unrealizedPnl: p.unrealizedPnl,
+      trades: mintTrades.length,
+      lastTradeAt: new Date(m.last).toISOString(),
+      isOpen: p.holding > 0.000001,
+    });
+  }
+  positions.sort((a, b) => new Date(b.lastTradeAt || 0).getTime() - new Date(a.lastTradeAt || 0).getTime());
+
+  // Daily realized PnL for the chart/streaks (from sells only, they carry a date).
+  for (const [mint, mintTrades] of byMint) {
+    const sorted = [...mintTrades].sort((a, b) => a.ts - b.ts);
+    let bought = 0, cost = 0;
+    for (const t of sorted) {
+      if (t.side === "buy") { bought += t.tokenAmount; cost += t.solAmount; }
+      else {
+        const avg = bought > 0 ? cost / bought : 0;
+        const pnl = t.solAmount - avg * t.tokenAmount;
+        const dateKey = new Date(t.ts).toISOString().split("T")[0];
+        const d = daily.get(dateKey);
+        if (d) d.pnl += pnl;
+      }
     }
   }
 
-  const positions = Array.from(byMint.values())
-    .map((p) => ({ ...p, isOpen: p.currentBalance > 0.000001 }))
-    .sort((a, b) => (new Date(b.lastTradeAt || 0).getTime()) - (new Date(a.lastTradeAt || 0).getTime()));
   const dailyPnL = Array.from(daily.values()).sort((a, b) => a.date.localeCompare(b.date));
-
   let currentStreak = 0, bestStreak = 0, temp = 0;
   for (const d of dailyPnL) {
     if (d.pnl > 0) { temp++; if (temp > bestStreak) bestStreak = temp; } else { temp = 0; }
   }
   for (const d of [...dailyPnL].reverse()) { if (d.pnl > 0) currentStreak++; else break; }
 
-  const totalRealizedPnl = positions.reduce((s, p) => s + p.realizedPnl, 0);
+  // Headline "Total PnL" = realized + unrealized across all positions.
+  const totalPnl = positions.reduce((s, p) => s + p.realizedPnl + p.unrealizedPnl, 0);
   const winRate = dailyPnL.length ? dailyPnL.filter((d) => d.pnl > 0).length / dailyPnL.length : 0;
 
   return {
     period: "all", startDate: new Date(0).toISOString(), endDate: new Date().toISOString(),
     cumulativePnLBaseline: 0,
-    summary: { totalRealizedPnl, totalVolume, totalTrades: trades.length, currentStreak, bestStreak, winRate },
+    summary: { totalRealizedPnl: totalPnl, totalVolume, totalTrades: trades.length, currentStreak, bestStreak, winRate },
     dailyPnL,
     positions,
     activePositions: positions.filter((p) => p.isOpen),
@@ -174,7 +197,32 @@ export default function PortfolioPage() {
         if (wallet?.publicKey) {
           const mine = loggedTrades.filter((t) => t.wallet === wallet.publicKey);
           if (mine.length) {
-            setData(buildLocalPortfolio(mine));
+            // Fetch the current SOL price of each traded token so open positions get
+            // unrealized PnL. Without this, held (unsold) positions read as -100%.
+            const mints = [...new Set(mine.map((t) => t.mint))];
+            const priceMap = new Map<string, number>();
+            await Promise.all(
+              mints.map(async (mint) => {
+                try {
+                  const r = await fetch(`/api/pulse/token/${mint}`);
+                  if (!r.ok) return;
+                  const j = await r.json();
+                  // priceSol = USD price / (USD SOL rate). Derive the rate from the
+                  // token's own marketCap/marketCapSol so it's internally consistent.
+                  const solUsd = j.marketCapSol > 0 ? j.marketCap / j.marketCapSol : 0;
+                  const ps =
+                    typeof j.priceSol === "number" && j.priceSol > 0
+                      ? j.priceSol
+                      : solUsd > 0 && j.price
+                      ? j.price / solUsd
+                      : 0;
+                  if (ps > 0) priceMap.set(mint, ps);
+                } catch {
+                  /* leave unpriced → unrealized 0 for this mint */
+                }
+              })
+            );
+            setData(buildLocalPortfolio(mine, priceMap));
             return;
           }
         }
@@ -780,9 +828,10 @@ function PnLChart({ data, isDark }: { data: { date: string; value: number; daily
   const height = 160;
   const width = 100;
 
-  // Generate SVG path
+  // Generate SVG path. With a single data point, i/(length-1) is 0/0 = NaN and the
+  // whole SVG breaks — center the lone point instead.
   const points = data.map((d, i) => {
-    const x = (i / (data.length - 1)) * width;
+    const x = data.length > 1 ? (i / (data.length - 1)) * width : width / 2;
     const y = height - ((d.value - minValue) / range) * height;
     return `${x},${y}`;
   }).join(" ");
