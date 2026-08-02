@@ -335,7 +335,16 @@ export function SwapWidget({
         return;
       }
 
-      // Fallback to server-side swap (requires NextAuth session)
+      // A mobile wallet with no local seed can't sign, and the server route can't
+      // sign for it either (non-custodial — we never hold the key). Tell the user
+      // to re-import instead of firing a doomed 401 at the custodial endpoint.
+      if (wallet) {
+        throw new Error(
+          "Wallet locked — re-import your recovery phrase in Settings to enable trading on this device."
+        );
+      }
+
+      // Fallback to server-side swap (custodial NextAuth-session users only)
       const endpoint = tradingSource === "pumpfun"
         ? "/api/trading/pump-swap"
         : "/api/trading/swap";
