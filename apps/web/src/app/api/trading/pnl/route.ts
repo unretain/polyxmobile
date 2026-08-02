@@ -3,9 +3,74 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { TradeStatus } from "@prisma/client";
 import { config } from "@/lib/config";
+import { feedFetch } from "@/lib/feed";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const MORALIS_API_URL = "https://solana-gateway.moralis.io";
+
+// A Trade-shaped row the PnL computation understands, built from either the
+// custodial Postgres or the on-chain ClickHouse feed.
+type TradeLike = {
+  inputMint: string;
+  outputMint: string;
+  amountIn: number;
+  amountOut: number; // SOL amounts in lamports, token amounts as UI values
+  inputSymbol: string;
+  outputSymbol: string;
+  confirmedAt: Date;
+  createdAt: Date;
+};
+
+// Fetch a wallet's on-chain trades from the shared feed and shape them like the
+// custodial Trade rows, so a mobile/client wallet gets a real portfolio.
+async function fetchWalletTradesAsTrades(address: string): Promise<TradeLike[]> {
+  const res = await feedFetch(`/api/feed/wallet-trades/${address}?limit=2000`);
+  const rows: any[] = res && Array.isArray(res.data) ? res.data : [];
+  return rows.map((t) => {
+    const when = new Date(Number(t.timestamp));
+    if (t.isBuy) {
+      return {
+        inputMint: SOL_MINT,
+        outputMint: t.mint,
+        amountIn: Number(t.solAmount) * 1e9, // lamports
+        amountOut: Number(t.tokenAmount), // UI tokens
+        inputSymbol: "SOL",
+        outputSymbol: "",
+        confirmedAt: when,
+        createdAt: when,
+      };
+    }
+    return {
+      inputMint: t.mint,
+      outputMint: SOL_MINT,
+      amountIn: Number(t.tokenAmount), // UI tokens
+      amountOut: Number(t.solAmount) * 1e9, // lamports
+      inputSymbol: "",
+      outputSymbol: "SOL",
+      confirmedAt: when,
+      createdAt: when,
+    };
+  });
+}
+
+// SwapWidget per-token stats computed from a wallet's on-chain trades.
+function tokenStatsFromTrades(trades: TradeLike[], tokenMint: string) {
+  let totalBought = 0, totalSold = 0, totalSolSpent = 0, totalSolReceived = 0;
+  for (const trade of trades) {
+    if (trade.inputMint !== tokenMint && trade.outputMint !== tokenMint) continue;
+    const isBuy = trade.inputMint === SOL_MINT;
+    if (isBuy) {
+      totalBought += Number(trade.amountOut);
+      totalSolSpent += Number(trade.amountIn) / 1e9;
+    } else {
+      totalSold += Number(trade.amountIn);
+      totalSolReceived += Number(trade.amountOut) / 1e9;
+    }
+  }
+  const holding = Math.max(0, totalBought - totalSold);
+  const pnlPercent = totalSolSpent > 0 ? ((totalSolReceived - totalSolSpent) / totalSolSpent) * 100 : 0;
+  return NextResponse.json({ bought: totalBought, sold: totalSold, holding, pnlPercent });
+}
 
 // Simple token stats for SwapWidget
 async function getTokenStats(userId: string, tokenMint: string) {
@@ -89,19 +154,25 @@ export async function GET(req: NextRequest) {
     const session = await auth();
     const { searchParams } = req.nextUrl;
     const tokenMint = searchParams.get("tokenMint");
+    const address = searchParams.get("address");
 
     // SwapWidget per-token stats. Custodial (session) users compute from their DB
-    // trade history; client-side (mobile/demo) wallets have no server trades, so
-    // return zeros instead of 401-spamming the swap panel every poll.
+    // trade history; client-side (mobile) wallets compute from their on-chain
+    // trades in the feed. No source at all → zeros (never 401-spam the panel).
     if (tokenMint) {
       if (session?.user?.id) {
         return getTokenStats(session.user.id, tokenMint);
       }
+      if (address) {
+        const chTrades = await fetchWalletTradesAsTrades(address);
+        return tokenStatsFromTrades(chTrades, tokenMint);
+      }
       return NextResponse.json({ bought: 0, sold: 0, holding: 0, pnlPercent: 0 });
     }
 
-    // Full PnL dashboard is custodial-only (built on server trade history).
-    if (!session?.user?.id) {
+    // Full PnL dashboard: custodial users use their DB trades; client wallets use
+    // their on-chain trades from the feed. Neither → 401.
+    if (!session?.user?.id && !address) {
       return NextResponse.json(
         { error: "Authentication required" },
         { status: 401 }
@@ -142,14 +213,14 @@ export async function GET(req: NextRequest) {
         displayStartDate = new Date(0); // All time
     }
 
-    // Fetch ALL confirmed trades for cumulative PnL calculation
-    const allTrades = await prisma.trade.findMany({
-      where: {
-        userId: session.user.id,
-        status: TradeStatus.SUCCESS,
-      },
-      orderBy: { confirmedAt: "asc" },
-    });
+    // Fetch ALL confirmed trades for cumulative PnL calculation. Custodial users
+    // read Postgres; client (mobile) wallets read their on-chain trades from the feed.
+    const allTrades: TradeLike[] = session?.user?.id
+      ? await prisma.trade.findMany({
+          where: { userId: session.user.id, status: TradeStatus.SUCCESS },
+          orderBy: { confirmedAt: "asc" },
+        }) as unknown as TradeLike[]
+      : await fetchWalletTradesAsTrades(address!);
 
     // Separate trades: those before display period (for cumulative baseline) and during display period
     const trades = allTrades.filter(t => {

@@ -115,3 +115,19 @@ feedRoutes.get("/ohlcv/:mint", async (req, res) => {
   }
   res.json({ data, source, hasHistory: hasCandles(mint) || data.length > 0 });
 });
+
+// GET /api/feed/wallet-trades/:address — every on-chain trade for a wallet, from
+// the durable feed. Powers the portfolio/PnL for client-side (mobile) wallets,
+// whose trades never touch the custodial Postgres.
+feedRoutes.get("/wallet-trades/:address", async (req, res) => {
+  const address = req.params.address;
+  const limit = Math.min(parseInt(String(req.query.limit)) || 2000, 5000);
+  if (!clickhouseEnabled()) return res.json({ data: [], source: "none" });
+  try {
+    const data = await ch.getWalletTrades(address, limit);
+    res.json({ data, source: "clickhouse" });
+  } catch (e) {
+    console.error("[feed] wallet-trades:", (e as Error).message);
+    res.status(500).json({ error: "Failed to fetch wallet trades" });
+  }
+});

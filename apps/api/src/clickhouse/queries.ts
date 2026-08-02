@@ -217,3 +217,21 @@ export async function getTrades(mint: string, limit: number, solPrice: number) {
     totalValueUsd: Number(r.sol_amount) * p,
   }));
 }
+
+// All on-chain trades for a single wallet (across every token), oldest first, so
+// a client-side (mobile) wallet's portfolio/PnL can be reconstructed from the feed.
+export async function getWalletTrades(trader: string, limit: number) {
+  const rows = await q<any>(
+    `SELECT mint, toUnixTimestamp64Milli(ts) AS timestamp, is_buy, sol_amount, token_amount, price_sol
+     FROM trades WHERE trader = {trader:String} ORDER BY ts ASC LIMIT {limit:UInt32}`,
+    { trader, limit }
+  );
+  return rows.map((r) => ({
+    mint: r.mint,
+    timestamp: Number(r.timestamp),
+    isBuy: !!r.is_buy,
+    solAmount: Number(r.sol_amount),
+    tokenAmount: Number(r.token_amount),
+    priceSol: Number(r.price_sol),
+  }));
+}
