@@ -249,12 +249,16 @@ export default function PortfolioPage() {
 
   // Calculate cumulative PnL for chart
   const cumulativePnL = useMemo(() => {
-    if (!data?.dailyPnL) return [];
-    let cumulative = data.cumulativePnLBaseline || 0;
-    return data.dailyPnL.map((d) => {
+    if (!data?.dailyPnL || data.dailyPnL.length === 0) return [];
+    const base = data.cumulativePnLBaseline || 0;
+    let cumulative = base;
+    const series = data.dailyPnL.map((d) => {
       cumulative += d.pnl;
       return { date: d.date, value: cumulative, dailyPnl: d.pnl };
     });
+    // Prepend a baseline point so a single day of trading still draws a visible
+    // line (from 0 to the day's value) instead of a lone, invisible dot.
+    return [{ date: "", value: base, dailyPnl: 0 }, ...series];
   }, [data]);
 
   // Calendar navigation
