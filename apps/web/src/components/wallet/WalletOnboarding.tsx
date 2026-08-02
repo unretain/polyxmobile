@@ -94,7 +94,7 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
   // Apple App Review demo account: paper-trading mode, pre-populated wallet.
   // Real users never reach this — it only fires on the exact demo credentials.
   const handleDemoLogin = () => {
-    if (demoUser.trim().toLowerCase() !== "apple" || demoPass !== "apple123") {
+    if (demoUser.trim().toLowerCase() !== "apple" || demoPass.trim() !== "apple123") {
       setDemoError("Invalid demo credentials");
       return;
     }
@@ -322,6 +322,8 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
                       placeholder="Username"
                       autoCapitalize="none"
                       autoCorrect="off"
+                      autoComplete="off"
+                      name="polyx-demo-user"
                       className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30"
                     />
                     <input
@@ -329,6 +331,8 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
                       onChange={(e) => setDemoPass(e.target.value)}
                       placeholder="Password"
                       type="password"
+                      autoComplete="new-password"
+                      name="polyx-demo-pass"
                       className="w-full bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30"
                     />
                     {demoError && <p className="text-xs text-red-400">{demoError}</p>}
