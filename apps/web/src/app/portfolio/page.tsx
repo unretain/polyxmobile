@@ -100,6 +100,9 @@ export default function PortfolioPage() {
           params.set("year", calendarYear.toString());
           params.set("month", calendarMonth.toString());
         }
+        // Client-side (mobile) wallets have no server session — pass the address so
+        // the portfolio is built from this wallet's on-chain trades in the feed.
+        if (wallet?.publicKey) params.set("address", wallet.publicKey);
         const res = await fetch(`/api/trading/pnl?${params}`);
         if (res.ok) {
           const json = await res.json();
@@ -112,7 +115,7 @@ export default function PortfolioPage() {
       }
     }
     fetchPnL();
-  }, [period, calendarYear, calendarMonth]);
+  }, [period, calendarYear, calendarMonth, wallet?.publicKey]);
 
   // Calculate cumulative PnL for chart
   const cumulativePnL = useMemo(() => {
