@@ -14,6 +14,7 @@ import {
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { useThemeStore } from "@/stores/themeStore";
 import { shortenAddress } from "@/lib/wallet";
+import { executeClientWithdraw } from "@/lib/mobileSwap";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -105,6 +106,37 @@ export default function WalletPage() {
     setSuccess(null);
 
     try {
+      // Client-side (mobile) wallet: sign the transfer locally. Non-custodial, so
+      // the server never holds the key — the custodial route can't do this.
+      const mnemonic = await useMobileWalletStore.getState().getMnemonic();
+      if (mnemonic) {
+        const isSol = selectedToken === SOL_MINT;
+        const decimals = isSol
+          ? 9
+          : balance?.tokens.find((t) => t.mint === selectedToken)?.decimals ?? 6;
+        await executeClientWithdraw(
+          mnemonic,
+          destinationAddress,
+          parseFloat(amount),
+          isSol ? null : selectedToken,
+          decimals
+        );
+        setSuccess("Withdrawal successful!");
+        setAmount("");
+        setDestinationAddress("");
+        fetchBalance();
+        return;
+      }
+
+      // A mobile wallet with no local seed can't sign, and the server can't sign
+      // for it either — tell the user to re-import instead of a doomed 401.
+      if (wallet) {
+        throw new Error(
+          "Wallet locked — re-import your recovery phrase in Settings to withdraw."
+        );
+      }
+
+      // Custodial (session) fallback.
       const res = await fetch("/api/trading/withdraw", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

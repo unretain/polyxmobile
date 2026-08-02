@@ -1,4 +1,18 @@
-import { Connection, VersionedTransaction, Keypair } from "@solana/web3.js";
+import {
+  Connection,
+  VersionedTransaction,
+  Keypair,
+  PublicKey,
+  Transaction,
+  SystemProgram,
+  LAMPORTS_PER_SOL,
+} from "@solana/web3.js";
+import {
+  getAssociatedTokenAddress,
+  createTransferInstruction,
+  createAssociatedTokenAccountInstruction,
+  getAccount,
+} from "@solana/spl-token";
 import { deriveKeypairFromMnemonic } from "./mobileWallet";
 
 // RPC endpoint — Tatum by default (env-overridable). The API key, if set, is
@@ -198,4 +212,72 @@ export async function getWalletBalance(publicKey: string): Promise<number> {
   const connection = getConnection();
   const balance = await connection.getBalance(new (await import("@solana/web3.js")).PublicKey(publicKey));
   return balance / 1e9; // Convert lamports to SOL
+}
+
+const SOL_MINT_STR = "So11111111111111111111111111111111111111112";
+
+/**
+ * Withdraw SOL or an SPL token from the local (mobile) wallet, signed client-side.
+ * Non-custodial: the server never holds the key, so withdrawals must be built and
+ * signed here. Pass tokenMint=null (or the SOL mint) for a native SOL transfer.
+ */
+export async function executeClientWithdraw(
+  mnemonic: string,
+  destination: string,
+  amountUi: number,
+  tokenMint?: string | null,
+  decimals: number = 9
+): Promise<{ signature: string; explorerUrl: string }> {
+  const connection = getConnection();
+  const { secretKey } = deriveKeypairFromMnemonic(mnemonic);
+  const keypair = Keypair.fromSecretKey(secretKey);
+  const owner = keypair.publicKey;
+
+  let destPubkey: PublicKey;
+  try {
+    destPubkey = new PublicKey(destination);
+  } catch {
+    secretKey.fill(0);
+    throw new Error("Invalid destination address");
+  }
+
+  const tx = new Transaction();
+
+  if (!tokenMint || tokenMint === SOL_MINT_STR) {
+    const lamports = Math.round(amountUi * LAMPORTS_PER_SOL);
+    if (lamports <= 0) {
+      secretKey.fill(0);
+      throw new Error("Amount too small");
+    }
+    tx.add(SystemProgram.transfer({ fromPubkey: owner, toPubkey: destPubkey, lamports }));
+  } else {
+    const mint = new PublicKey(tokenMint);
+    const rawAmount = BigInt(Math.round(amountUi * Math.pow(10, decimals)));
+    if (rawAmount <= BigInt(0)) {
+      secretKey.fill(0);
+      throw new Error("Amount too small");
+    }
+    const sourceAta = await getAssociatedTokenAddress(mint, owner);
+    const destAta = await getAssociatedTokenAddress(mint, destPubkey);
+    // Create the recipient's token account if it doesn't exist yet (sender pays rent).
+    try {
+      await getAccount(connection, destAta);
+    } catch {
+      tx.add(createAssociatedTokenAccountInstruction(owner, destAta, destPubkey, mint));
+    }
+    tx.add(createTransferInstruction(sourceAta, destAta, owner, rawAmount));
+  }
+
+  tx.feePayer = owner;
+  const { blockhash } = await connection.getLatestBlockhash("confirmed");
+  tx.recentBlockhash = blockhash;
+  tx.sign(keypair);
+
+  const signature = await connection.sendRawTransaction(tx.serialize(), {
+    skipPreflight: false,
+    maxRetries: 3,
+  });
+  secretKey.fill(0);
+  await confirmByPolling(connection, signature);
+  return { signature, explorerUrl: `https://solscan.io/tx/${signature}` };
 }
