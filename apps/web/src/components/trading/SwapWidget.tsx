@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { useDemoStore } from "@/stores/demoStore";
+import { useTradeLogStore } from "@/stores/tradeLogStore";
 import { Loader2, RefreshCw, RotateCcw, Pencil, X } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import { useToast } from "@/components/ui/Toast";
@@ -310,11 +311,34 @@ export function SwapWidget({
       const mnemonic = await useMobileWalletStore.getState().getMnemonic();
 
       if (mnemonic) {
+        let result: { signature: string; explorerUrl: string } | undefined;
         if (tradingSource === "jupiter") {
-          await executeClientSwap(mnemonic, inputMint!, outputMint!, rawAmount, slippage);
+          result = await executeClientSwap(mnemonic, inputMint!, outputMint!, rawAmount, slippage);
         } else {
           const tokenMint = isBuy ? outputMint! : inputMint!;
-          await executeClientPumpSwap(mnemonic, tokenMint, rawAmount, slippage, isBuy);
+          result = await executeClientPumpSwap(mnemonic, tokenMint, rawAmount, slippage, isBuy);
+        }
+
+        // Record the trade locally so B/S bubbles + portfolio show it instantly and
+        // reliably — the shared feed's trader field is too flaky to depend on.
+        if (wallet?.publicKey) {
+          const tokenMint = isBuy ? outputMint! : inputMint!;
+          const solAmount = isBuy
+            ? parseFloat(inputAmount)
+            : Number(quote.outAmount) / 1e9;
+          const tokenAmount = isBuy
+            ? Number(quote.outAmount) / Math.pow(10, outputDecimals)
+            : parseFloat(inputAmount);
+          useTradeLogStore.getState().addTrade({
+            mint: tokenMint,
+            symbol: outputSymbol,
+            side: isBuy ? "buy" : "sell",
+            solAmount,
+            tokenAmount,
+            ts: Date.now(),
+            wallet: wallet.publicKey,
+            signature: result?.signature,
+          });
         }
 
         // Success! Play sound and show toast
