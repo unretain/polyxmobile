@@ -565,38 +565,12 @@ export class JupiterService {
       console.log(`[JupiterService] RPC returned ${result.length} tokens with balance`);
       return result;
     } catch (error) {
-      console.warn(`[JupiterService] RPC getTokenAccounts failed, trying Moralis:`, error);
+      // Deliberately NO Moralis fallback: its /tokens cache is stale and shows
+      // phantom holdings the wallet already sold (verified on-chain empty while
+      // Moralis reported 90). An empty list is correct; phantom tokens are not.
+      console.warn(`[JupiterService] RPC getTokenAccounts failed, returning empty:`, error);
+      return [];
     }
-
-    // Fallback: Moralis (may be stale) only if the RPC read errored outright.
-    const moralisKey = config.moralisApiKey;
-    if (moralisKey) {
-      try {
-        const response = await fetch(
-          `https://solana-gateway.moralis.io/account/mainnet/${walletAddress}/tokens`,
-          {
-            headers: { "X-API-Key": moralisKey, "Accept": "application/json" },
-            signal: AbortSignal.timeout(10000),
-          }
-        );
-        if (response.ok) {
-          const data = await response.json();
-          if (Array.isArray(data)) {
-            return data
-              .filter((token: any) => token.amount && token.amount !== "0")
-              .map((token: any) => ({
-                mint: token.mint,
-                balance: token.amount,
-                decimals: parseInt(token.decimals, 10) || 6,
-              }));
-          }
-        }
-      } catch (e) {
-        console.warn("[JupiterService] Moralis fallback failed for tokens:", e);
-      }
-    }
-
-    return [];
   }
 
   /**
