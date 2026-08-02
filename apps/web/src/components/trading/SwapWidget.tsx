@@ -45,6 +45,7 @@ interface SwapWidgetProps {
   defaultOutputMint?: string;
   outputSymbol?: string;
   outputDecimals?: number;
+  outputImage?: string;
   isGraduated?: boolean;
   compactMobile?: boolean;
 }
@@ -94,6 +95,7 @@ export function SwapWidget({
   defaultOutputMint,
   outputSymbol = "TOKEN",
   outputDecimals = 9,
+  outputImage,
   isGraduated = true,
   compactMobile = false,
 }: SwapWidgetProps) {
@@ -347,6 +349,7 @@ export function SwapWidget({
             ts: Date.now(),
             wallet: wallet.publicKey,
             signature: result?.signature,
+            image: outputImage,
           });
         }
 
