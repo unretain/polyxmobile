@@ -87,20 +87,25 @@ interface Position {
 export async function GET(req: NextRequest) {
   try {
     const session = await auth();
+    const { searchParams } = req.nextUrl;
+    const tokenMint = searchParams.get("tokenMint");
 
+    // SwapWidget per-token stats. Custodial (session) users compute from their DB
+    // trade history; client-side (mobile/demo) wallets have no server trades, so
+    // return zeros instead of 401-spamming the swap panel every poll.
+    if (tokenMint) {
+      if (session?.user?.id) {
+        return getTokenStats(session.user.id, tokenMint);
+      }
+      return NextResponse.json({ bought: 0, sold: 0, holding: 0, pnlPercent: 0 });
+    }
+
+    // Full PnL dashboard is custodial-only (built on server trade history).
     if (!session?.user?.id) {
       return NextResponse.json(
         { error: "Authentication required" },
         { status: 401 }
       );
-    }
-
-    const { searchParams } = req.nextUrl;
-    const tokenMint = searchParams.get("tokenMint");
-
-    // If tokenMint is provided, return simple stats for SwapWidget
-    if (tokenMint) {
-      return getTokenStats(session.user.id, tokenMint);
     }
 
     const period = searchParams.get("period") || "30d"; // 1d, 7d, 30d, all
