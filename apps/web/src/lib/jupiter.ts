@@ -534,54 +534,12 @@ export class JupiterService {
   ): Promise<Array<{ mint: string; balance: string; decimals: number }>> {
     console.log(`[JupiterService] getTokenAccounts for wallet: ${walletAddress}`);
 
-    const moralisKey = config.moralisApiKey;
-
-    // Try Moralis API first
-    if (moralisKey) {
-      try {
-        console.log("[JupiterService] Using Moralis API for token accounts");
-        const response = await fetch(
-          `https://solana-gateway.moralis.io/account/mainnet/${walletAddress}/tokens`,
-          {
-            headers: {
-              "X-API-Key": moralisKey,
-              "Accept": "application/json",
-            },
-            signal: AbortSignal.timeout(10000),
-          }
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          // Moralis returns array of tokens: [{ associatedTokenAddress, mint, amount, decimals, ... }]
-          if (Array.isArray(data)) {
-            const tokens = data
-              .filter((token: any) => token.amount && token.amount !== "0")
-              .map((token: any) => ({
-                mint: token.mint,
-                balance: token.amount,
-                decimals: parseInt(token.decimals, 10) || 6,
-              }));
-
-            console.log(`[JupiterService] Moralis returned ${tokens.length} tokens with balance`);
-            return tokens;
-          }
-        } else {
-          console.warn("[JupiterService] Moralis tokens API failed:", response.status, await response.text());
-        }
-      } catch (e) {
-        console.warn("[JupiterService] Moralis API failed for tokens, falling back to RPC:", e);
-      }
-    }
-
-    // Fallback to standard RPC
+    // RPC is AUTHORITATIVE and fresh — read it first. Moralis's /tokens endpoint is
+    // cached and goes stale, showing tokens the wallet already sold (phantom holdings
+    // the user could try to withdraw). An empty RPC result is a real answer: no tokens.
     try {
       const { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } = await import("@solana/spl-token");
 
-      console.log(`[JupiterService] Fetching SPL tokens with program: ${TOKEN_PROGRAM_ID.toBase58()}`);
-      console.log(`[JupiterService] Fetching Token-2022 with program: ${TOKEN_2022_PROGRAM_ID.toBase58()}`);
-
-      // Fetch both regular SPL tokens and Token-2022 tokens
       const [splAccounts, token2022Accounts] = await Promise.all([
         this.connection.getParsedTokenAccountsByOwner(
           new PublicKey(walletAddress),
@@ -593,33 +551,52 @@ export class JupiterService {
         ),
       ]);
 
-      console.log(`[JupiterService] SPL result:`, JSON.stringify({
-        count: splAccounts.value.length,
-        context: splAccounts.context,
-      }));
-      console.log(`[JupiterService] Token-2022 result:`, JSON.stringify({
-        count: token2022Accounts.value.length,
-        context: token2022Accounts.context,
-      }));
-
       const allAccounts = [...splAccounts.value, ...token2022Accounts.value];
-      console.log(`[JupiterService] Found ${splAccounts.value.length} SPL tokens, ${token2022Accounts.value.length} Token-2022 tokens`);
-
-      const result = allAccounts.map((account) => {
-        const info = account.account.data.parsed.info;
-        console.log(`[JupiterService] Token account: mint=${info.mint}, amount=${info.tokenAmount.amount}, decimals=${info.tokenAmount.decimals}`);
-        return {
+      // Only accounts with a non-zero balance — drop emptied/closed token accounts.
+      const result = allAccounts
+        .map((account) => account.account.data.parsed.info)
+        .filter((info) => info?.tokenAmount?.amount && info.tokenAmount.amount !== "0")
+        .map((info) => ({
           mint: info.mint,
           balance: info.tokenAmount.amount,
           decimals: info.tokenAmount.decimals,
-        };
-      });
+        }));
 
+      console.log(`[JupiterService] RPC returned ${result.length} tokens with balance`);
       return result;
     } catch (error) {
-      console.error(`[JupiterService] getTokenAccounts error:`, error);
-      throw error;
+      console.warn(`[JupiterService] RPC getTokenAccounts failed, trying Moralis:`, error);
     }
+
+    // Fallback: Moralis (may be stale) only if the RPC read errored outright.
+    const moralisKey = config.moralisApiKey;
+    if (moralisKey) {
+      try {
+        const response = await fetch(
+          `https://solana-gateway.moralis.io/account/mainnet/${walletAddress}/tokens`,
+          {
+            headers: { "X-API-Key": moralisKey, "Accept": "application/json" },
+            signal: AbortSignal.timeout(10000),
+          }
+        );
+        if (response.ok) {
+          const data = await response.json();
+          if (Array.isArray(data)) {
+            return data
+              .filter((token: any) => token.amount && token.amount !== "0")
+              .map((token: any) => ({
+                mint: token.mint,
+                balance: token.amount,
+                decimals: parseInt(token.decimals, 10) || 6,
+              }));
+          }
+        }
+      } catch (e) {
+        console.warn("[JupiterService] Moralis fallback failed for tokens:", e);
+      }
+    }
+
+    return [];
   }
 
   /**

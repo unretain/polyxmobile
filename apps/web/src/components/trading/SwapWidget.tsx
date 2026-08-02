@@ -169,17 +169,26 @@ export function SwapWidget({
   }, [wallet, noWallet]);
 
   const fetchTokenStats = useCallback(async () => {
-    if (!wallet || !defaultOutputMint) return;
-    try {
-      const res = await fetch(`/api/trading/pnl?tokenMint=${defaultOutputMint}`);
-      if (res.ok) {
-        const data = await res.json();
-        setTokenStats(data);
-      }
-    } catch (err) {
-      console.error("Failed to fetch token stats:", err);
+    if (!defaultOutputMint) return;
+    // Compute bought/sold/holding/PnL from the reliable local trade log (demo uses
+    // the paper store). The shared feed's trader field is too flaky to use here.
+    const demo = useDemoStore.getState();
+    const rows = demo.isDemo
+      ? demo.trades.filter((t) => t.mint === defaultOutputMint)
+      : useTradeLogStore
+          .getState()
+          .trades.filter(
+            (t) => t.mint === defaultOutputMint && (!wallet?.publicKey || t.wallet === wallet.publicKey)
+          );
+    let bought = 0, sold = 0, solSpent = 0, solReceived = 0;
+    for (const t of rows) {
+      if (t.side === "buy") { bought += t.tokenAmount; solSpent += t.solAmount; }
+      else { sold += t.tokenAmount; solReceived += t.solAmount; }
     }
-  }, [wallet, defaultOutputMint]);
+    const holding = Math.max(0, bought - sold);
+    const pnlPercent = solSpent > 0 ? ((solReceived - solSpent) / solSpent) * 100 : 0;
+    setTokenStats({ bought, sold, holding, pnlPercent });
+  }, [defaultOutputMint, wallet?.publicKey]);
 
   useEffect(() => {
     fetchBalance();
