@@ -61,6 +61,10 @@ export interface PulseToken {
   progress: number;
   destination?: string;
   graduatedAt?: number; // when it migrated (for recency filtering of the migrated list)
+  // socials, pulled from the token metadata JSON alongside the image
+  twitter?: string;
+  telegram?: string;
+  website?: string;
   // internal
   priceSol?: number;
   launchPriceSol?: number;
@@ -188,6 +192,15 @@ async function resolveImage(mint: string, uri: string) {
     const res = await fetch(uri, { signal: AbortSignal.timeout(8000) });
     const j = await res.json();
     const img = typeof j?.image === "string" ? j.image : "";
+    // Socials live in the same metadata JSON (top-level or under extensions).
+    const t = state.newTokens.get(mint) || state.graduatingTokens.get(mint) || state.graduatedTokens.get(mint);
+    if (t) {
+      const ext = j?.extensions || {};
+      const pick = (a: unknown, b: unknown) => (typeof a === "string" && a ? a : typeof b === "string" && b ? b : undefined);
+      t.twitter = t.twitter || pick(j?.twitter, ext.twitter) || pick(j?.twitter_url, ext.twitter_url);
+      t.telegram = t.telegram || pick(j?.telegram, ext.telegram);
+      t.website = t.website || pick(j?.website, ext.website);
+    }
     // Successful fetch but the metadata genuinely has no image -> cache a sentinel
     // so we STOP retrying it. A network/fetch error (catch) DELETES the marker so
     // the list-getter retry re-attempts it (transient blips like slow IPFS recover).
