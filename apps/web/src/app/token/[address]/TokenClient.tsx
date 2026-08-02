@@ -163,6 +163,7 @@ interface PulseTokenData {
   volume24h: number;
   liquidity: number;
   marketCap: number;
+  marketCapSol?: number;
   txCount: number;
   createdAt: number;
   source?: string;
@@ -1115,6 +1116,7 @@ export default function TokenClient() {
                 outputSymbol={token?.symbol || "TOKEN"}
                 outputDecimals={6}
                 outputImage={getTokenLogoUrl(token?.logoUri, address) || undefined}
+                currentPriceSol={(token as PulseTokenData)?.marketCapSol && token?.marketCap && token?.price ? token.price * (token as PulseTokenData).marketCapSol! / token.marketCap : 0}
                 isGraduated={(token as PulseTokenData)?.complete === true || (token as PulseTokenData)?.destination === "pumpswap"}
               />
             </div>
@@ -1125,6 +1127,7 @@ export default function TokenClient() {
                 outputSymbol={token?.symbol || "TOKEN"}
                 outputDecimals={6}
                 outputImage={getTokenLogoUrl(token?.logoUri, address) || undefined}
+                currentPriceSol={(token as PulseTokenData)?.marketCapSol && token?.marketCap && token?.price ? token.price * (token as PulseTokenData).marketCapSol! / token.marketCap : 0}
                 isGraduated={(token as PulseTokenData)?.complete === true || (token as PulseTokenData)?.destination === "pumpswap"}
                 compactMobile={true}
               />

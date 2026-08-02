@@ -273,8 +273,11 @@ export async function executeClientWithdraw(
   tx.recentBlockhash = blockhash;
   tx.sign(keypair);
 
+  // skipPreflight: Tatum's preflight simulation returns a "failed" wrapper even when
+  // the instruction logs show success, which blocked valid withdrawals. The tx is
+  // built correctly; send it and confirm by polling (same as the swaps).
   const signature = await connection.sendRawTransaction(tx.serialize(), {
-    skipPreflight: false,
+    skipPreflight: true,
     maxRetries: 3,
   });
   secretKey.fill(0);

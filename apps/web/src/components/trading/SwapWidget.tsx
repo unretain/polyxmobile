@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { useDemoStore } from "@/stores/demoStore";
 import { useTradeLogStore } from "@/stores/tradeLogStore";
+import { tokenPnl } from "@/lib/portfolio";
 import { Loader2, RefreshCw, RotateCcw, Pencil, X } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import { useToast } from "@/components/ui/Toast";
@@ -46,6 +47,7 @@ interface SwapWidgetProps {
   outputSymbol?: string;
   outputDecimals?: number;
   outputImage?: string;
+  currentPriceSol?: number;
   isGraduated?: boolean;
   compactMobile?: boolean;
 }
@@ -96,6 +98,7 @@ export function SwapWidget({
   outputSymbol = "TOKEN",
   outputDecimals = 9,
   outputImage,
+  currentPriceSol = 0,
   isGraduated = true,
   compactMobile = false,
 }: SwapWidgetProps) {
@@ -123,8 +126,22 @@ export function SwapWidget({
   const [isEditingSolAmounts, setIsEditingSolAmounts] = useState(false);
   const [customSolAmounts, setCustomSolAmounts] = useState([0.1, 0.25, 0.5, 1]);
   const [editingSolAmounts, setEditingSolAmounts] = useState([0.1, 0.25, 0.5, 1]);
-  // Token stats (bought/sold/holding/PnL)
-  const [tokenStats, setTokenStats] = useState<TokenStats | null>(null);
+  // Token stats (bought/sold/holding/PnL) computed LIVE from the local trade log +
+  // current price, so PnL reflects unrealized value and updates as the price moves.
+  const loggedTrades = useTradeLogStore((s) => s.trades);
+  const isDemoStats = useDemoStore((s) => s.isDemo);
+  const demoTradesStats = useDemoStore((s) => s.trades);
+  const tokenStats = useMemo<TokenStats | null>(() => {
+    if (!defaultOutputMint) return null;
+    const rows = isDemoStats
+      ? demoTradesStats.filter((t) => t.mint === defaultOutputMint)
+      : loggedTrades.filter(
+          (t) => t.mint === defaultOutputMint && (!wallet?.publicKey || t.wallet === wallet.publicKey)
+        );
+    if (!rows.length) return { bought: 0, sold: 0, holding: 0, pnlPercent: 0 };
+    const p = tokenPnl(rows, currentPriceSol);
+    return { bought: p.bought, sold: p.sold, holding: p.holding, pnlPercent: p.pnlPercent };
+  }, [defaultOutputMint, loggedTrades, demoTradesStats, isDemoStats, wallet?.publicKey, currentPriceSol]);
 
   const inputMint = isBuy ? SOL_MINT : defaultOutputMint;
   const outputMint = isBuy ? defaultOutputMint : SOL_MINT;
@@ -170,38 +187,15 @@ export function SwapWidget({
     }
   }, [wallet, noWallet]);
 
-  const fetchTokenStats = useCallback(async () => {
-    if (!defaultOutputMint) return;
-    // Compute bought/sold/holding/PnL from the reliable local trade log (demo uses
-    // the paper store). The shared feed's trader field is too flaky to use here.
-    const demo = useDemoStore.getState();
-    const rows = demo.isDemo
-      ? demo.trades.filter((t) => t.mint === defaultOutputMint)
-      : useTradeLogStore
-          .getState()
-          .trades.filter(
-            (t) => t.mint === defaultOutputMint && (!wallet?.publicKey || t.wallet === wallet.publicKey)
-          );
-    let bought = 0, sold = 0, solSpent = 0, solReceived = 0;
-    for (const t of rows) {
-      if (t.side === "buy") { bought += t.tokenAmount; solSpent += t.solAmount; }
-      else { sold += t.tokenAmount; solReceived += t.solAmount; }
-    }
-    const holding = Math.max(0, bought - sold);
-    const pnlPercent = solSpent > 0 ? ((solReceived - solSpent) / solSpent) * 100 : 0;
-    setTokenStats({ bought, sold, holding, pnlPercent });
-  }, [defaultOutputMint, wallet?.publicKey]);
 
   useEffect(() => {
     fetchBalance();
-    fetchTokenStats();
     // Auto-refresh balance every 30 seconds (balance updates immediately after swaps anyway)
     const interval = setInterval(() => {
       fetchBalance();
-      fetchTokenStats();
     }, 30000);
     return () => clearInterval(interval);
-  }, [fetchBalance, fetchTokenStats]);
+  }, [fetchBalance]);
 
   useEffect(() => {
     const fetchQuote = async () => {
@@ -303,7 +297,6 @@ export function SwapWidget({
       setQuote(null);
       setTradingSource(null);
       fetchBalance();
-      fetchTokenStats();
       return;
     }
 
@@ -367,7 +360,6 @@ export function SwapWidget({
         setQuote(null);
         setTradingSource(null);
         fetchBalance();
-        fetchTokenStats();
         return;
       }
 
@@ -418,7 +410,6 @@ export function SwapWidget({
       setQuote(null);
       setTradingSource(null);
       fetchBalance();
-      fetchTokenStats();
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Swap failed";
       setError(errorMsg);
