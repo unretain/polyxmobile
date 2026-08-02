@@ -338,7 +338,13 @@ export default function WalletPage() {
                   }`}
                 />
                 <button
-                  onClick={() => setAmount(getSelectedBalance().toString())}
+                  onClick={() => {
+                    const bal = getSelectedBalance();
+                    // For SOL, leave ~0.00001 SOL for the network fee so the transfer
+                    // can pay for itself (otherwise it fails "insufficient lamports").
+                    const max = selectedToken === SOL_MINT ? Math.max(0, bal - 0.00001) : bal;
+                    setAmount(max.toString());
+                  }}
                   className={`px-4 py-3 rounded-xl font-medium ${
                     isDark ? 'bg-white/10 text-white/60 hover:bg-white/15' : 'bg-black/10 text-black/60 hover:bg-black/15'
                   }`}
