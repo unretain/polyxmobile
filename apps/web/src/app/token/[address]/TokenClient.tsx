@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { useParams, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
@@ -298,6 +299,17 @@ export default function TokenClient() {
   const [ohlcv, setOhlcv] = useState<OHLCV[]>([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [trades, setTrades] = useState<Trade[]>([]);
+  const userWallet = useMobileWalletStore((s) => s.wallet?.publicKey);
+  // The user's OWN buys/sells on this coin → B/S bubbles on the chart (Axiom-style).
+  const userTradeMarkers = useMemo(
+    () =>
+      userWallet
+        ? trades
+            .filter((t) => t.wallet === userWallet)
+            .map((t) => ({ time: Math.floor(t.timestamp / 1000), type: t.type }))
+        : [],
+    [trades, userWallet]
+  );
   const [tradesLoading, setTradesLoading] = useState(false);
   const [chartType, setChartType] = useState<ChartType>("candle");
   const [chartPeriod, setChartPeriod] = useState<string | null>(null); // Loaded from localStorage
@@ -982,6 +994,7 @@ export default function TokenClient() {
                 isLoading={chartLoading && ohlcv.length === 0}
                 timeframe={(chartPeriod || "1h") as "1s" | "1m" | "5m" | "15m" | "1h" | "4h" | "1d" | "1w" | "1M"}
                 chartType={chartType}
+                userTrades={userTradeMarkers}
               />
             </div>
             {/* 3D Charts - only render when in 3D mode to save resources */}

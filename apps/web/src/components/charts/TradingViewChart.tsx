@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createChart, IChartApi, ISeriesApi, CandlestickData, LineData, Time, CandlestickSeries, LineSeries } from "lightweight-charts";
+import { createChart, IChartApi, ISeriesApi, CandlestickData, LineData, Time, CandlestickSeries, LineSeries, createSeriesMarkers, ISeriesMarkersPluginApi, SeriesMarker } from "lightweight-charts";
 import { useThemeStore } from "@/stores/themeStore";
 import type { OHLCV } from "@/stores/pulseStore";
 
@@ -31,6 +31,8 @@ interface TradingViewChartProps {
   supply?: number;
   /** Controlled Line/Candle mode — when set, overrides the internal toggle. */
   chartType?: ChartType;
+  /** The user's own buys/sells on this coin — rendered as B/S bubbles on the chart. */
+  userTrades?: { time: number; type: "buy" | "sell" }[];
 }
 
 const TIMEFRAMES: { value: Timeframe; label: string }[] = [
@@ -50,12 +52,14 @@ export function TradingViewChart({
   showTimeframeSelector = false,
   supply = DEFAULT_SUPPLY,
   chartType: chartTypeProp,
+  userTrades,
 }: TradingViewChartProps) {
   const { isDark } = useThemeStore();
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const lineSeriesRef = useRef<ISeriesApi<"Line"> | null>(null);
+  const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   // Track whether we've done the one-time initial fit for the current dataset, so
   // live updates don't keep snapping the user's zoom/pan back to "fit all".
   const fittedRef = useRef(false);
@@ -232,6 +236,26 @@ export function TradingViewChart({
       fittedRef.current = true;
     }
   }, [data, chartReady, supply]); // Re-run when data changes or chart becomes ready
+
+  // Render the user's own buys/sells as B (green, below) / S (red, above) bubbles.
+  useEffect(() => {
+    if (!chartReady || !candleSeriesRef.current) return;
+    const markers: SeriesMarker<Time>[] = (userTrades || [])
+      .filter((t) => typeof t.time === "number" && t.time > 0)
+      .sort((a, b) => a.time - b.time)
+      .map((t) => ({
+        time: t.time as Time,
+        position: t.type === "buy" ? "belowBar" : "aboveBar",
+        color: t.type === "buy" ? "#22c55e" : "#ef4444",
+        shape: "circle" as const,
+        text: t.type === "buy" ? "B" : "S",
+      }));
+    if (!markersRef.current) {
+      markersRef.current = createSeriesMarkers(candleSeriesRef.current, markers);
+    } else {
+      markersRef.current.setMarkers(markers);
+    }
+  }, [userTrades, chartReady]);
 
   // Toggle series visibility based on chart type
   useEffect(() => {
