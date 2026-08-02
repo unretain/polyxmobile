@@ -255,7 +255,7 @@ export function SwapWidget({
       }
     };
 
-    const debounce = setTimeout(fetchQuote, 300);
+    const debounce = setTimeout(fetchQuote, 150);
     return () => clearTimeout(debounce);
   }, [inputAmount, inputMint, outputMint, slippage, inputDecimals, isGraduated]);
 

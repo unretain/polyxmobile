@@ -173,6 +173,7 @@ interface PulseTokenData {
   maxSupply?: number;
   circulatingSupply?: number;
   complete?: boolean; // Whether bonding curve is complete (token graduated to Raydium)
+  destination?: string; // "pump" (on curve) | "pumpswap" (graduated to AMM)
 }
 
 // Trade type for trade history
@@ -1099,7 +1100,7 @@ export default function TokenClient() {
                 defaultOutputMint={address}
                 outputSymbol={token?.symbol || "TOKEN"}
                 outputDecimals={6}
-                isGraduated={(token as PulseTokenData)?.complete !== false}
+                isGraduated={(token as PulseTokenData)?.complete === true || (token as PulseTokenData)?.destination === "pumpswap"}
               />
             </div>
             {/* Mobile Swap Widget - Compact version */}
@@ -1108,7 +1109,7 @@ export default function TokenClient() {
                 defaultOutputMint={address}
                 outputSymbol={token?.symbol || "TOKEN"}
                 outputDecimals={6}
-                isGraduated={(token as PulseTokenData)?.complete !== false}
+                isGraduated={(token as PulseTokenData)?.complete === true || (token as PulseTokenData)?.destination === "pumpswap"}
                 compactMobile={true}
               />
             </div>

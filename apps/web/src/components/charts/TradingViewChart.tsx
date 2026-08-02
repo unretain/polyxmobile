@@ -268,6 +268,15 @@ export function TradingViewChart({
         if (yc == null) continue;
         out.push({ x, y: yc - 16, type: t.type });
       }
+      // Stack bubbles that land on the same candle (same x) so a buy + sell on the
+      // same bar don't overlap — each subsequent one sits above the previous.
+      const seen = new Map<number, number>();
+      for (const b of out) {
+        const k = Math.round(b.x);
+        const n = seen.get(k) || 0;
+        b.y -= n * 22;
+        seen.set(k, n + 1);
+      }
       setBubbles(out);
     };
 
