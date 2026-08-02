@@ -4,26 +4,26 @@ import { prisma } from "@/lib/prisma";
 import { getJupiterService, SOL_MINT } from "@/lib/jupiter";
 import { TradeStatus } from "@prisma/client";
 
-// GET /api/trading/balance
-export async function GET() {
+// GET /api/trading/balance?address=<pubkey>
+// A wallet balance is public on-chain data. Session-based (custodial) users get
+// their wallet from the DB; client-side wallets (mobile / demo) pass ?address=.
+export async function GET(req: Request) {
   try {
     const session = await auth();
+    const addressParam = new URL(req.url).searchParams.get("address");
 
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    let walletAddress: string | null = addressParam;
+    if (!walletAddress && session?.user?.id) {
+      const user = await prisma.user.findUnique({
+        where: { id: session.user.id },
+        select: { walletAddress: true },
+      });
+      walletAddress = user?.walletAddress ?? null;
     }
 
-    // Get user wallet
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { walletAddress: true },
-    });
-
-    if (!user?.walletAddress) {
-      return NextResponse.json({ error: "No wallet found" }, { status: 400 });
+    if (!walletAddress) {
+      return NextResponse.json({ error: "No wallet address" }, { status: 400 });
     }
-
-    const walletAddress = user.walletAddress;
 
     // Fetch balance data from RPC
     const jupiter = getJupiterService();
@@ -45,8 +45,9 @@ export async function GET() {
         decimals: t.decimals,
       }));
 
-    // FALLBACK: If RPC returns no tokens, calculate from trade history
-    if (tokensWithBalance.length === 0) {
+    // FALLBACK: If RPC returns no tokens, calculate from trade history.
+    // Only for custodial (session) users — client-side wallets rely on the RPC read.
+    if (tokensWithBalance.length === 0 && session?.user?.id) {
       const trades = await prisma.trade.findMany({
         where: { userId: session.user.id, status: TradeStatus.SUCCESS },
         orderBy: { confirmedAt: "asc" },

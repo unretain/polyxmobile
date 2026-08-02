@@ -67,7 +67,7 @@ export default function WalletPage() {
     if (!wallet) return;
 
     try {
-      const res = await fetch("/api/trading/balance");
+      const res = await fetch(`/api/trading/balance?address=${wallet.publicKey}`);
       if (res.ok) {
         const data = await res.json();
         setBalance(data);
