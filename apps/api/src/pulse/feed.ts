@@ -464,13 +464,13 @@ function buildSubscribeRequest() {
   const transactions: any = {
     // Bonding-curve activity: creates / trades / graduations.
     pump: { vote: false, failed: false, accountInclude: [PUMP_FUN_PROGRAM], accountExclude: [], accountRequired: [] },
+    // Post-migration (AMM) trades. Subscribe to the WHOLE PumpSwap program — the
+    // same firehose approach as pump.fun above — so graduated tokens chart live
+    // with ZERO delay and no per-mint resubscribe. handlePumpSwap filters to the
+    // tokens we track / someone is viewing (state.watched), so we don't chart the
+    // entire AMM, only what's needed.
+    pumpswap: { vote: false, failed: false, accountInclude: [PUMPSWAP_PROGRAM], accountExclude: [], accountRequired: [] },
   };
-  const mints = pumpswapWatchMints();
-  if (mints.length > 0) {
-    // Post-migration trades for tokens we track. handleTransaction filters these
-    // to the PumpSwap program, so non-AMM txns for these mints are ignored.
-    transactions.pumpswap = { vote: false, failed: false, accountInclude: mints, accountExclude: [], accountRequired: [] };
-  }
   return {
     slots: {}, accounts: {}, transactions,
     transactionsStatus: {}, blocks: {}, blocksMeta: {}, entry: {},
@@ -485,14 +485,12 @@ function writeSubscription(): Promise<void> {
   });
 }
 
-// When a token migrates, re-write the subscription so its PumpSwap trades start
-// streaming. Cheap: only re-writes when the watched-mint set actually changes.
+// No-op now: the subscription is static (both pump.fun and PumpSwap are subscribed
+// as whole programs), so it never needs re-writing when a token is watched/migrates.
+// handlePumpSwap filters the firehose to watched/known mints in code. Kept as a stub
+// so the interval + call sites don't need touching, and to avoid churning the stream.
 async function maybeResubscribe() {
-  if (!state.connected || !state.stream) return;
-  const sig = pumpswapWatchMints().join(",");
-  if (sig === lastSubSig) return;
-  lastSubSig = sig;
-  try { await writeSubscription(); } catch { /* retry next tick */ }
+  return;
 }
 
 // ---- connection ------------------------------------------------------------
