@@ -464,13 +464,14 @@ function buildSubscribeRequest() {
   const transactions: any = {
     // Bonding-curve activity: creates / trades / graduations.
     pump: { vote: false, failed: false, accountInclude: [PUMP_FUN_PROGRAM], accountExclude: [], accountRequired: [] },
-    // Post-migration (AMM) trades. Subscribe to the WHOLE PumpSwap program — the
-    // same firehose approach as pump.fun above — so graduated tokens chart live
-    // with ZERO delay and no per-mint resubscribe. handlePumpSwap filters to the
-    // tokens we track / someone is viewing (state.watched), so we don't chart the
-    // entire AMM, only what's needed.
-    pumpswap: { vote: false, failed: false, accountInclude: [PUMPSWAP_PROGRAM], accountExclude: [], accountRequired: [] },
   };
+  const mints = pumpswapWatchMints();
+  if (mints.length > 0) {
+    // Post-migration trades for tokens we track/view. Per-mint (NOT the whole
+    // PumpSwap program) — subscribing to the entire AMM firehose overloads the
+    // single decoder and backs up the pump.fun (new-pairs) stream.
+    transactions.pumpswap = { vote: false, failed: false, accountInclude: mints, accountExclude: [], accountRequired: [] };
+  }
   return {
     slots: {}, accounts: {}, transactions,
     transactionsStatus: {}, blocks: {}, blocksMeta: {}, entry: {},
@@ -485,12 +486,14 @@ function writeSubscription(): Promise<void> {
   });
 }
 
-// No-op now: the subscription is static (both pump.fun and PumpSwap are subscribed
-// as whole programs), so it never needs re-writing when a token is watched/migrates.
-// handlePumpSwap filters the firehose to watched/known mints in code. Kept as a stub
-// so the interval + call sites don't need touching, and to avoid churning the stream.
+// When a token is watched/migrates, re-write the subscription so its PumpSwap trades
+// start streaming. Only re-writes when the watched-mint set actually changes.
 async function maybeResubscribe() {
-  return;
+  if (!state.connected || !state.stream) return;
+  const sig = pumpswapWatchMints().join(",");
+  if (sig === lastSubSig) return;
+  lastSubSig = sig;
+  try { await writeSubscription(); } catch { /* retry next tick */ }
 }
 
 // ---- connection ------------------------------------------------------------
