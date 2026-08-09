@@ -122,11 +122,15 @@ function upsertCandle(map: Map<number, Candle>, bucket: number, price: number, v
 
 // Last recorded price per mint (SOL), used to reject outlier PumpSwap decodes.
 const lastPrice = new Map<string, number>();
+// Newest trade timestamp per mint (ms). Tells the gap-backfill where our data ends
+// so it only fetches the trades we missed while the coin wasn't subscribed.
+const lastTradeAt = new Map<string, number>();
 
 // Record a trade into BOTH the 1s and 1m candle series (price in SOL).
 function recordCandle(mint: string, priceSol: number, solAmount: number) {
   if (priceSol <= 0) return;
   lastPrice.set(mint, priceSol);
+  lastTradeAt.set(mint, Date.now());
   let s = state.candles1s.get(mint);
   if (!s) { s = new Map(); state.candles1s.set(mint, s); }
   let m = state.candles1m.get(mint);
@@ -144,6 +148,7 @@ function dropCandles(mint: string) {
 // Record a trade at an EXPLICIT timestamp (used by backfill for historical trades).
 function recordCandleAt(mint: string, priceSol: number, solAmount: number, tsMs: number) {
   if (priceSol <= 0) return;
+  if (tsMs > (lastTradeAt.get(mint) || 0)) lastTradeAt.set(mint, tsMs);
   let s = state.candles1s.get(mint);
   if (!s) { s = new Map(); state.candles1s.set(mint, s); }
   let m = state.candles1m.get(mint);
@@ -248,7 +253,17 @@ function newToken(mint: string, name: string, symbol: string, uri: string): Puls
 function handleTransaction(update: any) {
   const tx = update.transaction?.transaction;
   if (!tx?.meta) return;
-  const keys: Uint8Array[] = tx.transaction?.message?.accountKeys || [];
+  // FULL account list, in runtime order: static keys, then the addresses resolved
+  // from Address Lookup Tables (writable, then readonly). PumpSwap swaps put the
+  // program + pool accounts in an ALT, so a static-only key list makes us miss every
+  // migrated-coin trade — the tx is delivered by the mint filter but our own router
+  // (and any programIdIndex lookup) can't see the PumpSwap program. This is why
+  // charts froze the instant a coin migrated.
+  const keys: Uint8Array[] = [
+    ...(tx.transaction?.message?.accountKeys || []),
+    ...(tx.meta?.loadedWritableAddresses || []),
+    ...(tx.meta?.loadedReadonlyAddresses || []),
+  ];
   const signature = tx.signature ? bs58.encode(Buffer.from(tx.signature)) : "";
   const outer = tx.transaction?.message?.instructions || [];
   const inner: any[] = [];
@@ -420,13 +435,23 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = []) {
     const amt = Number(b.uiTokenAmount?.uiAmount || 0);
     if (amt > poolPost) { poolPost = amt; poolPre = Number(preByIdx.get(b.accountIndex)?.uiTokenAmount?.uiAmount || 0); }
   }
+  const isBuy = poolPost < poolPre;
+  const trader = keys[0] ? b58(Buffer.from(keys[0])) : "";
+  // Persist post-migration trades too, so ClickHouse holds a graduated coin's full
+  // history (not just its bonding-curve life) and the chart's durable fallback works
+  // after migration. real_token_reserves isn't tracked on PumpSwap (pool AMM) -> 0.
+  recordTrade({
+    mint, signature, slot: 0, ts: chDateTime(Date.now()), is_buy: isBuy ? 1 : 0,
+    sol_amount: volSol, token_amount: absTok, price_sol: priceSol,
+    mcap_sol: priceSol * TOTAL_SUPPLY, real_token_reserves: 0, trader,
+  });
   feedEvents.emit("trade", {
-    mint, type: poolPost < poolPre ? "buy" : "sell", tokenAmount: absTok,
+    mint, type: isBuy ? "buy" : "sell", tokenAmount: absTok,
     solAmount: volSol, marketCapSol: priceSol * TOTAL_SUPPLY,
     marketCap: priceSol * TOTAL_SUPPLY * state.solPrice,
     priceUsd: priceSol * state.solPrice, solPrice: state.solPrice,
     volume24h: token?.volume24h ?? 0, liquidity: token?.liquidity ?? 0,
-    trader: keys[0] ? b58(Buffer.from(keys[0])) : "", signature, timestamp: Date.now(),
+    trader, signature, timestamp: Date.now(),
   });
   state.stats.pumpswap++;
 }
@@ -436,23 +461,44 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = []) {
 // subscription when the set of migrated tokens changes.
 let commitmentLevel: any = null;
 let lastSubSig = "";
-const MAX_SUB_MINTS = 150;
+// Keep tracking this many most-recent migrated coins CONTINUOUSLY (hours of
+// retention at real graduation rates), so a chart doesn't freeze after migration.
+// Bounded, not infinite, on purpose: subscribing to ALL PumpSwap trades (every
+// migrated coin ever) is the firehose that overloaded the single decoder and lagged
+// new pairs by minutes. A few hundred recent, mostly-quiet mints is cheap; the whole
+// program is not. The gap-backfill only covers coins older than this window.
+const GRADUATED_MAX = 500;
+const MAX_SUB_MINTS = 600;
 
 // Mints trading on PumpSwap (post-migration). We watch ONLY these, never the full
 // PumpSwap firehose — that's what blows the rate limit. Scoped like this it's tiny.
+//
+// Priority matters: `watched` (a user is looking at the chart) and `graduating`
+// (about to migrate) are EXPLICIT intent and must never be evicted by capacity —
+// otherwise an open chart silently stops updating. We keep all of those, then fill
+// the remaining slots with the MOST-RECENT graduated coins. (The old version built
+// one graduated-first Set and sliced the tail, which dropped viewed/just-migrated
+// coins once the union passed the cap — that was the "stops tracking after
+// migration" bug.)
 function pumpswapWatchMints(): string[] {
-  const set = new Set<string>();
-  for (const m of state.graduatedTokens.keys()) set.add(m);
-  for (const m of state.graduatingTokens.keys()) set.add(m);
-  for (const m of state.watched) set.add(m);
-  return Array.from(set).slice(-MAX_SUB_MINTS);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (m: string) => { if (!seen.has(m)) { seen.add(m); out.push(m); } };
+  for (const m of state.watched) add(m);              // explicit view — always keep
+  for (const m of state.graduatingTokens.keys()) add(m); // about to migrate — always keep
+  // Fill the rest with newest-first graduated coins until we hit the cap.
+  const graduated = Array.from(state.graduatedTokens.keys());
+  for (let i = graduated.length - 1; i >= 0 && out.length < MAX_SUB_MINTS; i--) add(graduated[i]);
+  return out.slice(0, MAX_SUB_MINTS);
 }
 
 // Explicitly watch a mint's PumpSwap trades on-demand (e.g. a user opened an
 // already-migrated coin we didn't see graduate). Picked up by maybeResubscribe().
-const MAX_WATCHED = 80;
+const MAX_WATCHED = 120;
 export function watchMint(mint: string) {
-  if (state.watched.has(mint)) return;
+  // Refresh recency (delete + re-add moves it to the end) so a chart that's polling
+  // getCandles every second stays newest and is never evicted while it's open.
+  state.watched.delete(mint);
   state.watched.add(mint);
   if (state.watched.size > MAX_WATCHED) {
     const oldest = state.watched.values().next().value;
@@ -490,7 +536,9 @@ function writeSubscription(): Promise<void> {
 // start streaming. Only re-writes when the watched-mint set actually changes.
 async function maybeResubscribe() {
   if (!state.connected || !state.stream) return;
-  const sig = pumpswapWatchMints().join(",");
+  // Sort so a pure reordering (same membership) doesn't churn the subscription;
+  // we only re-write when the SET of watched mints actually changes.
+  const sig = [...pumpswapWatchMints()].sort().join(",");
   if (sig === lastSubSig) return;
   lastSubSig = sig;
   try { await writeSubscription(); } catch { /* retry next tick */ }
@@ -515,7 +563,7 @@ async function connect(endpoint: string, token?: string) {
     // Bonding-curve firehose + PumpSwap trades scoped to tokens we already track
     // (post-migration). maybeResubscribe() re-writes this as new tokens migrate.
     await writeSubscription();
-    lastSubSig = pumpswapWatchMints().join(",");
+    lastSubSig = [...pumpswapWatchMints()].sort().join(",");
     state.connected = true;
     state.connecting = false;
     state.reconnectAttempts = 0;
@@ -638,6 +686,78 @@ export function isBackfilling(mint: string): boolean {
   return backfilling.has(mint) || backfilled.has(mint);
 }
 
+// ---- PumpSwap gap backfill (post-migration holes) --------------------------
+// A migrated coin that nobody viewed for a while ages out of the PumpSwap filter,
+// so we capture NONE of its trades in that window — not in memory, not in
+// ClickHouse (CH only holds what the feed saw). Resuming the live subscription
+// doesn't fill that hole. When a chart is opened and its newest candle is stale,
+// pull the missed PumpSwap trades straight from RPC and fill the gap.
+const pumpBackfilling = new Set<string>();
+const gapCooldown = new Map<string, number>();
+const GAP_STALE_MS = 8000;    // candle older than this => a gap to fill
+const GAP_COOLDOWN_MS = 12000; // don't re-scan the same mint more than this often
+
+// Decode a PumpSwap swap from an RPC transaction (same delta math as the live
+// handler): the largest token delta vs the largest WSOL delta = the swap price.
+function decodePumpSwapTradeRpc(tx: any, mint: string): { priceSol: number; solAmount: number } | null {
+  const post = tx?.meta?.postTokenBalances || [];
+  if (!post.length) return null;
+  const preByIdx = new Map<number, any>();
+  for (const b of (tx.meta.preTokenBalances || [])) preByIdx.set(b.accountIndex, b);
+  let tokenDelta = 0, solDelta = 0;
+  for (const b of post) {
+    const pb = preByIdx.get(b.accountIndex);
+    const d = Number(b.uiTokenAmount?.uiAmount || 0) - Number(pb?.uiTokenAmount?.uiAmount || 0);
+    if (b.mint === mint) { if (Math.abs(d) > Math.abs(tokenDelta)) tokenDelta = d; }
+    else if (b.mint === WSOL) { if (Math.abs(d) > Math.abs(solDelta)) solDelta = d; }
+  }
+  const absTok = Math.abs(tokenDelta), absSol = Math.abs(solDelta);
+  if (absTok <= 0 || absSol <= 0) return null;
+  return { priceSol: absSol / absTok, solAmount: absSol };
+}
+
+async function backfillPumpSwapGap(mint: string, sinceMs: number): Promise<void> {
+  if (pumpBackfilling.has(mint)) return;
+  pumpBackfilling.add(mint);
+  try {
+    const rpc = process.env.SOLANA_RPC_URL || "http://tyo.corvus-labs.io:8899";
+    const conn = new Connection(rpc, "confirmed");
+    // Most-recent trades touching the mint; keep only those newer than our data
+    // (the gap) and replay oldest-first so candle eviction keeps the newest.
+    const sigs = (await conn.getSignaturesForAddress(new PublicKey(mint), { limit: 150 }))
+      .filter((s) => !s.err && (s.blockTime || 0) * 1000 > sinceMs)
+      .reverse();
+    let n = 0, i = 0;
+    for (const s of sigs) {
+      try {
+        const tx = await conn.getTransaction(s.signature, { maxSupportedTransactionVersion: 0, commitment: "confirmed" });
+        const t = decodePumpSwapTradeRpc(tx, mint);
+        if (t) { recordCandleAt(mint, t.priceSol, t.solAmount * state.solPrice, (s.blockTime || 0) * 1000); n++; }
+      } catch { /* skip tx */ }
+      if (++i % 8 === 0) await new Promise((r) => setTimeout(r, 1000)); // ~8 req/s
+    }
+    if (n) console.log(`[pulse] pumpswap-gap ${mint.slice(0, 8)} filled ${n} trades`);
+  } catch (e) {
+    console.error("[pulse] pumpswap-gap failed:", (e as Error).message);
+  } finally {
+    pumpBackfilling.delete(mint);
+  }
+}
+
+// Called when a chart is opened. If this is a migrated coin whose newest candle is
+// stale, fill the missed PumpSwap trades from RPC. Cheap-gated: skips coins still on
+// the bonding curve (their gaps are handled by backfillToken) and rate-limited per mint.
+function maybeFillPumpSwapGap(mint: string) {
+  if (state.newTokens.has(mint) || state.graduatingTokens.has(mint)) return; // still on curve
+  const now = Date.now();
+  if (now - (gapCooldown.get(mint) || 0) < GAP_COOLDOWN_MS) return;
+  const newest = lastTradeAt.get(mint) || 0;
+  if (newest && now - newest < GAP_STALE_MS) return; // data is fresh, no gap
+  gapCooldown.set(mint, now);
+  const since = newest || now - 30 * 60 * 1000; // no data at all => last 30 min
+  backfillPumpSwapGap(mint, since).catch(() => {});
+}
+
 // ---- public API ------------------------------------------------------------
 export function startPulseFeed() {
   const endpoint = process.env.GRPC_ENDPOINT;
@@ -696,8 +816,11 @@ export function getToken(mint: string): PulseToken | null {
 // the 1m tier otherwise, rolls up to `intervalSec`, and converts SOL->USD at read.
 export function getCandles(mint: string, intervalSec: number, limit: number) {
   // Someone's viewing this chart — start watching its PumpSwap trades so a
-  // migrated coin keeps updating live (picked up on the next resubscribe tick).
+  // migrated coin keeps updating live (picked up on the next resubscribe tick)...
   watchMint(mint);
+  // ...and if it went untracked for a while, fill the missed trades from RPC so the
+  // chart has no hole between the old candles and where the live feed resumes.
+  maybeFillPumpSwapGap(mint);
   const useSecond = intervalSec < 60;
   const src = useSecond ? state.candles1s.get(mint) : state.candles1m.get(mint);
   if (!src || src.size === 0) return [];
