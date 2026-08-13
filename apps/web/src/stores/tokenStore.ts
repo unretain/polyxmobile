@@ -72,7 +72,7 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
     if (socket?.connected) return;
 
     const newSocket = io(WS_URL, {
-      transports: ["websocket"],
+      transports: ["polling", "websocket"],
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,

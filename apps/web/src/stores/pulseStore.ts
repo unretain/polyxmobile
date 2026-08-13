@@ -256,7 +256,7 @@ export const usePulseStore = create<PulseStore>()(
     // Instant first paint from HTTP snapshot, then the socket takes over.
     get().fetchAllPairs();
 
-    const socket = io(WS_URL, { transports: ["websocket"], reconnection: true, reconnectionDelay: 1000 });
+    const socket = io(WS_URL, { transports: ["polling", "websocket"], reconnection: true, reconnectionDelay: 1000 });
     _pulseSocket = socket;
 
     socket.on("connect", () => {

@@ -371,7 +371,7 @@ export default function TokenClient() {
 
     // Connect to WebSocket (WebSocket connects directly to Express)
     const socket = io(WS_URL, {
-      transports: ["websocket"],
+      transports: ["polling", "websocket"],
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
