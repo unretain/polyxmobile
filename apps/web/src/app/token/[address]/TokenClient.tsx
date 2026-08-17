@@ -48,10 +48,8 @@ function ChartLoadingSpinner() {
 import { type ChartType, LINE_PERIODS, CANDLE_PERIODS, PULSE_PERIOD } from "@/stores/chartStore";
 import { BarChart3, LineChart } from "lucide-react";
 import { SwapWidget } from "@/components/trading";
-import { io, Socket } from "socket.io-client";
-
-// WebSocket URL for real-time updates (connects directly to Express for WebSocket only)
-const WS_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+import { Socket } from "socket.io-client";
+import { ensureRealtimeSocket } from "@/stores/pulseStore";
 // API calls go through Next.js proxy routes (protects internal API key)
 const PUMP_FUN_SUPPLY = 1_000_000_000;
 
@@ -376,27 +374,24 @@ export default function TokenClient() {
   useEffect(() => {
     if (!address || !fromPulse) return;
 
-    // Connect to WebSocket (WebSocket connects directly to Express)
-    const socket = io(WS_URL, {
-      transports: ["polling", "websocket"],
-      reconnection: true,
-      // Never permanently give up — a flaky/reset connection must keep retrying,
-      // otherwise the chart silently stops live-updating until a full page reload.
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-    });
-
+    // Reuse the ONE shared realtime socket (the same connection the pulse feed uses)
+    // instead of opening a second one. New connection handshakes to the box get reset;
+    // an already-established WebSocket survives — so piggybacking on it is what keeps
+    // the chart live-updating on client-side navigation (not just on a full reload).
+    const socket = ensureRealtimeSocket();
     socketRef.current = socket;
 
-    socket.on("connect", () => {
-      console.log(`🔌 Connected to WebSocket for token ${address.slice(0, 8)}...`);
-      // Subscribe to this specific token's updates
+    const subscribe = () => {
+      console.log(`🔌 Subscribing to live trades for token ${address.slice(0, 8)}...`);
       socket.emit("subscribe:token", { address });
-    });
+    };
+    // If the shared socket is already connected (the common navigation case), the
+    // "connect" event won't fire again — subscribe right now.
+    if (socket.connected) subscribe();
+    socket.on("connect", subscribe);
 
     // LIVE: Handle real-time trade events
-    socket.on("trade", (data: { mint: string; type: string; tokenAmount: number; solAmount: number; marketCapSol: number; marketCap?: number; priceUsd?: number; solPrice?: number; volume24h?: number; liquidity?: number; trader: string; signature: string; timestamp: number }) => {
+    const onTrade = (data: { mint: string; type: string; tokenAmount: number; solAmount: number; marketCapSol: number; marketCap?: number; priceUsd?: number; solPrice?: number; volume24h?: number; liquidity?: number; trader: string; signature: string; timestamp: number }) => {
       if (data.mint !== address) return;
 
       // Add new trade to the top of the list. Use the REAL SOL price the API sent
@@ -478,10 +473,11 @@ export default function TokenClient() {
           return u;
         });
       }
-    });
+    };
+    socket.on("trade", onTrade);
 
     // LIVE: Handle real-time OHLCV candle updates (1-second candles)
-    socket.on("ohlcv:update", (data: { mint: string; candle: { timestamp: number; open: number; high: number; low: number; close: number; volume: number } }) => {
+    const onOhlcv = (data: { mint: string; candle: { timestamp: number; open: number; high: number; low: number; close: number; volume: number } }) => {
       if (data.mint !== address) return;
       if (chartPeriodRef.current !== "1s") return; // Only apply to 1s timeframe
 
@@ -498,15 +494,16 @@ export default function TokenClient() {
           return [...prev, data.candle];
         }
       });
-    });
-
-    socket.on("disconnect", () => {
-      console.log(`🔌 Disconnected from WebSocket for token ${address.slice(0, 8)}...`);
-    });
+    };
+    socket.on("ohlcv:update", onOhlcv);
 
     return () => {
+      // Leave only THIS token's room + handlers — never disconnect the shared socket
+      // (the pulse feed and other views ride the same connection).
       socket.emit("unsubscribe:token", { address });
-      socket.disconnect();
+      socket.off("connect", subscribe);
+      socket.off("trade", onTrade);
+      socket.off("ohlcv:update", onOhlcv);
       socketRef.current = null;
     };
     // NOTE: Do NOT include pulseToken in deps - it changes every second from polling

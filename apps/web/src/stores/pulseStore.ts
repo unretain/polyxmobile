@@ -377,3 +377,16 @@ export const usePulseStore = create<PulseStore>()(
     }
   )
 );
+
+// ---------------------------------------------------------------------------
+// Shared realtime socket accessor.
+// Other views (e.g. a token page) must NOT open their own socket to the box —
+// every NEW connection handshake to the origin tends to get reset, while an
+// already-established WebSocket survives. So they reuse THIS one connection and
+// subscribe their own rooms on it (subscribe:token). Returns the singleton,
+// connecting it (idempotently) if it isn't up yet.
+// ---------------------------------------------------------------------------
+export function ensureRealtimeSocket(): Socket {
+  if (!_pulseSocket) usePulseStore.getState().connectRealtime();
+  return _pulseSocket!;
+}
