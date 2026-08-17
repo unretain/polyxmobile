@@ -72,8 +72,8 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
     if (socket?.connected) return;
 
     const newSocket = io(WS_URL, {
-      // WebSocket first (TCP) — avoids QUIC/HTTP3 long-polling idle timeouts via Cloudflare.
-      transports: ["websocket", "polling"],
+      // Polling first, upgrade to WS — survives a failed WS upgrade instead of dying.
+      transports: ["polling", "websocket"],
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,

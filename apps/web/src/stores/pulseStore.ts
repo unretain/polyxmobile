@@ -256,12 +256,12 @@ export const usePulseStore = create<PulseStore>()(
     // Instant first paint from HTTP snapshot, then the socket takes over.
     get().fetchAllPairs();
 
-    // WebSocket FIRST (TCP): the browser uses HTTP/3 (QUIC over UDP) for long-polling
-    // through Cloudflare, and held-open polling requests idle-timeout on QUIC
-    // (ERR_QUIC_PROTOCOL_ERROR). A WebSocket is a persistent TCP connection and never
-    // touches QUIC, so leading with it avoids the timeout entirely. Polling stays as a
-    // last-resort fallback for networks that block WebSockets outright.
-    const socket = io(WS_URL, { transports: ["websocket", "polling"], reconnection: true, reconnectionDelay: 1000 });
+    // Polling FIRST, then upgrade to WebSocket (socket.io default). Establishes on a
+    // plain HTTP request (reliable through Cloudflare once HTTP/3 is off) and upgrades
+    // to WS; if the WS upgrade ever fails it STAYS on polling instead of dying, so the
+    // connection is never left dead. (HTTP/3 must be disabled at Cloudflare — its WS
+    // and long-poll handling over h3/h2 to this origin fails; over h1.1 it's fine.)
+    const socket = io(WS_URL, { transports: ["polling", "websocket"], reconnection: true, reconnectionDelay: 1000 });
     _pulseSocket = socket;
 
     socket.on("connect", () => {
