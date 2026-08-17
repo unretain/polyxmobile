@@ -390,10 +390,16 @@ export default function TokenClient() {
     if (socket.connected) subscribe();
     socket.on("connect", subscribe);
 
-    // LIVE: Handle real-time trade events
-    const onTrade = (data: { mint: string; type: string; tokenAmount: number; solAmount: number; marketCapSol: number; marketCap?: number; priceUsd?: number; solPrice?: number; volume24h?: number; liquidity?: number; trader: string; signature: string; timestamp: number }) => {
-      if (data.mint !== address) return;
+    // LIVE: Handle real-time trade events. A hyped final-stretch / migrated coin fires
+    // 50-100 trades/sec; doing a React render per trade blocks the main thread, the
+    // socket misses its heartbeat, and the server drops it (that was the disconnect).
+    // So buffer EVERY trade and flush the whole batch once per animation frame — nothing
+    // is dropped, and there's one render per frame no matter how fast the trades come.
+    type TradeMsg = { mint: string; type: string; tokenAmount: number; solAmount: number; marketCapSol: number; marketCap?: number; priceUsd?: number; solPrice?: number; volume24h?: number; liquidity?: number; trader: string; signature: string; timestamp: number };
+    const pendingTrades: TradeMsg[] = [];
+    let flushRaf: number | null = null;
 
+    const processTrade = (data: TradeMsg) => {
       // Add new trade to the top of the list. Use the REAL SOL price the API sent
       // (fall back to 200 only if an old build omits it) — hardcoding it made the
       // market cap flicker to the wrong multiple on every trade.
@@ -474,6 +480,24 @@ export default function TokenClient() {
         });
       }
     };
+
+    // Flush all buffered trades in one frame. React 18 batches the setState calls made
+    // in this loop into a SINGLE re-render, so 100 buffered trades cost one render, not
+    // 100. Every trade is still applied in order (list, market cap, candle fold).
+    const flushTrades = () => {
+      flushRaf = null;
+      const batch = pendingTrades.splice(0, pendingTrades.length);
+      for (const d of batch) processTrade(d);
+    };
+
+    const onTrade = (data: TradeMsg) => {
+      if (data.mint !== address) return;
+      pendingTrades.push(data);
+      // Bound the buffer so a backgrounded tab (rAF paused) can't accumulate forever;
+      // trades that scroll off while you're not looking don't matter, the newest do.
+      if (pendingTrades.length > 300) pendingTrades.splice(0, pendingTrades.length - 300);
+      if (flushRaf == null) flushRaf = requestAnimationFrame(flushTrades);
+    };
     socket.on("trade", onTrade);
 
     // LIVE: Handle real-time OHLCV candle updates (1-second candles)
@@ -504,6 +528,7 @@ export default function TokenClient() {
       socket.off("connect", subscribe);
       socket.off("trade", onTrade);
       socket.off("ohlcv:update", onOhlcv);
+      if (flushRaf != null) cancelAnimationFrame(flushRaf);
       socketRef.current = null;
     };
     // NOTE: Do NOT include pulseToken in deps - it changes every second from polling

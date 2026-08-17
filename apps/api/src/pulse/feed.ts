@@ -384,9 +384,10 @@ function handleTransaction(update: any) {
         recordCandle(mint, priceSol, solLamports / 1e9);
         recordTrade({ mint, signature, slot: 0, ts: chDateTime(tsSec > 0 ? tsSec * 1000 : Date.now()), is_buy: isBuy ? 1 : 0, sol_amount: solLamports / 1e9, token_amount: tokenRaw / 1e6, price_sol: priceSol, mcap_sol: token.marketCapSol, real_token_reserves: realTok, trader });
         // Per-trade event for the token page's live "recent trades" panel — built +
-        // broadcast ONLY when someone has this coin open, and throttled per-coin so a
-        // firehose coin can't flood (and disconnect) the viewer's socket.
-        if (shouldEmitTrade(mint)) {
+        // broadcast ONLY when someone actually has this coin's chart open (see hasViewer).
+        // Every trade goes out; the client batches them per animation frame so the
+        // firehose never blocks its main thread (that's what dropped the socket).
+        if (hasViewer(mint)) {
           feedEvents.emit("trade", {
             mint, type: isBuy ? "buy" : "sell", tokenAmount: tokenRaw / 1e6,
             solAmount: solLamports / 1e9, marketCapSol: token.marketCapSol,
@@ -508,7 +509,7 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = []) {
     sol_amount: volSol, token_amount: absTok, price_sol: priceSol,
     mcap_sol: priceSol * TOTAL_SUPPLY, real_token_reserves: 0, trader,
   });
-  if (shouldEmitTrade(mint)) {
+  if (hasViewer(mint)) {
     feedEvents.emit("trade", {
       mint, type: isBuy ? "buy" : "sell", tokenAmount: absTok,
       solAmount: volSol, marketCapSol: priceSol * TOTAL_SUPPLY,
@@ -590,27 +591,11 @@ export function addViewer(mint: string) {
 }
 export function removeViewer(mint: string) {
   const n = (viewerCounts.get(mint) || 0) - 1;
-  if (n <= 0) { viewerCounts.delete(mint); lastTradeEmitAt.delete(mint); }
+  if (n <= 0) viewerCounts.delete(mint);
   else viewerCounts.set(mint, n);
 }
 export function hasViewer(mint: string): boolean {
   return viewerCounts.has(mint);
-}
-
-// Per-coin live-broadcast throttle. A hyped final-stretch / migrated coin can do
-// 50-100 trades/sec; firing every one at a viewer's WebSocket floods it, the browser
-// falls behind on socket.io heartbeats, and the server drops the connection (the
-// "final stretch / migrated always disconnecting" bug). The chart only needs ~10
-// updates/sec to look live, so cap the push at one per 100ms per coin. Every trade is
-// still recorded to candles + ClickHouse — only the live push is rate-limited.
-const lastTradeEmitAt = new Map<string, number>();
-const TRADE_EMIT_MIN_MS = 100;
-function shouldEmitTrade(mint: string): boolean {
-  if (!viewerCounts.has(mint)) return false;
-  const now = Date.now();
-  if (now - (lastTradeEmitAt.get(mint) || 0) < TRADE_EMIT_MIN_MS) return false;
-  lastTradeEmitAt.set(mint, now);
-  return true;
 }
 
 function buildSubscribeRequest() {
