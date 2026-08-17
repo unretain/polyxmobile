@@ -369,7 +369,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
 
   // WebGL recovery
   const [webglKey, setWebglKey] = useState(0);
-  const webglContextLostRef = useRef(false);
+  const webglRecoveryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Drawing tools
   const [drawings, setDrawings] = useState<Drawing[]>([]);
@@ -380,27 +380,29 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
 
   useEffect(() => {
     setIsMounted(true);
-    return () => setIsMounted(false);
+    return () => {
+      setIsMounted(false);
+      if (webglRecoveryTimerRef.current) clearTimeout(webglRecoveryTimerRef.current);
+    };
   }, []);
 
   const handleWebglContextLost = useCallback(() => {
-    console.warn('[Chart3D] WebGL context lost');
-    webglContextLostRef.current = true;
+    console.warn('[Chart3D] WebGL context lost — remounting canvas to recover');
+    // A lost context does NOT trigger a React re-render, so scheduling the remount
+    // from an effect (keyed on webglKey) never fires — the effect wouldn't re-run to
+    // observe the loss, and the chart stays frozen until a full page reload. Bump the
+    // Canvas key directly here so a fresh WebGL context is acquired.
+    if (webglRecoveryTimerRef.current) clearTimeout(webglRecoveryTimerRef.current);
+    webglRecoveryTimerRef.current = setTimeout(() => setWebglKey((k) => k + 1), 800);
   }, []);
 
   const handleWebglContextRestored = useCallback(() => {
-    webglContextLostRef.current = false;
-  }, []);
-
-  useEffect(() => {
-    if (webglContextLostRef.current) {
-      const timer = setTimeout(() => {
-        setWebglKey(k => k + 1);
-        webglContextLostRef.current = false;
-      }, 1000);
-      return () => clearTimeout(timer);
+    // Browser restored the context on its own — cancel the pending remount.
+    if (webglRecoveryTimerRef.current) {
+      clearTimeout(webglRecoveryTimerRef.current);
+      webglRecoveryTimerRef.current = null;
     }
-  }, [webglKey]);
+  }, []);
 
   // ============================================================================
   // DATA STATISTICS - Calculate once per data change
