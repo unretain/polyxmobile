@@ -443,17 +443,32 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
     // shows real history like Axiom, not just the last 100s.
     let ohlcv = getCandles(address, intervalSec, intervalSec <= 1 ? 1200 : 100);
     let source = "grpc";
-    // In-memory fine candles get wiped on restart and don't rebuild for coins that
-    // stopped trading. Fall back to CH's durable 1m candles (USD, matching getCandles)
-    // for ANY timeframe so the chart shows history instead of "No chart data". Sub-
-    // minute views get 1m bars — coarse but present. getSolPrice() -> USD scale.
-    if (ohlcv.length === 0 && clickhouseEnabled()) {
+    if (clickhouseEnabled()) {
       try {
-        // Build fine candles straight from the durable trade history (down to 1s),
-        // NOT the coarse 1m aggregate — so a wiped/stopped coin still shows detailed
-        // candles like Axiom instead of a dozen fat 1m blocks.
-        const chData = await ch.getTradeCandles(address, intervalSec, 600, getSolPrice());
-        if (chData.length) { ohlcv = chData; source = "clickhouse"; }
+        if (intervalSec <= 1) {
+          // Fine ("1s") view: the in-memory 250ms series only keeps a recent window
+          // (~1200 buckets), so a coin that's been trading a while loses its launch/
+          // snipe candles — the 0-Xk run at the far left just gets cut off. ClickHouse
+          // has every trade since launch. Pull the durable 1s history and prepend
+          // everything OLDER than the in-memory tail, so the full life of the coin
+          // shows (launch included) while the live tail stays at 250ms detail.
+          const chData = await ch.getTradeCandles(address, intervalSec, 3000, getSolPrice());
+          if (chData.length) {
+            if (ohlcv.length === 0) {
+              ohlcv = chData;
+              source = "clickhouse";
+            } else {
+              const oldestMem = ohlcv[0].timestamp;
+              const older = chData.filter((c) => c.timestamp < oldestMem);
+              if (older.length) { ohlcv = [...older, ...ohlcv]; source = "grpc+ch"; }
+            }
+          }
+        } else if (ohlcv.length === 0) {
+          // Coarser views: the in-memory 1m series already covers ~12h, so only reach
+          // for CH when a wiped/stopped coin has nothing in memory at all.
+          const chData = await ch.getTradeCandles(address, intervalSec, 600, getSolPrice());
+          if (chData.length) { ohlcv = chData; source = "clickhouse"; }
+        }
       } catch (e) { console.error("[pulse] CH ohlcv:", (e as Error).message); }
     }
 

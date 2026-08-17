@@ -69,6 +69,7 @@ export interface PulseToken {
   priceSol?: number;
   launchPriceSol?: number;
   uri?: string;
+  peakMcapUsd?: number; // highest market cap seen — used to retain "notable" coins
 }
 
 export const feedEvents = new EventEmitter();
@@ -87,6 +88,18 @@ const MIN_MS = 60_000;
 const MAX_1S = 1_200; // ~5 min of 250ms candles (matches the chart window; keeps
                       // per-coin candle memory bounded so GC doesn't stall the loop)
 const MAX_1M = 720;   // 12h of 1-minute candles
+
+// New-pairs retention. We keep MAX_NEW_TOKENS coins; when full we evict the OLDEST
+// coin that never became "notable" (never crossed NOTABLE_MCAP_USD), so a coin that
+// actually pumped stays tracked long after it cools off instead of getting dropped
+// by age the moment a fresh coin appears. Only if every coin is notable do we drop
+// the absolute oldest.
+const MAX_NEW_TOKENS = 400;
+const NOTABLE_MCAP_USD = 10_000;
+// Cap the "final stretch" set. Coins enter it at final-stretch progress but many
+// then dump and never graduate, so without a cap it grows unbounded — which made
+// checkGraduations poll hundreds of RPC accounts per tick and stall. Evict oldest.
+const MAX_GRADUATING = 150;
 
 const state = {
   connected: false,
@@ -125,6 +138,21 @@ const lastPrice = new Map<string, number>();
 // Newest trade timestamp per mint (ms). Tells the gap-backfill where our data ends
 // so it only fetches the trades we missed while the coin wasn't subscribed.
 const lastTradeAt = new Map<string, number>();
+
+// DIAGNOSTIC: rolling samples of (now - on-chain block time) for processed trades,
+// i.e. how far behind chain THIS feed actually is. Median logged in the stats line.
+const feedLagSamples: number[] = [];
+function sampleFeedLag(tsSec: number) {
+  if (tsSec > 1_600_000_000) {
+    feedLagSamples.push(Date.now() / 1000 - tsSec);
+    if (feedLagSamples.length > 800) feedLagSamples.shift();
+  }
+}
+function medianFeedLag(): number {
+  if (!feedLagSamples.length) return -1;
+  const a = [...feedLagSamples].sort((x, y) => x - y);
+  return a[Math.floor(a.length / 2)];
+}
 
 // Record a trade into BOTH the 1s and 1m candle series (price in SOL).
 function recordCandle(mint: string, priceSol: number, solAmount: number) {
@@ -183,6 +211,18 @@ function b58(buf: Buffer): string {
 }
 
 const NO_IMAGE = "\x00none"; // sentinel: metadata fetched OK but has no image (stop retrying)
+
+// A datacenter box can't reach ipfs.io / cloudflare-ipfs (where much pump.fun
+// metadata lives) — the fetch just fails and logos never resolve. Rewrite those to
+// dweb.link, a general IPFS gateway that serves any CID and IS reachable. Non-IPFS
+// hosts are left as-is.
+function gatewayFix(u: string): string {
+  return u.replace(
+    /^https:\/\/(ipfs\.io|cf-ipfs\.com|cloudflare-ipfs\.com)\/ipfs\//,
+    "https://dweb.link/ipfs/"
+  );
+}
+
 async function resolveImage(mint: string, uri: string) {
   if (!uri) return;
   const attach = (img: string) => {
@@ -194,7 +234,7 @@ async function resolveImage(mint: string, uri: string) {
   if (cached) { attach(cached); return; }           // already resolved — (re)attach
   state.imageCache.set(uri, "");                     // mark in-flight
   try {
-    const res = await fetch(uri, { signal: AbortSignal.timeout(8000) });
+    const res = await fetch(gatewayFix(uri), { signal: AbortSignal.timeout(8000) });
     const j = await res.json();
     const img = typeof j?.image === "string" ? j.image : "";
     // Socials live in the same metadata JSON (top-level or under extensions).
@@ -212,6 +252,11 @@ async function resolveImage(mint: string, uri: string) {
     if (!img) { state.imageCache.set(uri, NO_IMAGE); return; }
     state.imageCache.set(uri, img);
     attach(img);
+    // Persist the resolved logo to ClickHouse so CH-served lists (new-pairs,
+    // graduated) show it too — not just the in-memory (final-stretch) list. The
+    // tokens table is a ReplacingMergeTree, so re-inserting the same mint with the
+    // image replaces the empty-image row on read.
+    if (t) recordToken({ mint, name: t.name, symbol: t.symbol, uri, image: img, creator: "", created_at: chDateTime(t.createdAt), created_slot: 0 });
   } catch {
     state.imageCache.delete(uri);
   }
@@ -291,9 +336,14 @@ function handleTransaction(update: any) {
         state.newTokens.set(mint, token);
         recordToken({ mint, name: name.trim(), symbol: symbol.trim(), uri: uri.trim(), image: "", creator: "", created_at: chDateTime(Date.now()), created_slot: 0 });
         if (uri.trim()) resolveImage(mint, uri.trim());
-        if (state.newTokens.size > 200) {
-          const oldest = state.newTokens.keys().next().value;
-          if (oldest) { state.newTokens.delete(oldest); dropCandles(oldest); }
+        if (state.newTokens.size > MAX_NEW_TOKENS) {
+          // Evict the oldest coin that never got notable; keep the pumpers around.
+          let victim: string | undefined;
+          for (const [m, t] of state.newTokens) {
+            if ((t.peakMcapUsd || 0) < NOTABLE_MCAP_USD) { victim = m; break; }
+          }
+          if (!victim) victim = state.newTokens.keys().next().value;
+          if (victim) { state.newTokens.delete(victim); dropCandles(victim); }
         }
         state.stats.creates++;
         feedEvents.emit("new", usd(token));
@@ -305,6 +355,7 @@ function handleTransaction(update: any) {
         const isBuy = data.readUInt8(o) === 1; o += 1;
         const trader = b58(data.slice(o, o + 32)); o += 32; // user
         const tsSec = Number(data.readBigInt64LE(o)); o += 8; // on-chain block time (i64 seconds)
+        sampleFeedLag(tsSec);
         const vSol = Number(data.readBigUInt64LE(o)); o += 8;
         const vTok = Number(data.readBigUInt64LE(o)); o += 8;
         const realSol = Number(data.readBigUInt64LE(o)); o += 8; // real sol reserves
@@ -318,6 +369,8 @@ function handleTransaction(update: any) {
         const priceSol = (vSol / 1e9) / (vTok / 1e6);
         token.priceSol = priceSol;
         token.marketCapSol = priceSol * TOTAL_SUPPLY;
+        const mcapUsd = token.marketCapSol * state.solPrice;
+        if (mcapUsd > (token.peakMcapUsd || 0)) token.peakMcapUsd = mcapUsd; // mark notable coins for retention
         // Liquidity = real SOL locked in the curve, valued both sides (DexScreener convention).
         token.liquidity = (realSol / 1e9) * state.solPrice * 2;
         token.progress = Math.max(0, Math.min(100, (1 - realTok / INITIAL_REAL_TOKEN_RAW) * 100));
@@ -344,6 +397,12 @@ function handleTransaction(update: any) {
         if (token.progress >= FINAL_STRETCH_PROGRESS && state.newTokens.has(mint)) {
           state.newTokens.delete(mint);
           state.graduatingTokens.set(mint, token);
+          if (state.graduatingTokens.size > MAX_GRADUATING) {
+            // Drop the oldest graduating coin (hit final stretch long ago, never
+            // graduated — dumped/stalled) so checkGraduations' RPC load stays bounded.
+            const oldest = state.graduatingTokens.keys().next().value;
+            if (oldest && oldest !== mint) state.graduatingTokens.delete(oldest);
+          }
         }
       } else if (disc === COMPLETE_EVENT_DISC) {
         const mint = b58(data.slice(16 + 32, 16 + 64));
@@ -357,7 +416,7 @@ function handleTransaction(update: any) {
     token.graduatedAt = Date.now();
         state.graduatedTokens.set(mint, token);
         recordGraduation({ mint, ts: chDateTime(Date.now()) });
-        if (state.graduatedTokens.size > 100) {
+        if (state.graduatedTokens.size > GRADUATED_MAX) {
           const oldest = state.graduatedTokens.keys().next().value;
           if (oldest) { state.graduatedTokens.delete(oldest); dropCandles(oldest); }
         }
@@ -467,8 +526,8 @@ let lastSubSig = "";
 // migrated coin ever) is the firehose that overloaded the single decoder and lagged
 // new pairs by minutes. A few hundred recent, mostly-quiet mints is cheap; the whole
 // program is not. The gap-backfill only covers coins older than this window.
-const GRADUATED_MAX = 500;
-const MAX_SUB_MINTS = 600;
+const GRADUATED_MAX = 120;
+const MAX_SUB_MINTS = 180;
 
 // Mints trading on PumpSwap (post-migration). We watch ONLY these, never the full
 // PumpSwap firehose — that's what blows the rate limit. Scoped like this it's tiny.
@@ -596,30 +655,48 @@ function bondingCurvePda(mint: string): PublicKey {
   )[0];
 }
 
+let checkingGrads = false;
 async function checkGraduations() {
-  if (state.graduatingTokens.size === 0) return;
-  const rpc = process.env.SOLANA_RPC_URL || "http://tyo.corvus-labs.io:8899";
-  const conn = new Connection(rpc, "confirmed");
-  for (const [mint, token] of [...state.graduatingTokens]) {
-    try {
-      const info = await conn.getAccountInfo(bondingCurvePda(mint));
-      // Account gone (migrated) OR complete flag set → graduated.
-      const complete = !info || info.data.length <= 48 || info.data[48] === 1;
-      if (complete) {
-        state.graduatingTokens.delete(mint);
-        token.complete = true;
-        token.progress = 100;
-        token.destination = "pumpswap";
-    token.graduatedAt = Date.now();
-        state.graduatedTokens.set(mint, token);
-        state.stats.graduations++;
-        feedEvents.emit("graduated", usd(token));
-        if (state.graduatedTokens.size > 100) {
-          const oldest = state.graduatedTokens.keys().next().value;
-          if (oldest) { state.graduatedTokens.delete(oldest); dropCandles(oldest); }
-        }
-      }
-    } catch { /* ignore, try next tick */ }
+  // Guard: never let two passes overlap — with a large graduating set the RPC calls
+  // pile up faster than 15s and the passes stack, hammering the RPC until detection
+  // stalls entirely (that's what made the migrated list go empty).
+  if (checkingGrads || state.graduatingTokens.size === 0) return;
+  checkingGrads = true;
+  try {
+    const rpc = process.env.SOLANA_RPC_URL || "http://tyo.corvus-labs.io:8899";
+    const conn = new Connection(rpc, "confirmed");
+    const entries = [...state.graduatingTokens];
+    const CONC = 12; // bounded concurrency instead of one-at-a-time
+    for (let i = 0; i < entries.length; i += CONC) {
+      await Promise.all(entries.slice(i, i + CONC).map(async ([mint, token]) => {
+        try {
+          // Per-call timeout: a single hung RPC call must NOT hang the whole pass
+          // (that would leave checkingGrads=true forever and kill graduation detection).
+          const info = await Promise.race([
+            conn.getAccountInfo(bondingCurvePda(mint)),
+            new Promise<never>((_, rej) => setTimeout(() => rej(new Error("rpc-timeout")), 8000)),
+          ]);
+          // Account gone (migrated) OR complete flag set → graduated.
+          const complete = !info || info.data.length <= 48 || info.data[48] === 1;
+          if (!complete) return;
+          state.graduatingTokens.delete(mint);
+          token.complete = true;
+          token.progress = 100;
+          token.destination = "pumpswap";
+          token.graduatedAt = Date.now();
+          state.graduatedTokens.set(mint, token);
+          recordGraduation({ mint, ts: chDateTime(Date.now()) }); // persist to ClickHouse (was missing!)
+          state.stats.graduations++;
+          feedEvents.emit("graduated", usd(token));
+          if (state.graduatedTokens.size > GRADUATED_MAX) {
+            const oldest = state.graduatedTokens.keys().next().value;
+            if (oldest) { state.graduatedTokens.delete(oldest); dropCandles(oldest); }
+          }
+        } catch { /* try next tick */ }
+      }));
+    }
+  } finally {
+    checkingGrads = false;
   }
 }
 
@@ -774,7 +851,7 @@ export function startPulseFeed() {
   setInterval(() => { maybeResubscribe().catch(() => {}); }, 3000);
   setInterval(() => {
     const s = state.stats;
-    console.log(`[pulse] creates=${s.creates} trades=${s.trades} ps=${s.pumpswap} grads=${s.graduations} new=${state.newTokens.size} grad-ing=${state.graduatingTokens.size} watch=${pumpswapWatchMints().length} conn=${state.connected}`);
+    console.log(`[pulse] creates=${s.creates} trades=${s.trades} ps=${s.pumpswap} grads=${s.graduations} new=${state.newTokens.size} grad-ing=${state.graduatingTokens.size} watch=${pumpswapWatchMints().length} conn=${state.connected} feedLag=${medianFeedLag().toFixed(1)}s`);
   }, 60000);
   connect(endpoint, process.env.GRPC_TOKEN);
 }

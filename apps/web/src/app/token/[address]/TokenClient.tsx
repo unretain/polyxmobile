@@ -361,6 +361,13 @@ export default function TokenClient() {
     if (rate && isFinite(rate) && rate > 0) solRateRef.current = rate;
   }, [pulseToken]);
 
+  // Current timeframe as a ref so the live socket handlers can read it WITHOUT the
+  // socket effect depending on chartPeriod — otherwise every timeframe switch tears
+  // down and reopens the WebSocket, and each fresh connection is another chance to
+  // hit a reset. The connection should live as long as the coin is open.
+  const chartPeriodRef = useRef<string | null>(null);
+  useEffect(() => { chartPeriodRef.current = chartPeriod; }, [chartPeriod]);
+
   useEffect(() => {
     setHasMounted(true);
   }, []);
@@ -373,8 +380,11 @@ export default function TokenClient() {
     const socket = io(WS_URL, {
       transports: ["polling", "websocket"],
       reconnection: true,
-      reconnectionAttempts: 5,
+      // Never permanently give up — a flaky/reset connection must keep retrying,
+      // otherwise the chart silently stops live-updating until a full page reload.
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
     });
 
     socketRef.current = socket;
@@ -439,7 +449,7 @@ export default function TokenClient() {
       // priceSol (solAmount/tokenAmount) is ~73x smaller and collapses/freezes the
       // candle. priceUsd was already computed above from data.priceUsd.
       if (data.tokenAmount > 0 && data.solAmount > 0 && priceUsd > 0) {
-        const intervalMs = CANDLE_INTERVAL_MS[chartPeriod || "1s"] || 250;
+        const intervalMs = CANDLE_INTERVAL_MS[chartPeriodRef.current || "1s"] || 250;
         // Bucket by RECEIVE time to match the server's receive-time fine candles,
         // so live ticks line up with the fetched history and give sub-second detail.
         const ts = Date.now();
@@ -473,7 +483,7 @@ export default function TokenClient() {
     // LIVE: Handle real-time OHLCV candle updates (1-second candles)
     socket.on("ohlcv:update", (data: { mint: string; candle: { timestamp: number; open: number; high: number; low: number; close: number; volume: number } }) => {
       if (data.mint !== address) return;
-      if (chartPeriod !== "1s") return; // Only apply to 1s timeframe
+      if (chartPeriodRef.current !== "1s") return; // Only apply to 1s timeframe
 
       setOhlcv((prev) => {
         const lastCandle = prev[prev.length - 1];
@@ -501,7 +511,9 @@ export default function TokenClient() {
     };
     // NOTE: Do NOT include pulseToken in deps - it changes every second from polling
     // which would cause reconnection loop. We access it via closure in event handlers.
-  }, [address, fromPulse, chartPeriod]);
+    // chartPeriod is intentionally NOT a dep — the handlers read it via chartPeriodRef
+    // so switching timeframes never tears down the live connection.
+  }, [address, fromPulse]);
 
   // Load chart period from localStorage, with source-specific defaults
   useEffect(() => {
