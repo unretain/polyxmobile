@@ -26,7 +26,7 @@ export const useSocketStore = create<SocketState>((set, get) => ({
     }
 
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:3001";
-    const socket = io(wsUrl, { transports: ["polling", "websocket"] });
+    const socket = io(wsUrl, { transports: ["websocket", "polling"] });
 
     socket.on("connect", () => {
       console.log("🔌 Socket connected:", socket.id);
