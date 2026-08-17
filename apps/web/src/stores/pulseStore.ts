@@ -256,12 +256,12 @@ export const usePulseStore = create<PulseStore>()(
     // Instant first paint from HTTP snapshot, then the socket takes over.
     get().fetchAllPairs();
 
-    // Polling FIRST, then upgrade to WebSocket (socket.io default). Establishes on a
-    // plain HTTP request (reliable through Cloudflare once HTTP/3 is off) and upgrades
-    // to WS; if the WS upgrade ever fails it STAYS on polling instead of dying, so the
-    // connection is never left dead. (HTTP/3 must be disabled at Cloudflare — its WS
-    // and long-poll handling over h3/h2 to this origin fails; over h1.1 it's fine.)
-    const socket = io(WS_URL, { transports: ["polling", "websocket"], reconnection: true, reconnectionDelay: 1000 });
+    // WebSocket FIRST now that HTTP/3 is disabled at Cloudflare. WS is proven clean
+    // through CF; it's the *polling* long-poll that intermittently resets for clients
+    // (ERR_CONNECTION_RESET). Going straight to WS skips the flaky polling handshake.
+    // tryAllTransports keeps polling as a genuine fallback if WS ever fails to open, so
+    // the connection is never left dead.
+    const socket = io(WS_URL, { transports: ["websocket", "polling"], tryAllTransports: true, reconnection: true, reconnectionDelay: 1000 });
     _pulseSocket = socket;
 
     socket.on("connect", () => {

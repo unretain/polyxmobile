@@ -72,8 +72,10 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
     if (socket?.connected) return;
 
     const newSocket = io(WS_URL, {
-      // Polling first, upgrade to WS — survives a failed WS upgrade instead of dying.
-      transports: ["polling", "websocket"],
+      // WebSocket first (h3 disabled at CF; WS is clean, polling is what resets).
+      // tryAllTransports falls back to polling only if WS fails to open.
+      transports: ["websocket", "polling"],
+      tryAllTransports: true,
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
