@@ -383,16 +383,19 @@ function handleTransaction(update: any) {
         // (verified), so this no longer piles a burst into one wrong bucket.
         recordCandle(mint, priceSol, solLamports / 1e9);
         recordTrade({ mint, signature, slot: 0, ts: chDateTime(tsSec > 0 ? tsSec * 1000 : Date.now()), is_buy: isBuy ? 1 : 0, sol_amount: solLamports / 1e9, token_amount: tokenRaw / 1e6, price_sol: priceSol, mcap_sol: token.marketCapSol, real_token_reserves: realTok, trader });
-        // Per-trade event for the token page's live "recent trades" panel.
-        feedEvents.emit("trade", {
-          mint, type: isBuy ? "buy" : "sell", tokenAmount: tokenRaw / 1e6,
-          solAmount: solLamports / 1e9, marketCapSol: token.marketCapSol,
-          marketCap: token.marketCapSol * state.solPrice,
-          priceUsd: priceSol * state.solPrice, solPrice: state.solPrice,
-          volume24h: token.volume24h, liquidity: token.liquidity,
-          trader, signature,
-          timestamp: (tsSec > 0 ? tsSec : Math.floor(Date.now() / 1000)) * 1000,
-        });
+        // Per-trade event for the token page's live "recent trades" panel — built +
+        // broadcast ONLY when someone actually has this coin's chart open (see hasViewer).
+        if (hasViewer(mint)) {
+          feedEvents.emit("trade", {
+            mint, type: isBuy ? "buy" : "sell", tokenAmount: tokenRaw / 1e6,
+            solAmount: solLamports / 1e9, marketCapSol: token.marketCapSol,
+            marketCap: token.marketCapSol * state.solPrice,
+            priceUsd: priceSol * state.solPrice, solPrice: state.solPrice,
+            volume24h: token.volume24h, liquidity: token.liquidity,
+            trader, signature,
+            timestamp: (tsSec > 0 ? tsSec : Math.floor(Date.now() / 1000)) * 1000,
+          });
+        }
         state.stats.trades++;
         if (token.progress >= FINAL_STRETCH_PROGRESS && state.newTokens.has(mint)) {
           state.newTokens.delete(mint);
@@ -504,14 +507,16 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = []) {
     sol_amount: volSol, token_amount: absTok, price_sol: priceSol,
     mcap_sol: priceSol * TOTAL_SUPPLY, real_token_reserves: 0, trader,
   });
-  feedEvents.emit("trade", {
-    mint, type: isBuy ? "buy" : "sell", tokenAmount: absTok,
-    solAmount: volSol, marketCapSol: priceSol * TOTAL_SUPPLY,
-    marketCap: priceSol * TOTAL_SUPPLY * state.solPrice,
-    priceUsd: priceSol * state.solPrice, solPrice: state.solPrice,
-    volume24h: token?.volume24h ?? 0, liquidity: token?.liquidity ?? 0,
-    trader, signature, timestamp: Date.now(),
-  });
+  if (hasViewer(mint)) {
+    feedEvents.emit("trade", {
+      mint, type: isBuy ? "buy" : "sell", tokenAmount: absTok,
+      solAmount: volSol, marketCapSol: priceSol * TOTAL_SUPPLY,
+      marketCap: priceSol * TOTAL_SUPPLY * state.solPrice,
+      priceUsd: priceSol * state.solPrice, solPrice: state.solPrice,
+      volume24h: token?.volume24h ?? 0, liquidity: token?.liquidity ?? 0,
+      trader, signature, timestamp: Date.now(),
+    });
+  }
   state.stats.pumpswap++;
 }
 
@@ -555,6 +560,7 @@ function pumpswapWatchMints(): string[] {
 // already-migrated coin we didn't see graduate). Picked up by maybeResubscribe().
 const MAX_WATCHED = 120;
 export function watchMint(mint: string) {
+  const isNew = !state.watched.has(mint);
   // Refresh recency (delete + re-add moves it to the end) so a chart that's polling
   // getCandles every second stays newest and is never evicted while it's open.
   state.watched.delete(mint);
@@ -563,6 +569,31 @@ export function watchMint(mint: string) {
     const oldest = state.watched.values().next().value;
     if (oldest) state.watched.delete(oldest);
   }
+  // A brand-new watched mint isn't in the live gRPC subscription yet — rewrite it NOW
+  // instead of waiting up to 3s for the next resubscribe tick. That tick delay (plus
+  // propagation) is why opening an already-migrated coin took ~10s to start charting;
+  // new pairs are instant only because the whole pump.fun program is always subscribed.
+  if (isNew) maybeResubscribe().catch(() => {});
+}
+
+// Mints with a live chart open right now — maintained by the websocket layer via
+// subscribe:token / unsubscribe:token (ref-counted so multiple viewers of the same
+// coin count correctly). The decoder builds + broadcasts a per-trade event ONLY for
+// these. Under a volume storm it was doing that allocation + socket.io broadcast for
+// ALL ~400+ tracked coins on every single trade — almost all with nobody watching —
+// which is what pushed the single decode thread behind (feedLag). Candle building and
+// ClickHouse persistence still run for every coin, so history is never lost.
+const viewerCounts = new Map<string, number>();
+export function addViewer(mint: string) {
+  viewerCounts.set(mint, (viewerCounts.get(mint) || 0) + 1);
+}
+export function removeViewer(mint: string) {
+  const n = (viewerCounts.get(mint) || 0) - 1;
+  if (n <= 0) viewerCounts.delete(mint);
+  else viewerCounts.set(mint, n);
+}
+export function hasViewer(mint: string): boolean {
+  return viewerCounts.has(mint);
 }
 
 function buildSubscribeRequest() {

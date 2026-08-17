@@ -4,7 +4,7 @@ import { getGrpcService } from "../grpc";
 import { Timeframe } from "../ohlcv";
 import { prisma } from "../lib/prisma";
 import crypto from "crypto";
-import { getSnapshot, feedEvents } from "../pulse/feed";
+import { getSnapshot, feedEvents, addViewer, removeViewer } from "../pulse/feed";
 
 // ==========================================
 // Rate Limiting
@@ -167,9 +167,12 @@ export function setupWebSocket(io: Server) {
     // Handle token subscription
     socket.on("subscribe:token", (data: { address: string }) => {
       const state = subscriptions.get(socket.id);
-      if (state) {
+      // Count this viewer once per socket so the decoder knows to broadcast this coin's
+      // trades. Guard on !has so a duplicate subscribe doesn't double-count the ref.
+      if (state && !state.tokens.has(data.address)) {
         state.tokens.add(data.address);
         socket.join(`token:${data.address}`);
+        addViewer(data.address);
         console.log(`Client ${socket.id} subscribed to token ${data.address}`);
       }
     });
@@ -177,9 +180,10 @@ export function setupWebSocket(io: Server) {
     // Handle token unsubscription
     socket.on("unsubscribe:token", (data: { address: string }) => {
       const state = subscriptions.get(socket.id);
-      if (state) {
+      if (state && state.tokens.has(data.address)) {
         state.tokens.delete(data.address);
         socket.leave(`token:${data.address}`);
+        removeViewer(data.address);
         console.log(`Client ${socket.id} unsubscribed from token ${data.address}`);
       }
     });
@@ -1287,6 +1291,10 @@ export function setupWebSocket(io: Server) {
       }
 
       socketToUser.delete(socket.id);
+      // Release this socket's token viewer counts so the decoder stops broadcasting
+      // coins it was the last viewer of (a dropped socket rarely sends unsubscribe).
+      const subState = subscriptions.get(socket.id);
+      if (subState) for (const mint of subState.tokens) removeViewer(mint);
       subscriptions.delete(socket.id);
       rateLimits.delete(socket.id);
       console.log(`Client disconnected: ${socket.id}`);
