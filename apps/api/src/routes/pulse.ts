@@ -55,13 +55,19 @@ pulseRoutes.get("/new-pairs", async (req, res) => {
 // Uses DB for enriched data - shows NEWEST tokens first, filters out anything > 1 hour old
 pulseRoutes.get("/graduating", async (req, res) => {
   try {
+    // Prefer the LIVE in-memory set. "Graduating" is a live, progress-based concept and
+    // the CH mcap-range approximation lags badly — it was returning ~1 coin while memory
+    // held 13. In-memory PulseTokens also carry the resolved logoUri, so this fixes both
+    // the empty final-stretch list AND its missing images. CH is only a fallback for the
+    // brief window right after a restart, before the feed rebuilds.
+    const data = getGraduating(100);
+    if (data.length) return res.json({ data, total: data.length, timestamp: Date.now(), sources: ["grpc"] });
     if (clickhouseEnabled()) {
       try {
         const chData = await ch.getGraduatingPairs(100, getSolPrice());
         if (chData.length) return res.json({ data: chData, total: chData.length, timestamp: Date.now(), sources: ["clickhouse"] });
       } catch (e) { console.error("[pulse] CH graduating:", (e as Error).message); }
     }
-    const data = getGraduating(100);
     res.json({ data, total: data.length, timestamp: Date.now(), sources: ["grpc"] });
   } catch (error) {
     console.error("Error fetching graduating coins:", error);

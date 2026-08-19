@@ -706,7 +706,7 @@ async function checkGraduations() {
     // except graduating, so the list rotted with hours-old corpses. Evicting them keeps
     // the list fresh and shrinks the RPC check below.
     const nowMs = Date.now();
-    const MAX_FINAL_STRETCH_MS = 40 * 60 * 1000;
+    const MAX_FINAL_STRETCH_MS = 90 * 60 * 1000; // 1h30m — evict only long-stalled coins
     for (const [m, t] of state.graduatingTokens) {
       if (t.graduatingSince == null) { t.graduatingSince = nowMs; continue; } // backfill pre-restart
       if (nowMs - t.graduatingSince > MAX_FINAL_STRETCH_MS) {
