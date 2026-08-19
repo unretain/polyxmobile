@@ -52,6 +52,7 @@ const TRADE_AGG = `
     argMax(mcap_sol, ts)  AS mcap_sol,
     argMax(real_token_reserves, ts) AS real_tok,
     sumIf(sol_amount, ts > now() - INTERVAL 24 HOUR) AS vol_sol,
+    max(ts) AS last_ts,
     count() AS tx
   FROM trades GROUP BY mint`;
 
@@ -103,6 +104,7 @@ export async function getGraduatingPairs(limit: number, solPrice: number) {
      FROM (${TRADE_AGG}) lt
      INNER JOIN (SELECT * FROM tokens FINAL WHERE created_at > now() - INTERVAL {maxAge:UInt16} DAY) t ON lt.mint = t.mint
      WHERE lt.real_tok > 0 AND lt.real_tok <= {maxTok:Float64}
+       AND lt.last_ts > now() - INTERVAL 20 MINUTE
        AND lt.mint NOT IN (SELECT mint FROM graduations)
      ORDER BY lt.mcap_sol DESC
      LIMIT {limit:UInt32}

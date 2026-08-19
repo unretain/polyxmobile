@@ -64,6 +64,7 @@ export interface PulseToken {
   destination?: string;
   graduatedAt?: number; // when it migrated (for recency filtering of the migrated list)
   graduatingSince?: number; // when it entered final stretch — used to prune stalled coins
+  lastTradeAt?: number; // last time we saw a trade — prunes dead coins from final stretch
   // socials, pulled from the token metadata JSON alongside the image
   twitter?: string;
   telegram?: string;
@@ -377,6 +378,7 @@ function handleTransaction(update: any) {
         // Liquidity = real SOL locked in the curve, valued both sides (DexScreener convention).
         token.liquidity = (realSol / 1e9) * state.solPrice * 2;
         token.progress = Math.max(0, Math.min(100, (1 - realTok / INITIAL_REAL_TOKEN_RAW) * 100));
+        token.lastTradeAt = Date.now();
         if (!token.launchPriceSol) token.launchPriceSol = priceSol;
         token.priceChange24h = token.launchPriceSol > 0 ? ((priceSol - token.launchPriceSol) / token.launchPriceSol) * 100 : 0;
         token.volume24h += (solLamports / 1e9) * state.solPrice;
@@ -708,10 +710,13 @@ async function checkGraduations() {
     // except graduating, so the list rotted with hours-old corpses. Evicting them keeps
     // the list fresh and shrinks the RPC check below.
     const nowMs = Date.now();
-    const MAX_FINAL_STRETCH_MS = 90 * 60 * 1000; // 1h30m — evict only long-stalled coins
+    const MAX_FINAL_STRETCH_MS = 90 * 60 * 1000; // 1h30m hard cap
+    const INACTIVE_MS = 20 * 60 * 1000; // no trade in 20m => dead, drop it
     for (const [m, t] of state.graduatingTokens) {
-      if (t.graduatingSince == null) { t.graduatingSince = nowMs; continue; } // backfill pre-restart
-      if (nowMs - t.graduatingSince > MAX_FINAL_STRETCH_MS) {
+      if (t.graduatingSince == null) t.graduatingSince = nowMs; // backfill pre-restart
+      const tooOld = nowMs - t.graduatingSince > MAX_FINAL_STRETCH_MS;
+      const dead = nowMs - (t.lastTradeAt ?? t.graduatingSince) > INACTIVE_MS;
+      if (tooOld || dead) {
         state.graduatingTokens.delete(m);
         dropCandles(m);
       }
@@ -948,6 +953,7 @@ async function backfillGraduatingFromCH() {
       t.txCount = p.txCount ?? 0;
       t.createdAt = p.createdAt ?? Date.now();
       t.graduatingSince = Date.now();
+      t.lastTradeAt = Date.now(); // passed the 20m recency filter; drop if it goes quiet
       state.graduatingTokens.set(mint, t);
       n++;
     }
