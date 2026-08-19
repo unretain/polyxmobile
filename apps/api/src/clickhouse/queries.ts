@@ -84,11 +84,32 @@ export async function getNewPairs(limit: number, solPrice: number) {
 }
 
 export async function getGraduatingPairs(limit: number, solPrice: number) {
-  const all = await activePairs(limit, solPrice);
-  return all
-    .filter((p) => p.progress >= FINAL_STRETCH_PROGRESS)
-    .sort((a, b) => b.marketCap - a.marketCap)
-    .slice(0, limit);
+  // Find coins CURRENTLY in final stretch BY PROGRESS, not by creation recency. A coin
+  // that pumped near graduation is usually not among the newest tokens, so the old
+  // activePairs(newest-300) scan missed them and returned ~1. On-chain "80%+ sold" is
+  // real_tok <= INIT*(1-0.8); real_tok=0 rows are migrated (PumpSwap) coins, excluded
+  // via >0 + NOT IN graduations.
+  const rows = await q<any>(
+    `SELECT
+       t.mint AS address, t.name AS name, t.symbol AS symbol, t.image AS logoUri,
+       toUnixTimestamp64Milli(t.created_at) AS createdAt,
+       lt.last_price_sol * {sol:Float64} AS price,
+       lt.mcap_sol AS marketCapSol,
+       lt.mcap_sol * {sol:Float64} AS marketCap,
+       lt.vol_sol * {sol:Float64} AS volume24h,
+       lt.tx AS txCount,
+       if(lt.first_price_sol > 0, (lt.last_price_sol - lt.first_price_sol) / lt.first_price_sol * 100, 0) AS priceChange24h,
+       greatest(0, least(100, (1 - lt.real_tok / {init:Float64}) * 100)) AS progress
+     FROM (${TRADE_AGG}) lt
+     INNER JOIN (SELECT * FROM tokens FINAL WHERE created_at > now() - INTERVAL {maxAge:UInt16} DAY) t ON lt.mint = t.mint
+     WHERE lt.real_tok > 0 AND lt.real_tok <= {maxTok:Float64}
+       AND lt.mint NOT IN (SELECT mint FROM graduations)
+     ORDER BY lt.mcap_sol DESC
+     LIMIT {limit:UInt32}
+     SETTINGS join_use_nulls = 1`,
+    { limit, sol: solPrice, init: INITIAL_REAL_TOKEN_RAW, maxAge: MAX_AGE_DAYS, maxTok: INITIAL_REAL_TOKEN_RAW * (1 - FINAL_STRETCH_PROGRESS / 100) }
+  );
+  return rows.map((r) => shapePair(r, solPrice));
 }
 
 export async function getGraduatedPairs(limit: number, solPrice: number) {
