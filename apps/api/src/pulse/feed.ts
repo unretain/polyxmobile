@@ -13,6 +13,8 @@ import { PublicKey, Connection } from "@solana/web3.js";
 import bs58 from "bs58";
 // Dual-write persistence: this single decoder feeds ClickHouse too (no 2nd gRPC).
 import { recordToken, recordTrade, recordGraduation, chDateTime } from "../clickhouse/writer";
+import { getGraduatingPairs as chGraduatingPairs } from "../clickhouse/queries";
+import { clickhouseEnabled } from "../clickhouse/client";
 
 const PUMP_FUN_PROGRAM = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 // PumpSwap (pump.fun's AMM) — where tokens trade AFTER graduation. Verified live.
@@ -906,6 +908,10 @@ export function startPulseFeed() {
     console.log(`[pulse] creates=${s.creates} trades=${s.trades} ps=${s.pumpswap} grads=${s.graduations} new=${state.newTokens.size} grad-ing=${state.graduatingTokens.size} watch=${pumpswapWatchMints().length} conn=${state.connected} feedLag=${medianFeedLag().toFixed(1)}s`);
   }, 60000);
   connect(endpoint, process.env.GRPC_TOKEN);
+  // Seed final stretch from ClickHouse ~20s after boot (once CH + SOL price are ready),
+  // then keep it topped up every 3 min so it survives restarts and storm gaps.
+  setTimeout(() => { backfillGraduatingFromCH().catch(() => {}); }, 20000);
+  setInterval(() => { backfillGraduatingFromCH().catch(() => {}); }, 180000);
 }
 
 export function isPulseConnected() { return state.connected; }
@@ -916,6 +922,39 @@ export function getNewPairs(limit = 50): PulseToken[] {
 }
 export function getGraduating(limit = 20): PulseToken[] {
   return Array.from(state.graduatingTokens.values()).sort((a, b) => b.marketCapSol - a.marketCapSol).slice(0, limit).map(usd);
+}
+
+// After a restart the feed only knows coins CREATED since it started, so the live
+// final-stretch list (which the WebSocket snapshot reads from memory) is empty and
+// refills at ~1 coin / few min. Seed graduatingTokens from ClickHouse's durable
+// history so final stretch is populated immediately — these coins are then tracked
+// normally (their trades resolve against graduatingTokens; checkGraduations promotes
+// or the stall-prune evicts). Idempotent: skips anything already tracked.
+async function backfillGraduatingFromCH() {
+  if (!clickhouseEnabled()) return;
+  try {
+    const list: any[] = await chGraduatingPairs(100, state.solPrice);
+    let n = 0;
+    for (const p of list) {
+      const mint = p.address;
+      if (!mint || state.graduatingTokens.has(mint) || state.graduatedTokens.has(mint) || state.newTokens.has(mint)) continue;
+      const t = newToken(mint, p.name, p.symbol, "");
+      t.logoUri = p.logoUri ?? null;
+      t.marketCapSol = p.marketCapSol ?? 0;
+      t.priceSol = state.solPrice > 0 ? (p.price || 0) / state.solPrice : 0;
+      t.progress = p.progress ?? 0;
+      t.volume24h = p.volume24h ?? 0;
+      t.liquidity = p.liquidity ?? 0;
+      t.txCount = p.txCount ?? 0;
+      t.createdAt = p.createdAt ?? Date.now();
+      t.graduatingSince = Date.now();
+      state.graduatingTokens.set(mint, t);
+      n++;
+    }
+    if (n) console.log(`[pulse] backfilled ${n} final-stretch coins from ClickHouse`);
+  } catch (e) {
+    console.error("[pulse] graduating backfill failed:", (e as Error).message);
+  }
 }
 // Retry missing logos on a slow timer — OFF the hot snapshot/decode path so it never
 // competes with stream processing (that's what was choking the loop under PROCESSED).
