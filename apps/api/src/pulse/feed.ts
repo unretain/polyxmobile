@@ -266,6 +266,14 @@ async function resolveImage(mint: string, uri: string) {
   }
 }
 
+// Re-route logos through our own /img proxy so browsers don't block the IPFS gateways
+// cross-origin (see the proxy route in index.ts). Applied at output time only.
+const PUBLIC_API_URL = process.env.PUBLIC_API_URL || "https://api.polyx.trade";
+function proxyImg(u: string | null): string | null {
+  if (!u || !/^https?:\/\//i.test(u) || u.startsWith(PUBLIC_API_URL)) return u;
+  return `${PUBLIC_API_URL}/img?u=${encodeURIComponent(u)}`;
+}
+
 function usd(token: PulseToken): PulseToken {
   const p = state.solPrice;
   return {
@@ -273,6 +281,7 @@ function usd(token: PulseToken): PulseToken {
     marketCap: token.marketCapSol * p,
     price: (token.priceSol || 0) * p,
     migrationMc: MIGRATION_MC_SOL * p,
+    logoUri: proxyImg(token.logoUri),
   };
 }
 

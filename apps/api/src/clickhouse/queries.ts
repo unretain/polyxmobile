@@ -21,13 +21,21 @@ async function q<T>(sql: string, params: Record<string, unknown>): Promise<T[]> 
   return (await rs.json()) as T[];
 }
 
+// Re-route logos through our own /img proxy so browsers don't block IPFS gateways
+// cross-origin (matches feed.ts; the proxy route lives in index.ts).
+const PUBLIC_API_URL = process.env.PUBLIC_API_URL || "https://api.polyx.trade";
+function proxyImg(u: string | null): string | null {
+  if (!u || !/^https?:\/\//i.test(u) || u.startsWith(PUBLIC_API_URL)) return u;
+  return `${PUBLIC_API_URL}/img?u=${encodeURIComponent(u)}`;
+}
+
 // USD fields are already computed in SQL; this just normalizes/labels the row.
 function shapePair(r: any, solPrice: number) {
   return {
     address: r.address,
     symbol: r.symbol || r.address.slice(0, 6),
     name: r.name || r.symbol || r.address.slice(0, 8),
-    logoUri: r.logoUri || null,
+    logoUri: proxyImg(r.logoUri || null),
     price: Number(r.price) || 0,
     priceChange24h: Number(r.priceChange24h) || 0,
     volume24h: Number(r.volume24h) || 0,
