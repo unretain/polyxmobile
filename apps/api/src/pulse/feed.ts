@@ -61,6 +61,7 @@ export interface PulseToken {
   progress: number;
   destination?: string;
   graduatedAt?: number; // when it migrated (for recency filtering of the migrated list)
+  graduatingSince?: number; // when it entered final stretch — used to prune stalled coins
   // socials, pulled from the token metadata JSON alongside the image
   twitter?: string;
   telegram?: string;
@@ -401,6 +402,7 @@ function handleTransaction(update: any) {
         state.stats.trades++;
         if (token.progress >= FINAL_STRETCH_PROGRESS && state.newTokens.has(mint)) {
           state.newTokens.delete(mint);
+          token.graduatingSince = Date.now();
           state.graduatingTokens.set(mint, token);
           if (state.graduatingTokens.size > MAX_GRADUATING) {
             // Drop the oldest graduating coin (hit final stretch long ago, never
@@ -550,11 +552,14 @@ function pumpswapWatchMints(): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   const add = (m: string) => { if (!seen.has(m)) { seen.add(m); out.push(m); } };
+  // ONLY coins someone is actively viewing + coins about to migrate. On the trial gRPC
+  // (~50 TPS) the pump.fun firehose plus a WIDE PumpSwap subscription leaves no headroom,
+  // so one high-volume coin tips the whole stream over and the relay RST_STREAMs it —
+  // wiping EVERY coin for that window. Keeping PumpSwap scoped to just viewed+graduating
+  // keeps baseline load low so a spike doesn't kill the stream. A migrated coin is added
+  // live the instant someone opens it (watchMint -> immediate resubscribe).
   for (const m of state.watched) add(m);              // explicit view — always keep
   for (const m of state.graduatingTokens.keys()) add(m); // about to migrate — always keep
-  // Fill the rest with newest-first graduated coins until we hit the cap.
-  const graduated = Array.from(state.graduatedTokens.keys());
-  for (let i = graduated.length - 1; i >= 0 && out.length < MAX_SUB_MINTS; i--) add(graduated[i]);
   return out.slice(0, MAX_SUB_MINTS);
 }
 
@@ -696,6 +701,20 @@ async function checkGraduations() {
   if (checkingGrads || state.graduatingTokens.size === 0) return;
   checkingGrads = true;
   try {
+    // Prune stalled coins FIRST. A coin stuck in "final stretch" for over 40 min without
+    // graduating has dumped or died — there's otherwise no exit from graduatingTokens
+    // except graduating, so the list rotted with hours-old corpses. Evicting them keeps
+    // the list fresh and shrinks the RPC check below.
+    const nowMs = Date.now();
+    const MAX_FINAL_STRETCH_MS = 40 * 60 * 1000;
+    for (const [m, t] of state.graduatingTokens) {
+      if (t.graduatingSince == null) { t.graduatingSince = nowMs; continue; } // backfill pre-restart
+      if (nowMs - t.graduatingSince > MAX_FINAL_STRETCH_MS) {
+        state.graduatingTokens.delete(m);
+        dropCandles(m);
+      }
+    }
+    if (state.graduatingTokens.size === 0) return;
     const rpc = process.env.SOLANA_RPC_URL || "http://tyo.corvus-labs.io:8899";
     const conn = new Connection(rpc, "confirmed");
     const entries = [...state.graduatingTokens];
