@@ -50,6 +50,33 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+// Public image proxy (no auth): coin logos live on IPFS gateways that browsers block
+// cross-origin (ERR_BLOCKED_BY_RESPONSE.NotSameOrigin — redirects to per-CID subdomain
+// gateways, crossOrigin/canvas loads, etc). Re-serving them from our own origin with
+// explicit permissive headers fixes it in every context. Cloudflare caches this route,
+// so each image is fetched from the gateway once. Host-allowlisted to prevent SSRF.
+const IMG_HOSTS = ["ipfs.io", "dweb.link", "cf-ipfs.com", "cloudflare-ipfs.com", "mypinata.cloud", "pinata.cloud", "arweave.net", "axiom-cdn.io", "nftstorage.link", "filebase.io", "w3s.link", "pump.fun", "irys.xyz"];
+app.get("/img", async (req, res) => {
+  const u = String(req.query.u || "");
+  try {
+    if (!/^https?:\/\//i.test(u)) return res.status(400).end();
+    const host = new URL(u).hostname.toLowerCase();
+    if (!IMG_HOSTS.some((d) => host === d || host.endsWith("." + d))) return res.status(400).end();
+    const r = await fetch(u, { redirect: "follow", signal: AbortSignal.timeout(10000) });
+    const ct = r.headers.get("content-type") || "";
+    if (!r.ok || !ct.startsWith("image/")) return res.status(502).end();
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.length > 8 * 1024 * 1024) return res.status(413).end();
+    res.setHeader("Content-Type", ct);
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+    return res.end(buf);
+  } catch {
+    return res.status(502).end();
+  }
+});
+
 // Apply internal API key authentication to all /api routes
 // This protects Birdeye/Moralis API calls from unauthorized access
 app.use("/api", requireInternalApiKey);
