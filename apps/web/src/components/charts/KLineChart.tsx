@@ -87,6 +87,7 @@ const OVERLAY_RECT = "polyxRect";
 const OVERLAY_CIRCLE = "polyxCircle";
 const OVERLAY_TEXT = "polyxText";
 const OVERLAY_MEASURE = "polyxMeasure";
+const OVERLAY_LEVEL = "polyxLevel";
 
 let overlaysRegistered = false;
 function ensureOverlays() {
@@ -99,6 +100,36 @@ function ensureOverlays() {
     needDefaultXAxisFigure: true,
     needDefaultYAxisFigure: true,
   };
+
+  // A horizontal level with a text tag on it. The built-in horizontalStraightLine
+  // draws an unlabelled dashed line, which is indistinguishable from the last-price
+  // marker (also dashed, also accent/red) — so "why is there a red line before I
+  // sell?" was a fair question. These say what they are.
+  registerOverlay({
+    name: OVERLAY_LEVEL,
+    totalStep: 2,
+    needDefaultPointFigure: false,
+    needDefaultXAxisFigure: false,
+    needDefaultYAxisFigure: true,
+    createPointFigures: ({ coordinates, bounding, overlay }) => {
+      if (coordinates.length < 1) return [];
+      const y = coordinates[0].y;
+      const color = (overlay.extendData as any)?.color || ACCENT;
+      const label = (overlay.extendData as any)?.label || "";
+      return [
+        {
+          type: "line",
+          attrs: { coordinates: [{ x: 0, y }, { x: bounding.width, y }] },
+          styles: { style: "dashed", color, size: 1 },
+        },
+        {
+          type: "text",
+          attrs: { x: 4, y: y - 2, text: label, align: "left", baseline: "bottom" },
+          styles: { color, size: 10, family: "monospace" },
+        },
+      ];
+    },
+  });
 
   registerOverlay({
     ...shape,
@@ -600,22 +631,23 @@ export function KLineChart({
     const chart = chartRef.current;
     if (!chartReady || !chart) return;
 
-    const draw = (id: string, value: number | null | undefined, color: string) => {
+    const draw = (id: string, value: number | null | undefined, color: string, label: string) => {
       // Remove by id first, unconditionally: this is what guarantees one line.
       chart.removeOverlay({ id });
       if (!value || !isFinite(value) || value <= 0) return;
       chart.createOverlay({
         id,
-        name: "horizontalStraightLine",
+        name: OVERLAY_LEVEL,
         // The y-axis is market cap, so the caller passes price * supply.
         points: [{ value }],
         lock: true, // derived from real fills — not draggable
-        styles: { line: { color, size: 1, style: "dashed" } },
+        extendData: { color, label },
       });
     };
 
-    draw("avg-entry", avgEntry, UP);
-    draw("avg-exit", avgExit, DOWN);
+    // Only drawn when the side actually has fills: no sells means no exit line.
+    draw("avg-entry", avgEntry, UP, "AVG ENTRY");
+    draw("avg-exit", avgExit, DOWN, "AVG EXIT");
   }, [avgEntry, avgExit, chartReady]);
 
   // ---- toolbar actions ----------------------------------------------------
