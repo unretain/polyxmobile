@@ -27,6 +27,7 @@ const FIELDS: { key: keyof PulseFilter; label: string }[] = [
   { key: "marketCap", label: "Market Cap ($)" },
   { key: "curve", label: "B. curve %" },
   { key: "fees", label: "Global Fees Paid (SOL)" },
+  { key: "age", label: "Age (minutes)" },
   { key: "txns", label: "Txns" },
   { key: "buys", label: "Num Buys" },
   { key: "sells", label: "Num Sells" },

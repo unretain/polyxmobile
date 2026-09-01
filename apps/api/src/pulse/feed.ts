@@ -46,7 +46,10 @@ const TOTAL_SUPPLY = 1_000_000_000;
 const INITIAL_REAL_TOKEN_RAW = 793_100_000 * 1e6;
 const MIGRATION_MC_SOL = 410.9;
 const INITIAL_MC_SOL = 28;
-const FINAL_STRETCH_PROGRESS = 80;
+// Final stretch = % of the CURVE'S TOKENS SOLD (1 - real_token_reserves / initial),
+// not a share of the graduation market cap. 40% means "40% of the curve is gone".
+// Was 80%, which only caught coins in the last moments before migration.
+const FINAL_STRETCH_PROGRESS = Number(process.env.PULSE_FINAL_STRETCH_PCT || 40);
 const MAX_RECONNECT_DELAY = 30000;
 
 export interface PulseToken {

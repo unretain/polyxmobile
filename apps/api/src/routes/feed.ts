@@ -34,6 +34,7 @@ function parseFilters(q: any): ch.PairFilters {
     minMcap: n(q.minMcap), maxMcap: n(q.maxMcap),
     minCurve: n(q.minCurve), maxCurve: n(q.maxCurve),
     minFees: n(q.minFees), maxFees: n(q.maxFees),
+    minAgeMin: n(q.minAgeMin), maxAgeMin: n(q.maxAgeMin),
     minTx: n(q.minTx), maxTx: n(q.maxTx),
     minBuys: n(q.minBuys), maxBuys: n(q.maxBuys),
     minSells: n(q.minSells), maxSells: n(q.maxSells),
@@ -41,6 +42,10 @@ function parseFilters(q: any): ch.PairFilters {
     activeMins: n(q.activeMins),
   };
 }
+
+/** Any bound actually set? If so, an empty result is a real answer — see below. */
+const hasFilters = (f: ch.PairFilters) =>
+  Object.values(f).some((v) => v !== undefined && v !== "");
 
 /** Stable memo key for a filter set (order-independent). */
 const fkey = (f: ch.PairFilters) =>
@@ -116,7 +121,10 @@ feedRoutes.get("/new-pairs", async (req, res) => {
     try {
       const f = parseFilters(req.query);
       const data = await memo(`f:np:${limit}:${fkey(f)}`, 1000, () => ch.getNewPairs(limit, sol, f));
-      if (data.length) return res.json({ data, source: "clickhouse", solPrice: sol, realtime: isPulseConnected() });
+      // With filters active an empty list is the correct answer. Falling through to
+      // the in-memory list would ignore the filter entirely and show coins the user
+      // explicitly excluded (a 30-minute age floor was returning 12-second-old coins).
+      if (data.length || hasFilters(f)) return res.json({ data, source: "clickhouse", solPrice: sol, realtime: isPulseConnected() });
     } catch (e) { console.error("[feed] CH new-pairs:", (e as Error).message); }
   }
   res.json({ data: getNewPairs(limit), source: "grpc", solPrice: sol, realtime: isPulseConnected() });
@@ -129,7 +137,7 @@ feedRoutes.get("/graduating", async (req, res) => {
     try {
       const f = parseFilters(req.query);
       const data = await memo(`f:gi:${limit}:${fkey(f)}`, 1000, () => ch.getGraduatingPairs(limit, sol, f));
-      if (data.length) return res.json({ data, source: "clickhouse", solPrice: sol });
+      if (data.length || hasFilters(f)) return res.json({ data, source: "clickhouse", solPrice: sol });
     } catch (e) { console.error("[feed] CH graduating:", (e as Error).message); }
   }
   res.json({ data: getGraduating(limit), source: "grpc", solPrice: sol });
@@ -142,7 +150,7 @@ feedRoutes.get("/graduated", async (req, res) => {
     try {
       const f = parseFilters(req.query);
       const data = await memo(`f:ge:${limit}:${fkey(f)}`, 1000, () => ch.getGraduatedPairs(limit, sol, f));
-      if (data.length) return res.json({ data, source: "clickhouse", solPrice: sol });
+      if (data.length || hasFilters(f)) return res.json({ data, source: "clickhouse", solPrice: sol });
     } catch (e) { console.error("[feed] CH graduated:", (e as Error).message); }
   }
   res.json({ data: getGraduated(limit), source: "grpc", solPrice: sol });
@@ -170,7 +178,12 @@ feedRoutes.get("/ohlcv/:mint", async (req, res) => {
   const ivMs = timeframeToMs(String(req.query.timeframe || "1m"));
   const iv = Math.max(1, Math.round(ivMs / 1000)); // in-memory getCandles still takes seconds
   const limit = Math.min(parseInt(String(req.query.limit)) || 1000, 5000);
-  let data = getCandles(mint, iv, limit);
+  // Finer bars must not mean a shorter chart. At 250ms, the client's 1000-bar budget
+  // covers just over 4 minutes, so a 6-minute-old coin lost its opening entirely — the
+  // "everything before it hit final stretch is missing" case. Sub-second views get a
+  // bigger bar budget so the window stays comparable to the 1s view.
+  const outLimit = ivMs < 1000 ? Math.min(5000, Math.max(limit, Math.ceil(limit * (1000 / ivMs)))) : limit;
+  let data = getCandles(mint, iv, outLimit);
   let source = "grpc";
   // In-memory candles only exist from the moment WE started tracking the coin. For a
   // coin picked up late — the final-stretch backfill after a restart, or a coin that
@@ -201,7 +214,7 @@ feedRoutes.get("/ohlcv/:mint", async (req, res) => {
   // clearance means a trade can never be plotted twice.
   if (clickhouseEnabled()) {
     try {
-      const want = Math.min(limit, 2000);
+      const want = Math.min(outLimit, 5000);
       const chData = await memo(`f:cndl:${mint}:${ivMs}:${want}`, 1000, () => ch.getTradeCandles(mint, ivMs, want, getSolPrice()));
       if (chData.length) {
         if (!data.length) {
@@ -226,7 +239,7 @@ feedRoutes.get("/ohlcv/:mint", async (req, res) => {
   // is 250ms — mixing them on one axis was half the choppiness). We do NOT gap-fill:
   // padding quiet stretches with zero-volume bars at the last price drew long flat
   // shelves across the chart, which looked far worse than the honest gaps it replaced.
-  data = rebucket(data as Bar[], ivMs).slice(-limit);
+  data = rebucket(data as Bar[], ivMs).slice(-outLimit);
   res.json({ data, source, hasHistory: hasCandles(mint) || data.length > 0 });
 });
 

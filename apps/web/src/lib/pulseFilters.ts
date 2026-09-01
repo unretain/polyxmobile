@@ -19,6 +19,7 @@ export interface PulseFilter {
   marketCap: Range;  // USD
   curve: Range;      // bonding-curve %
   fees: Range;       // SOL, actually paid (not derived from volume)
+  age: Range;        // minutes since launch
   txns: Range;
   buys: Range;
   sells: Range;
@@ -29,7 +30,7 @@ export type PulseFilters = Record<TabKey, PulseFilter>;
 
 export const EMPTY_FILTER: PulseFilter = {
   search: "", exclude: "",
-  liquidity: {}, volume: {}, marketCap: {}, curve: {}, fees: {}, txns: {}, buys: {}, sells: {},
+  liquidity: {}, volume: {}, marketCap: {}, curve: {}, fees: {}, age: {}, txns: {}, buys: {}, sells: {},
 };
 
 export const EMPTY_FILTERS: PulseFilters = {
@@ -66,7 +67,7 @@ export function activeCount(f: PulseFilter): number {
   let n = 0;
   if (f.search.trim()) n++;
   if (f.exclude.trim()) n++;
-  for (const k of ["liquidity", "volume", "marketCap", "curve", "fees", "txns", "buys", "sells"] as const) {
+  for (const k of ["liquidity", "volume", "marketCap", "curve", "fees", "age", "txns", "buys", "sells"] as const) {
     const r = f[k];
     if (r?.min !== undefined) n++;
     if (r?.max !== undefined) n++;
@@ -105,6 +106,7 @@ export function matchesFilter(t: any, f: PulseFilter): boolean {
     inRange(t.marketCap, f.marketCap) &&
     inRange(t.progress, f.curve) &&
     inRange(t.feesPaidSol, f.fees) &&
+    inRange(t.createdAt ? (Date.now() - t.createdAt) / 60000 : undefined, f.age) &&
     inRange(t.txCount, f.txns) &&
     inRange(t.buys, f.buys) &&
     inRange(t.sells, f.sells)
@@ -126,6 +128,7 @@ export function toQuery(f: PulseFilter): string {
   put("minMcap", f.marketCap.min);  put("maxMcap", f.marketCap.max);
   put("minCurve", f.curve.min);     put("maxCurve", f.curve.max);
   put("minFees", f.fees.min);       put("maxFees", f.fees.max);
+  put("minAgeMin", f.age.min);      put("maxAgeMin", f.age.max);
   put("minTx", f.txns.min);         put("maxTx", f.txns.max);
   put("minBuys", f.buys.min);       put("maxBuys", f.buys.max);
   put("minSells", f.sells.min);     put("maxSells", f.sells.max);

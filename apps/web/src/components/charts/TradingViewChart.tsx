@@ -21,6 +21,33 @@ function formatCompactUsd(v: number): string {
   return `$${v.toFixed(4)}`;
 }
 
+
+/**
+ * lightweight-charts keys every point by an integer UNIX SECOND. Our bars are 250ms
+ * apart, so `timestamp / 1000` produced fractional seconds (X.0, X.25, X.5, X.75) that
+ * collapse onto the same second — the library keeps one and discards the rest, which is
+ * what punched holes in the candles: three of every four bars never rendered.
+ *
+ * So we key on the raw MILLISECOND value instead. It is integer and strictly
+ * increasing, which is all the library needs; it just believes the number is seconds.
+ * The axis and crosshair are then formatted by the two functions below, which read it
+ * back as milliseconds — so labels stay correct while every bar survives.
+ */
+const asTime = (ms: number) => ms as unknown as Time;
+
+const fmtClock = (ms: number, tf?: string) => {
+  const d = new Date(ms);
+  // Daily+ views want a date, intraday wants a clock, sub-minute wants seconds.
+  if (tf === "1D" || tf === "1W" || tf === "1M" || tf === "1d" || tf === "1w")
+    return d.toLocaleDateString([], { month: "short", day: "numeric" });
+  const seconds = tf === "1s" || tf === "5s" || tf === "15s" || tf === "30s";
+  return d.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(seconds ? { second: "2-digit" as const } : {}),
+  });
+};
+
 interface TradingViewChartProps {
   data: OHLCV[];
   isLoading?: boolean;
@@ -111,10 +138,15 @@ export function TradingViewChart({
           bottom: 0.1,
         },
       },
+      localization: {
+        // `time` carries milliseconds (see asTime) — render it as a real clock.
+        timeFormatter: (t: unknown) => fmtClock(Number(t), "1s"), // crosshair: always precise
+      },
       timeScale: {
         borderColor: isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)",
         timeVisible: true,
         secondsVisible: false, // Will be updated dynamically
+        tickMarkFormatter: (t: unknown) => fmtClock(Number(t), tfRef.current),
       },
       handleScroll: {
         mouseWheel: true,
@@ -192,6 +224,12 @@ export function TradingViewChart({
     };
   }, [isDark]); // Only recreate chart on theme change
 
+  // tickMarkFormatter is fixed at creation in v5, so it reads the timeframe from a
+  // ref — that keeps axis labels correct across timeframe switches without tearing
+  // the chart down.
+  const tfRef = useRef(timeframe);
+  useEffect(() => { tfRef.current = timeframe; }, [timeframe]);
+
   // Update timeScale options when timeframe changes (without recreating chart)
   useEffect(() => {
     if (!chartRef.current) return;
@@ -212,7 +250,7 @@ export function TradingViewChart({
     const candleData: CandlestickData<Time>[] = data
       .filter((d) => d && typeof d.timestamp === "number")
       .map((d) => ({
-        time: (d.timestamp / 1000) as Time, // Convert ms to seconds
+        time: asTime(d.timestamp), // ms key — fractional seconds dropped bars
         open: d.open * supply,
         high: d.high * supply,
         low: d.low * supply,
@@ -258,10 +296,10 @@ export function TradingViewChart({
         let nearest = cands[0];
         let best = Infinity;
         for (const c of cands) {
-          const d = Math.abs(c.timestamp / 1000 - timeSec);
+          const d = Math.abs(c.timestamp / 1000 - timeSec); // userTrades are in seconds
           if (d < best) { best = d; nearest = c; }
         }
-        const x = ts.timeToCoordinate((nearest.timestamp / 1000) as Time);
+        const x = ts.timeToCoordinate(asTime(nearest.timestamp));
         if (x == null) continue;
         // Both buy and sell bubbles sit ABOVE the candle (anchor to the high, offset up).
         const yc = series.priceToCoordinate(nearest.high * supply);

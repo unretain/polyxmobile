@@ -10,7 +10,10 @@ import { proxyImg } from "../lib/imgurl";
 const INITIAL_REAL_TOKEN_RAW = 793_100_000 * 1e6;
 const MIGRATION_MC_SOL = 410.9;
 const INITIAL_MC_SOL = 28;
-const FINAL_STRETCH_PROGRESS = 80;
+// Final stretch = % of the CURVE'S TOKENS SOLD (1 - real_token_reserves / initial),
+// not a share of the graduation market cap. 40% means "40% of the curve is gone".
+// Was 80%, which only caught coins in the last moments before migration.
+const FINAL_STRETCH_PROGRESS = Number(process.env.PULSE_FINAL_STRETCH_PCT || 40);
 // Pulse only shows recent coins: anything older than this drops off automatically,
 // so stale/dead tokens never linger in the lists.
 const MAX_AGE_DAYS = 5;
@@ -148,6 +151,7 @@ export interface PairFilters {
   minMcap?: number;  maxMcap?: number;   // USD
   minCurve?: number; maxCurve?: number;  // bonding-curve %
   minFees?: number;  maxFees?: number;   // SOL, lifetime
+  minAgeMin?: number; maxAgeMin?: number;  // minutes since the coin launched
   minTx?: number;    maxTx?: number;
   minBuys?: number;  maxBuys?: number;
   minSells?: number; maxSells?: number;
@@ -173,11 +177,15 @@ export function filterSql(f: PairFilters, sol: number) {
   const mc  = `coalesce(lt.mcap_sol, 0) * ${sol || 0}`;
   const curve = `greatest(0, least(100, (1 - coalesce(lt.real_tok, 0) / ${INITIAL_REAL_TOKEN_RAW}) * 100))`;
   const fees = `coalesce(lt.fees_sol, 0)`; // measured, not derived
+  // Age is measured from the token's creation, not from migration — "how old is this
+  // coin" means the same thing in every column.
+  const age = `dateDiff('second', t.created_at, now()) / 60.0`;
   num("minLiq", liq, f.minLiq, ">="); num("maxLiq", liq, f.maxLiq, "<=");
   num("minVol", vol, f.minVol, ">="); num("maxVol", vol, f.maxVol, "<=");
   num("minMcap", mc, f.minMcap, ">="); num("maxMcap", mc, f.maxMcap, "<=");
   num("minCurve", curve, f.minCurve, ">="); num("maxCurve", curve, f.maxCurve, "<=");
   num("minFees", fees, f.minFees, ">="); num("maxFees", fees, f.maxFees, "<=");
+  num("minAgeMin", age, f.minAgeMin, ">="); num("maxAgeMin", age, f.maxAgeMin, "<=");
   num("minTx", "coalesce(lt.tx, 0)", f.minTx, ">="); num("maxTx", "coalesce(lt.tx, 0)", f.maxTx, "<=");
   num("minBuys", "coalesce(lt.buys, 0)", f.minBuys, ">="); num("maxBuys", "coalesce(lt.buys, 0)", f.maxBuys, "<=");
   num("minSells", "coalesce(lt.sells, 0)", f.minSells, ">="); num("maxSells", "coalesce(lt.sells, 0)", f.maxSells, "<=");
@@ -293,7 +301,12 @@ export async function getTokenData(mint: string, solPrice: number) {
 export async function getTradeCandles(mint: string, intervalMs: number, limit: number, solPrice: number) {
   const iv = Math.max(1, Math.floor(intervalMs));
   const sub = iv < 1000;
-  const timeCol = sub ? "recv_ts" : "ts";
+  // recv_ts is only trustworthy when it sits near block time. Rows written before the
+  // column existed got DEFAULT now64(3) materialised at ALTER time, i.e. every one of
+  // them claims to have arrived at the same instant — bucketing those sub-second
+  // collapses all history into a smear. Fall back to block time when the skew is
+  // implausible: 1s resolution for old rows, but placed correctly on the axis.
+  const timeCol = sub ? "if(abs(dateDiff('second', ts, recv_ts)) <= 5, recv_ts, ts)" : "ts";
   const bucket = sub
     ? `toUnixTimestamp64Milli(toStartOfInterval(recv_ts, INTERVAL {iv:UInt32} MILLISECOND))`
     : `toUnixTimestamp(toStartOfInterval(ts, INTERVAL {ivs:UInt32} SECOND)) * 1000`;
