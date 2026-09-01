@@ -549,3 +549,24 @@ body {
     font-size: 16px;
   }
 }
+
+/* Slim scrollbar for the timeframe row. The row scrolls on phones now that there
+   are sub-minute tiers, and a visible bar is the only hint that more exist. */
+.tf-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 107, 74, 0.5) transparent;
+  -webkit-overflow-scrolling: touch;
+}
+.tf-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+.tf-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.tf-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 107, 74, 0.5);
+  border-radius: 2px;
+}
+.tf-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 107, 74, 0.8);
+}

@@ -32,7 +32,7 @@ import {
 import { useThemeStore } from "@/stores/themeStore";
 import type { OHLCV } from "@/stores/pulseStore";
 
-export type Timeframe = "1s" | "1m" | "5m" | "15m" | "1h" | "4h" | "1d" | "1w" | "1M";
+export type Timeframe = "1s" | "5s" | "15s" | "30s" | "1m" | "5m" | "15m" | "1h" | "4h" | "1d" | "1w" | "1M";
 type ChartType = "candle" | "line";
 
 // pump.fun tokens have a fixed 1B supply, so market cap = price * 1e9.
@@ -253,7 +253,7 @@ const fmtClock = (ms: number, tf?: string) => {
   // Daily+ views want a date, intraday wants a clock, sub-minute wants seconds.
   if (tf === "1d" || tf === "1w" || tf === "1M")
     return d.toLocaleDateString([], { month: "short", day: "numeric" });
-  const seconds = tf === "1s";
+  const seconds = tf === "1s" || tf === "5s" || tf === "15s" || tf === "30s";
   return d.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
@@ -263,6 +263,9 @@ const fmtClock = (ms: number, tf?: string) => {
 
 const PERIODS: Record<Timeframe, Period> = {
   "1s": { type: "second", span: 1 },
+  "5s": { type: "second", span: 5 },
+  "15s": { type: "second", span: 15 },
+  "30s": { type: "second", span: 30 },
   "1m": { type: "minute", span: 1 },
   "5m": { type: "minute", span: 5 },
   "15m": { type: "minute", span: 15 },

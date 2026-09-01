@@ -34,12 +34,15 @@ const LINE_PERIOD_CONFIG: Record<LinePeriod, { interval: string; seconds: number
 // CANDLESTICK CHART: Period = CANDLE INTERVAL (size of each candle)
 // User selects "1H" = show 1-hour candles (each candle = 1 hour of data)
 // ============================================================================
-export type CandlePeriod = "1s" | "1m" | "5m" | "15m" | "1h" | "4h" | "1d" | "1w" | "1M";
+export type CandlePeriod = "1s" | "5s" | "15s" | "30s" | "1m" | "5m" | "15m" | "1h" | "4h" | "1d" | "1w" | "1M";
 
 // Candlestick config - period IS the interval, fetch ALL available data for each timeframe
 // 1s is special: per-trade candles for Pulse tokens (pump.fun style)
 const CANDLE_PERIOD_CONFIG: Record<CandlePeriod, { interval: string; seconds: number; isPulse?: boolean }> = {
   "1s": { interval: "1s", seconds: 0, isPulse: true },      // Per-trade candles, fetch ALL history (pump.fun style)
+  "5s": { interval: "5s", seconds: 0, isPulse: true },      // Sub-minute tiers — the feed builds these from raw trades
+  "15s": { interval: "15s", seconds: 0, isPulse: true },
+  "30s": { interval: "30s", seconds: 0, isPulse: true },
   "1m": { interval: "1min", seconds: 86400 * 7 },           // 1 min candles, 7 days of data (~10080 candles)
   "5m": { interval: "5min", seconds: 86400 * 30 },          // 5 min candles, 30 days of data
   "15m": { interval: "15m", seconds: 86400 * 90 },          // 15 min candles, 90 days of data
@@ -273,5 +276,15 @@ export const CANDLE_PERIODS: { value: CandlePeriod; label: string }[] = [
   { value: "1M", label: "1M" },     // Monthly candles
 ];
 
-// 1s option is ONLY for candlestick chart on Pulse tokens (per-trade candles)
-export const PULSE_PERIOD = { value: "1s" as const, label: "1s" };
+// Sub-minute tiers are ONLY for candlestick charts on Pulse tokens. The API builds
+// them straight from the trade stream (see timeframeToMs), so they are real candles,
+// not resampled minute bars.
+export const PULSE_PERIODS: { value: CandlePeriod; label: string }[] = [
+  { value: "1s", label: "1s" },
+  { value: "5s", label: "5s" },
+  { value: "15s", label: "15s" },
+  { value: "30s", label: "30s" },
+];
+
+/** @deprecated use PULSE_PERIODS — kept so older imports keep compiling. */
+export const PULSE_PERIOD = PULSE_PERIODS[0];

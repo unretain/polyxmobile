@@ -115,7 +115,10 @@ const MORALIS_LINE_CONFIG: Record<string, { interval: string; seconds: number }>
 // Backend fetches ALL data from DB - frontend just maps intervals
 // The 'seconds' value is unused but kept for compatibility
 const MORALIS_CANDLE_CONFIG: Record<string, { interval: string; seconds: number }> = {
-  "1s": { interval: "1s", seconds: 0 },       // 1 second candles
+  "1s": { interval: "1s", seconds: 0 },       // 250ms fine candles (server maps "1s" -> 250ms)
+  "5s": { interval: "5s", seconds: 0 },
+  "15s": { interval: "15s", seconds: 0 },
+  "30s": { interval: "30s", seconds: 0 },
   "1m": { interval: "1min", seconds: 0 },     // 1 minute candles
   "5m": { interval: "5min", seconds: 0 },     // 5 minute candles
   "15m": { interval: "15min", seconds: 0 },   // 15 minute candles
@@ -131,7 +134,8 @@ const MORALIS_CANDLE_CONFIG: Record<string, { interval: string; seconds: number 
 const CANDLE_INTERVAL_MS: Record<string, number> = {
   // "1s" builds 250ms candles (4/sec) to match the server's fine tier, so trades
   // spread into thin distinct candles like Axiom instead of chunky 1s blocks.
-  "1s": 250, "1m": 60000, "5m": 300000, "15m": 900000,
+  "1s": 250, "5s": 5000, "15s": 15000, "30s": 30000,
+  "1m": 60000, "5m": 300000, "15m": 900000,
   "1h": 3600000, "4h": 14400000, "1d": 86400000, "1w": 604800000, "1M": 2592000000,
 };
 
@@ -513,7 +517,9 @@ export default function TokenClient() {
     // LIVE: Handle real-time OHLCV candle updates (1-second candles)
     const onOhlcv = (data: { mint: string; candle: { timestamp: number; open: number; high: number; low: number; close: number; volume: number } }) => {
       if (data.mint !== address) return;
-      if (chartPeriodRef.current !== "1s") return; // Only apply to 1s timeframe
+      // Live candles apply to every sub-minute tier, not just 1s — the coarser ones
+      // fold trades into their own bucket via CANDLE_INTERVAL_MS.
+      if (!["1s", "5s", "15s", "30s"].includes(chartPeriodRef.current || "")) return;
 
       setOhlcv((prev) => {
         const lastCandle = prev[prev.length - 1];
@@ -572,7 +578,7 @@ export default function TokenClient() {
     if (saved) {
       // Validate the saved period is valid for current chart type
       const validPeriods = fromPulse
-        ? ["1s", "1m", "5m", "15m", "1h", "4h", "1d", "1w"] // Pulse candle periods
+        ? ["1s", "5s", "15s", "30s", "1m", "5m", "15m", "1h", "4h", "1d", "1w"] // Pulse candle periods
         : ["1m", "5m", "15m", "1h", "4h", "1d", "1w", "1M"]; // Dashboard candle periods
 
       if (validPeriods.includes(saved)) {
@@ -1077,7 +1083,7 @@ export default function TokenClient() {
               <KLineChart
                 data={ohlcv}
                 isLoading={chartLoading && ohlcv.length === 0}
-                timeframe={(chartPeriod || "1h") as "1s" | "1m" | "5m" | "15m" | "1h" | "4h" | "1d" | "1w" | "1M"}
+                timeframe={(chartPeriod || "1h") as "1s" | "5s" | "15s" | "30s" | "1m" | "5m" | "15m" | "1h" | "4h" | "1d" | "1w" | "1M"}
                 chartType={chartType}
                 userTrades={userTradeMarkers}
               />
