@@ -312,6 +312,35 @@ export default function TokenClient() {
   // The user's OWN buys/sells on this coin → B/S bubbles on the chart (Axiom-style).
   // In demo mode the paper trades live in the demo store; otherwise match the real
   // trade feed by the local wallet's pubkey.
+  // Volume-weighted average entry and exit, drawn as horizontal lines on the chart.
+  // Weighted by TOKEN amount, not trade count, so one big fill moves the line more
+  // than several dust fills — that is what an average cost basis means.
+  //
+  // The log stores SOL in/out and the token amount, so price is solAmount/tokenAmount.
+  // The chart's y-axis is market cap in USD, so the level is that price converted to
+  // USD (solRateRef) and multiplied by supply.
+  const { avgEntry, avgExit } = useMemo(() => {
+    const source = isDemo
+      ? demoTrades.filter((t) => t.mint === address)
+      : loggedTrades.filter((t) => t.mint === address && (!userWallet || t.wallet === userWallet));
+
+    const rate = solRateRef.current || 0;
+    const supply = PUMP_FUN_SUPPLY;
+    const avg = (side: "buy" | "sell") => {
+      let sol = 0;
+      let tokens = 0;
+      for (const t of source) {
+        if (t.side !== side) continue;
+        if (!(t.tokenAmount > 0) || !(t.solAmount > 0)) continue;
+        sol += t.solAmount;
+        tokens += t.tokenAmount;
+      }
+      if (tokens <= 0 || rate <= 0) return null;
+      return (sol / tokens) * rate * supply;
+    };
+    return { avgEntry: avg("buy"), avgExit: avg("sell") };
+  }, [isDemo, demoTrades, loggedTrades, address, userWallet, ohlcv]);
+
   const userTradeMarkers = useMemo(() => {
     if (isDemo) {
       return demoTrades
@@ -1086,6 +1115,8 @@ export default function TokenClient() {
                 timeframe={(chartPeriod || "1h") as "1s" | "5s" | "15s" | "30s" | "1m" | "5m" | "15m" | "1h" | "4h" | "1d" | "1w" | "1M"}
                 chartType={chartType}
                 userTrades={userTradeMarkers}
+                avgEntry={avgEntry}
+                avgExit={avgExit}
               />
             </div>
             {/* 3D Charts - only render when in 3D mode to save resources */}
