@@ -519,3 +519,33 @@
     box-shadow: 0 0 0 4px rgba(255, 107, 74, 0);
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Mobile: stop the page zooming and drifting.
+
+   The viewport meta alone is not enough — iOS Safari deliberately ignores
+   user-scalable=no, so pinch-zoom is blocked by the gesture handlers in layout.tsx
+   and double-tap zoom by touch-action below. Once zoomed, iOS often will not zoom
+   back out, which left the app stuck at an unusable scale.
+   --------------------------------------------------------------------------- */
+html {
+  /* Stop iOS inflating text when the device rotates. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  /* Kill the 300ms double-tap-to-zoom gesture; taps stay instant. */
+  touch-action: manipulation;
+  /* No rubber-band overscroll or pull-to-refresh dragging the whole app around. */
+  overscroll-behavior: none;
+  /* A stray wide element must never let the page pan sideways. */
+  overflow-x: hidden;
+}
+
+/* Inputs under 16px make iOS auto-zoom on focus and it never zooms back out. */
+@media (max-width: 767px) {
+  input, select, textarea {
+    font-size: 16px;
+  }
+}
