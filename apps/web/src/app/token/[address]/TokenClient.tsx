@@ -312,35 +312,6 @@ export default function TokenClient() {
   // The user's OWN buys/sells on this coin → B/S bubbles on the chart (Axiom-style).
   // In demo mode the paper trades live in the demo store; otherwise match the real
   // trade feed by the local wallet's pubkey.
-  // Volume-weighted average entry and exit, drawn as horizontal lines on the chart.
-  // Weighted by TOKEN amount, not trade count, so one big fill moves the line more
-  // than several dust fills — that is what an average cost basis means.
-  //
-  // The log stores SOL in/out and the token amount, so price is solAmount/tokenAmount.
-  // The chart's y-axis is market cap in USD, so the level is that price converted to
-  // USD (solRateRef) and multiplied by supply.
-  const { avgEntry, avgExit } = useMemo(() => {
-    const source = isDemo
-      ? demoTrades.filter((t) => t.mint === address)
-      : loggedTrades.filter((t) => t.mint === address && (!userWallet || t.wallet === userWallet));
-
-    const rate = solRateRef.current || 0;
-    const supply = PUMP_FUN_SUPPLY;
-    const avg = (side: "buy" | "sell") => {
-      let sol = 0;
-      let tokens = 0;
-      for (const t of source) {
-        if (t.side !== side) continue;
-        if (!(t.tokenAmount > 0) || !(t.solAmount > 0)) continue;
-        sol += t.solAmount;
-        tokens += t.tokenAmount;
-      }
-      if (tokens <= 0 || rate <= 0) return null;
-      return (sol / tokens) * rate * supply;
-    };
-    return { avgEntry: avg("buy"), avgExit: avg("sell") };
-  }, [isDemo, demoTrades, loggedTrades, address, userWallet, ohlcv]);
-
   const userTradeMarkers = useMemo(() => {
     if (isDemo) {
       return demoTrades
@@ -384,6 +355,36 @@ export default function TokenClient() {
   // Real USD-per-SOL rate, derived from the token snapshot (the API computes it with
   // the live SOL price). Cached so the socket trade handler never falls back to 200.
   const solRateRef = useRef<number | null>(null);
+
+  // Volume-weighted average entry and exit, drawn as horizontal lines on the chart.
+  // Weighted by TOKEN amount, not trade count, so one big fill moves the line more
+  // than several dust fills — that is what an average cost basis means.
+  //
+  // The log stores SOL in/out and the token amount, so price is solAmount/tokenAmount.
+  // The chart's y-axis is market cap in USD, so the level is that price converted to
+  // USD (solRateRef) and multiplied by supply.
+  const { avgEntry, avgExit } = useMemo(() => {
+    const source = isDemo
+      ? demoTrades.filter((t) => t.mint === address)
+      : loggedTrades.filter((t) => t.mint === address && (!userWallet || t.wallet === userWallet));
+
+    const rate = solRateRef.current || 0;
+    const supply = PUMP_FUN_SUPPLY;
+    const avg = (side: "buy" | "sell") => {
+      let sol = 0;
+      let tokens = 0;
+      for (const t of source) {
+        if (t.side !== side) continue;
+        if (!(t.tokenAmount > 0) || !(t.solAmount > 0)) continue;
+        sol += t.solAmount;
+        tokens += t.tokenAmount;
+      }
+      if (tokens <= 0 || rate <= 0) return null;
+      return (sol / tokens) * rate * supply;
+    };
+    return { avgEntry: avg("buy"), avgExit: avg("sell") };
+  }, [isDemo, demoTrades, loggedTrades, address, userWallet, ohlcv]);
+
   useEffect(() => {
     const p = pulseToken as any;
     if (!p) return;
