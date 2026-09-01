@@ -33,8 +33,8 @@ const Line3DChart = dynamic(
   () => import("@/components/charts/Line3DChart").then((mod) => mod.Line3DChart),
   { ssr: false, loading: () => <ChartLoadingSpinner /> }
 );
-const TradingViewChart = dynamic(
-  () => import("@/components/charts/TradingViewChart").then((mod) => mod.TradingViewChart),
+const KLineChart = dynamic(
+  () => import("@/components/charts/KLineChart").then((mod) => mod.KLineChart),
   { ssr: false, loading: () => <ChartLoadingSpinner /> }
 );
 
@@ -466,7 +466,17 @@ export default function TokenClient() {
           // update the current live candle — never drop the trade, so the chart
           // always ticks on every trade.
           if (bucket > last.timestamp) {
-            return [...prev, { timestamp: bucket, open: last.close, high: priceUsd, low: priceUsd, close: priceUsd, volume: data.solAmount }];
+            // high/low must span the connected open as well as the trade price —
+            // with open taken from the previous close they are rarely equal, and a
+            // body outside [low, high] renders past the top of the y-axis.
+            return [...prev, {
+              timestamp: bucket,
+              open: last.close,
+              high: Math.max(priceUsd, last.close),
+              low: Math.min(priceUsd, last.close),
+              close: priceUsd,
+              volume: data.solAmount,
+            }];
           }
           const u = [...prev];
           u[u.length - 1] = {
@@ -507,16 +517,33 @@ export default function TokenClient() {
 
       setOhlcv((prev) => {
         const lastCandle = prev[prev.length - 1];
+        if (!lastCandle) return [data.candle];
 
-        if (lastCandle && lastCandle.timestamp === data.candle.timestamp) {
-          // Update existing candle
+        // The socket forwards the RAW aggregator candle, whose open is simply the
+        // first trade price in the bucket. The HTTP history is continuity-corrected
+        // server-side (each bar opens where the last closed), so appending the raw
+        // candle re-introduced the gaps the fetch had just removed — which is why
+        // the chart looked right after a refresh and drifted apart while live.
+        // Connect it here, exactly like the per-trade path above already does.
+        if (lastCandle.timestamp === data.candle.timestamp) {
+          // Same bucket: keep the open we already connected, let the rest move.
           const updated = [...prev];
-          updated[updated.length - 1] = data.candle;
+          updated[updated.length - 1] = { ...data.candle, open: lastCandle.open };
           return updated;
-        } else {
-          // Add new candle
-          return [...prev, data.candle];
         }
+        const open = lastCandle.close;
+        return [
+          ...prev,
+          // Widen the wick to cover the joined open, otherwise the body can sit
+          // outside [low, high] — KLineChart builds the y-axis range from low/high
+          // alone, so such a bar renders past the top of the scale.
+          {
+            ...data.candle,
+            open,
+            high: Math.max(data.candle.high, open),
+            low: Math.min(data.candle.low, open),
+          },
+        ];
       });
     };
     socket.on("ohlcv:update", onOhlcv);
@@ -1045,9 +1072,9 @@ export default function TokenClient() {
           {/* Pass actual token price to ensure chart header shows correct current price */}
           {/* Render both 2D and 3D charts but hide inactive one to prevent unmount/remount issues */}
           <div className={`flex-shrink-0 h-[300px] md:h-[400px] border overflow-hidden relative ${isDark ? 'border-white/10' : 'border-black/10'}`}>
-            {/* 2D TradingView Chart - always rendered, hidden when not active */}
+            {/* 2D KLineChart - always rendered, hidden when not active */}
             <div className={`absolute inset-0 ${chartMode === "2d" ? "" : "invisible pointer-events-none"}`}>
-              <TradingViewChart
+              <KLineChart
                 data={ohlcv}
                 isLoading={chartLoading && ohlcv.length === 0}
                 timeframe={(chartPeriod || "1h") as "1s" | "1m" | "5m" | "15m" | "1h" | "4h" | "1d" | "1w" | "1M"}

@@ -11,9 +11,9 @@ import { useThemeStore } from "@/stores/themeStore";
 import { WalletOnboarding } from "@/components/wallet/WalletOnboarding";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 
-// Dynamic import for TradingView Chart (2D)
-const TradingViewChart = dynamic(
-  () => import("@/components/charts/TradingViewChart").then((mod) => mod.TradingViewChart),
+// Dynamic import for the 2D KLineChart
+const KLineChart = dynamic(
+  () => import("@/components/charts/KLineChart").then((mod) => mod.KLineChart),
   {
     ssr: false,
     loading: () => (
@@ -445,7 +445,7 @@ export function LandingPage() {
                         showDrawingTools={false}
                       />
                     ) : (
-                      <TradingViewChart
+                      <KLineChart
                         data={candles}
                         isLoading={isLoading}
                       />
