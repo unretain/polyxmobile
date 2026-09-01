@@ -378,6 +378,22 @@ function handleTransaction(update: any) {
         const vTok = Number(data.readBigUInt64LE(o)); o += 8;
         const realSol = Number(data.readBigUInt64LE(o)); o += 8; // real sol reserves
         const realTok = Number(data.readBigUInt64LE(o)); o += 8;
+        // ACTUAL fees, straight off the event. Fees are NOT a fixed cut of volume:
+        // pump.fun picks protocol bps from an on-chain market-cap tier table and adds a
+        // separate creator fee, and some routes pay literally ZERO (verified live: one
+        // trade came through with fee_bps=95/fee=1876032, the next with fee=0 on real
+        // volume). Deriving fees from volume would invent fees those trades never paid.
+        //   fee_recipient: Pubkey(32) | fee_bps: u64 | fee: u64
+        //   creator: Pubkey(32)       | creator_fee_bps: u64 | creator_fee: u64
+        let feeSol = 0, creatorFeeSol = 0;
+        if (data.length >= o + 96) {
+          o += 32;                                                  // fee_recipient
+          o += 8;                                                   // fee_basis_points
+          feeSol = Number(data.readBigUInt64LE(o)) / 1e9; o += 8;    // fee (lamports)
+          o += 32;                                                  // creator
+          o += 8;                                                   // creator_fee_basis_points
+          creatorFeeSol = Number(data.readBigUInt64LE(o)) / 1e9; o += 8;
+        }
         if (vTok <= 0) continue;
         // Include graduatedTokens: a coin can get a (sometimes premature) complete
         // event yet keep trading on the bonding curve. Without this lookup its price
@@ -400,6 +416,9 @@ function handleTransaction(update: any) {
               price_sol: priceSol,
               mcap_sol: priceSol * TOTAL_SUPPLY,
               real_token_reserves: realTok,
+              real_sol: realSol / 1e9,
+              fee_sol: feeSol,
+              creator_fee_sol: creatorFeeSol,
               trader,
             });
             state.stats.trades++;
@@ -422,7 +441,7 @@ function handleTransaction(update: any) {
         // resolution (block time is only 1s-precise). The stream is smooth end-to-end
         // (verified), so this no longer piles a burst into one wrong bucket.
         recordCandle(mint, priceSol, solLamports / 1e9);
-        recordTrade({ mint, signature, slot, ts: chDateTime(tsSec > 0 ? tsSec * 1000 : Date.now()), is_buy: isBuy ? 1 : 0, sol_amount: solLamports / 1e9, token_amount: tokenRaw / 1e6, price_sol: priceSol, mcap_sol: token.marketCapSol, real_token_reserves: realTok, trader });
+        recordTrade({ mint, signature, slot, ts: chDateTime(tsSec > 0 ? tsSec * 1000 : Date.now()), is_buy: isBuy ? 1 : 0, sol_amount: solLamports / 1e9, token_amount: tokenRaw / 1e6, price_sol: priceSol, mcap_sol: token.marketCapSol, real_token_reserves: realTok, real_sol: realSol / 1e9, fee_sol: feeSol, creator_fee_sol: creatorFeeSol, trader });
         // Per-trade event for the token page's live "recent trades" panel — built +
         // broadcast ONLY when someone actually has this coin's chart open (see hasViewer).
         // Every trade goes out; the client batches them per animation frame so the

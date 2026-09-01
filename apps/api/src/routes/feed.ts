@@ -19,6 +19,34 @@ import { memo } from "../lib/memo";
 
 export const feedRoutes = Router();
 
+/** Filter params off the query string. Absent/blank => undefined (bound not applied). */
+function parseFilters(q: any): ch.PairFilters {
+  const n = (v: any) => {
+    if (v === undefined || v === null || v === "") return undefined;
+    const x = Number(v);
+    return Number.isFinite(x) ? x : undefined;
+  };
+  return {
+    search: q.search || undefined,
+    exclude: q.exclude || undefined,
+    minLiq: n(q.minLiq), maxLiq: n(q.maxLiq),
+    minVol: n(q.minVol), maxVol: n(q.maxVol),
+    minMcap: n(q.minMcap), maxMcap: n(q.maxMcap),
+    minCurve: n(q.minCurve), maxCurve: n(q.maxCurve),
+    minFees: n(q.minFees), maxFees: n(q.maxFees),
+    minTx: n(q.minTx), maxTx: n(q.maxTx),
+    minBuys: n(q.minBuys), maxBuys: n(q.maxBuys),
+    minSells: n(q.minSells), maxSells: n(q.maxSells),
+    maxAgeHours: n(q.maxAgeHours),
+    activeMins: n(q.activeMins),
+  };
+}
+
+/** Stable memo key for a filter set (order-independent). */
+const fkey = (f: ch.PairFilters) =>
+  Object.entries(f).filter(([, v]) => v !== undefined).sort().map(([k, v]) => `${k}=${v}`).join("&");
+
+
 type Bar = { timestamp: number; open: number; high: number; low: number; close: number; volume: number };
 
 /**
@@ -77,7 +105,8 @@ feedRoutes.get("/new-pairs", async (req, res) => {
   const sol = getSolPrice();
   if (clickhouseEnabled()) {
     try {
-      const data = await memo(`f:np:${limit}`, 1000, () => ch.getNewPairs(limit, sol));
+      const f = parseFilters(req.query);
+      const data = await memo(`f:np:${limit}:${fkey(f)}`, 1000, () => ch.getNewPairs(limit, sol, f));
       if (data.length) return res.json({ data, source: "clickhouse", solPrice: sol, realtime: isPulseConnected() });
     } catch (e) { console.error("[feed] CH new-pairs:", (e as Error).message); }
   }
@@ -89,7 +118,8 @@ feedRoutes.get("/graduating", async (req, res) => {
   const sol = getSolPrice();
   if (clickhouseEnabled()) {
     try {
-      const data = await memo(`f:gi:${limit}`, 1000, () => ch.getGraduatingPairs(limit, sol));
+      const f = parseFilters(req.query);
+      const data = await memo(`f:gi:${limit}:${fkey(f)}`, 1000, () => ch.getGraduatingPairs(limit, sol, f));
       if (data.length) return res.json({ data, source: "clickhouse", solPrice: sol });
     } catch (e) { console.error("[feed] CH graduating:", (e as Error).message); }
   }
@@ -101,7 +131,8 @@ feedRoutes.get("/graduated", async (req, res) => {
   const sol = getSolPrice();
   if (clickhouseEnabled()) {
     try {
-      const data = await memo(`f:ge:${limit}`, 1000, () => ch.getGraduatedPairs(limit, sol));
+      const f = parseFilters(req.query);
+      const data = await memo(`f:ge:${limit}:${fkey(f)}`, 1000, () => ch.getGraduatedPairs(limit, sol, f));
       if (data.length) return res.json({ data, source: "clickhouse", solPrice: sol });
     } catch (e) { console.error("[feed] CH graduated:", (e as Error).message); }
   }
@@ -150,8 +181,15 @@ feedRoutes.get("/ohlcv/:mint", async (req, res) => {
   // same trades appear twice, ~1.5s apart, which is what put the steps and phantom
   // jumps in the chart. Inside a 60s bucket that offset is irrelevant, so merging is
   // safe there and gives the long durable history.
-  const canMerge = iv >= 60;
-  if (clickhouseEnabled() && (canMerge || data.length === 0)) {
+  // Sub-minute charts still need ClickHouse: memory only holds MAX_1S 250ms candles
+  // (~5 min), so a 10-minute-old coin lost its first half. Blanket-disabling the merge
+  // below 1m fixed the double-plotting but created that hole.
+  //
+  // Instead: ClickHouse is the base (block time, uniform), and memory contributes only
+  // bars a FULL bucket beyond CH's newest. That is what stops the duplication — the two
+  // sources are ~1.5s apart (receive time vs block time), so requiring a whole bucket of
+  // clearance means a trade can never be plotted twice.
+  if (clickhouseEnabled()) {
     try {
       const want = Math.min(limit, 2000);
       const chData = await memo(`f:cndl:${mint}:${iv}:${want}`, 1000, () => ch.getTradeCandles(mint, iv, want, getSolPrice()));
@@ -165,8 +203,9 @@ feedRoutes.get("/ohlcv/:mint", async (req, res) => {
           // and slicing to `limit` instead would drop the very history we just added
           // (memory alone can already be `limit` candles long), and it would mix bar
           // widths — memory's fine tier is 250ms, CH's is the requested interval.
+          const ivMsGap = Math.max(250, iv * 1000);
           const chLast = chData[chData.length - 1].timestamp;
-          const liveTail = data.filter((c) => c.timestamp > chLast);
+          const liveTail = data.filter((c) => c.timestamp > chLast + ivMsGap);
           data = [...chData, ...liveTail];
           source = "clickhouse+grpc";
         }

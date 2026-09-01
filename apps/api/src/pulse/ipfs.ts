@@ -47,6 +47,10 @@ setGlobalDispatcher(agent);
 // before anything else was even tried. 250ms overlaps the sources instead: the
 // origin gateway usually answers inside that window, and if it does not, our node
 // and the public gateways are already in flight.
+// Metadata resolver on our feed box (see IMG_UPSTREAM). Unset => resolve locally.
+const RESOLVE_UPSTREAM = process.env.META_UPSTREAM || "";
+const RESOLVE_TIMEOUT_MS = Number(process.env.META_UPSTREAM_TIMEOUT_MS || 3000);
+
 const HEDGE_MS = Number(process.env.IPFS_HEDGE_MS || 250);
 const TOTAL_TIMEOUT_MS = Number(process.env.IPFS_TIMEOUT_MS || 12000);
 const META_DIR = path.join(process.env.IMG_CACHE_DIR || path.join(process.cwd(), ".imgcache"), "meta");
@@ -209,6 +213,30 @@ export async function fetchMetadata(uri: string): Promise<any | null> {
     try {
       return JSON.parse(await fs.readFile(file, "utf8"));
     } catch { /* not cached yet */ }
+  }
+  // Ask our box to do the resolve. It sits in a datacenter with the coin CIDs already
+  // pinned locally, so it answers in ~50ms and ALSO starts pulling the image bytes, so
+  // the follow-up image request is a cache hit. Doing this here costs one round trip
+  // instead of two (metadata, then image) from wherever the API happens to run.
+  if (RESOLVE_UPSTREAM) {
+    try {
+      const r = await fetch(`${RESOLVE_UPSTREAM}?u=${encodeURIComponent(uri)}`, {
+        signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS),
+      });
+      if (r.ok) {
+        const j = await r.json();
+        if (j && typeof j === "object" && (j as any).image) {
+          if (metaReady) {
+            try {
+              const tmp = `${file}.${process.pid}.tmp`;
+              await fs.writeFile(tmp, JSON.stringify(j));
+              await fs.rename(tmp, file);
+            } catch { /* cache write is best-effort */ }
+          }
+          return j;
+        }
+      }
+    } catch { /* upstream down — resolve it ourselves below */ }
   }
   const res = await hedgedFetch(uri);
   if (!res) return null;

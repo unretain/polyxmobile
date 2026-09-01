@@ -58,11 +58,18 @@ const TRADE_AGG = `
     argMax(mcap_sol, ts)  AS mcap_sol,
     argMax(real_token_reserves, ts) AS real_tok,
     sumIf(sol_amount, ts > now() - INTERVAL 24 HOUR) AS vol_sol,
+    sumIf(sol_amount, ts > now() - INTERVAL 1 HOUR)  AS vol_1h,
+    sum(sol_amount)                                  AS total_sol,
+    argMax(real_sol, ts)                             AS real_sol,
+    sum(fee_sol) + sum(creator_fee_sol)              AS fees_sol,
+    countIf(is_buy = 1)                              AS buys,
+    countIf(is_buy = 0)                              AS sells,
     max(ts) AS last_ts,
     count() AS tx
   FROM trades GROUP BY mint`;
 
-async function activePairs(limit: number, solPrice: number) {
+async function activePairs(limit: number, solPrice: number, f: PairFilters = {}) {
+  const { where, params } = filterSql(f, solPrice);
   const rows = await q<any>(
     `SELECT
        t.mint AS address, t.name AS name, t.symbol AS symbol, t.image AS logoUri,
@@ -76,21 +83,22 @@ async function activePairs(limit: number, solPrice: number) {
        greatest(0, least(100, (1 - coalesce(lt.real_tok, {init:Float64}) / {init:Float64}) * 100)) AS progress
      FROM (SELECT * FROM tokens FINAL WHERE created_at > now() - INTERVAL {maxAge:UInt16} DAY ORDER BY created_at DESC LIMIT {scan:UInt32}) t
      LEFT JOIN (${TRADE_AGG}) lt ON t.mint = lt.mint
-     WHERE t.mint NOT IN (SELECT mint FROM graduations)
+     WHERE t.mint NOT IN (SELECT mint FROM graduations) ${where}
      ORDER BY t.created_at DESC
      LIMIT {scan:UInt32}
      SETTINGS join_use_nulls = 1`,
-    { scan: Math.max(limit * 3, 150), init: INITIAL_REAL_TOKEN_RAW, initMcSol: INITIAL_MC_SOL, sol: solPrice, maxAge: MAX_AGE_DAYS }
+    { scan: Math.max(limit * 3, 150), init: INITIAL_REAL_TOKEN_RAW, initMcSol: INITIAL_MC_SOL, sol: solPrice, maxAge: MAX_AGE_DAYS, ...params }
   );
   return rows.map((r) => shapePair(r, solPrice));
 }
 
-export async function getNewPairs(limit: number, solPrice: number) {
-  const all = await activePairs(limit, solPrice);
+export async function getNewPairs(limit: number, solPrice: number, f: PairFilters = {}) {
+  const all = await activePairs(limit, solPrice, f);
   return all.filter((p) => p.progress < FINAL_STRETCH_PROGRESS).slice(0, limit);
 }
 
-export async function getGraduatingPairs(limit: number, solPrice: number) {
+export async function getGraduatingPairs(limit: number, solPrice: number, f: PairFilters = {}) {
+  const { where, params } = filterSql(f, solPrice);
   // Find coins CURRENTLY in final stretch BY PROGRESS, not by creation recency. A coin
   // that pumped near graduation is usually not among the newest tokens, so the old
   // activePairs(newest-300) scan missed them and returned ~1. On-chain "80%+ sold" is
@@ -111,34 +119,141 @@ export async function getGraduatingPairs(limit: number, solPrice: number) {
      INNER JOIN (SELECT * FROM tokens FINAL WHERE created_at > now() - INTERVAL {maxAge:UInt16} DAY) t ON lt.mint = t.mint
      WHERE lt.real_tok > 0 AND lt.real_tok <= {maxTok:Float64}
        AND lt.last_ts > now() - INTERVAL 20 MINUTE
-       AND lt.mint NOT IN (SELECT mint FROM graduations)
+       AND lt.mint NOT IN (SELECT mint FROM graduations) ${where}
      ORDER BY lt.mcap_sol DESC
      LIMIT {limit:UInt32}
      SETTINGS join_use_nulls = 1`,
-    { limit, sol: solPrice, init: INITIAL_REAL_TOKEN_RAW, maxAge: MAX_AGE_DAYS, maxTok: INITIAL_REAL_TOKEN_RAW * (1 - FINAL_STRETCH_PROGRESS / 100) }
+    { limit, sol: solPrice, init: INITIAL_REAL_TOKEN_RAW, maxAge: MAX_AGE_DAYS, maxTok: INITIAL_REAL_TOKEN_RAW * (1 - FINAL_STRETCH_PROGRESS / 100), ...params }
   );
   return rows.map((r) => shapePair(r, solPrice));
 }
 
-export async function getGraduatedPairs(limit: number, solPrice: number) {
+// pump.fun takes 1% of the SOL side of every trade. We don't store a fee column, so
+// fees are DERIVED from volume — exact for bonding-curve trades, approximate once a
+// coin is on PumpSwap (different fee split). Good enough to filter "has this earned
+// real fees", not an accounting figure.
+const FEE_RATE = Number(process.env.PUMP_FEE_RATE || 0.01);
+
+
+/**
+ * Filters for the pulse lists — the same set the UI exposes per tab (New Pairs /
+ * Final Stretch / Migrated). Everything is optional; an omitted bound is not applied.
+ * Money bounds are USD (what the UI shows); fees are SOL, matching "Global Fees Paid".
+ */
+export interface PairFilters {
+  search?: string;        // comma-separated keywords, matched on name+symbol
+  exclude?: string;       // comma-separated keywords to reject
+  minLiq?: number;   maxLiq?: number;    // USD
+  minVol?: number;   maxVol?: number;    // USD, 24h
+  minMcap?: number;  maxMcap?: number;   // USD
+  minCurve?: number; maxCurve?: number;  // bonding-curve %
+  minFees?: number;  maxFees?: number;   // SOL, lifetime
+  minTx?: number;    maxTx?: number;
+  minBuys?: number;  maxBuys?: number;
+  minSells?: number; maxSells?: number;
+  maxAgeHours?: number;   // migrated: how far back to keep
+  activeMins?: number;    // must have traded within N minutes
+}
+
+const kw = (v?: string) =>
+  (v || "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+
+/** SQL predicate + params for a filter set. Bounds are only emitted when present, so
+ *  an empty filter object costs nothing. */
+export function filterSql(f: PairFilters, sol: number) {
+  const parts: string[] = [];
+  const p: Record<string, any> = {};
+  const num = (key: string, expr: string, val: number | undefined, op: string) => {
+    if (val === undefined || val === null || Number.isNaN(val)) return;
+    parts.push(`${expr} ${op} {${key}:Float64}`);
+    p[key] = val;
+  };
+  const liq = `coalesce(lt.real_sol, 0) * 2 * ${sol || 0}`;
+  const vol = `coalesce(lt.vol_sol, 0) * ${sol || 0}`;
+  const mc  = `coalesce(lt.mcap_sol, 0) * ${sol || 0}`;
+  const curve = `greatest(0, least(100, (1 - coalesce(lt.real_tok, 0) / ${INITIAL_REAL_TOKEN_RAW}) * 100))`;
+  const fees = `coalesce(lt.fees_sol, 0)`; // measured, not derived
+  num("minLiq", liq, f.minLiq, ">="); num("maxLiq", liq, f.maxLiq, "<=");
+  num("minVol", vol, f.minVol, ">="); num("maxVol", vol, f.maxVol, "<=");
+  num("minMcap", mc, f.minMcap, ">="); num("maxMcap", mc, f.maxMcap, "<=");
+  num("minCurve", curve, f.minCurve, ">="); num("maxCurve", curve, f.maxCurve, "<=");
+  num("minFees", fees, f.minFees, ">="); num("maxFees", fees, f.maxFees, "<=");
+  num("minTx", "coalesce(lt.tx, 0)", f.minTx, ">="); num("maxTx", "coalesce(lt.tx, 0)", f.maxTx, "<=");
+  num("minBuys", "coalesce(lt.buys, 0)", f.minBuys, ">="); num("maxBuys", "coalesce(lt.buys, 0)", f.maxBuys, "<=");
+  num("minSells", "coalesce(lt.sells, 0)", f.minSells, ">="); num("maxSells", "coalesce(lt.sells, 0)", f.maxSells, "<=");
+  if (f.activeMins) parts.push(`lt.last_ts > now() - INTERVAL ${Math.floor(f.activeMins)} MINUTE`);
+  const inc = kw(f.search);
+  if (inc.length) {
+    parts.push("(" + inc.map((_, i) => `positionCaseInsensitive(concat(t.name, ' ', t.symbol), {kw${i}:String}) > 0`).join(" OR ") + ")");
+    inc.forEach((k, i) => { p[`kw${i}`] = k; });
+  }
+  const exc = kw(f.exclude);
+  if (exc.length) {
+    parts.push("(" + exc.map((_, i) => `positionCaseInsensitive(concat(t.name, ' ', t.symbol), {xkw${i}:String}) = 0`).join(" AND ") + ")");
+    exc.forEach((k, i) => { p[`xkw${i}`] = k; });
+  }
+  return { where: parts.length ? " AND " + parts.join(" AND ") : "", params: p };
+}
+
+export interface GraduatedFilters {
+  maxAgeHours?: number;   // how far back to keep migrated coins at all
+  minVolSol?: number;     // 1h volume floor — "is it still catching volume"
+  minMcapSol?: number;    // market cap floor
+  minFeesSol?: number;    // lifetime fees paid floor
+  activeMins?: number;    // must have traded within this many minutes
+}
+
+/**
+ * Migrated coins. This used to be a hard 30-minute window, so a coin that migrated an
+ * hour ago and was still doing real volume just disappeared off the list. The window
+ * is now wide (24h by default) and callers narrow it with filters instead.
+ */
+export async function getGraduatedPairs(limit: number, solPrice: number, f: PairFilters = {}) {
+  const { where, params } = filterSql(f, solPrice);
   const rows = await q<any>(
     `SELECT
        g.mint AS address, t.name AS name, t.symbol AS symbol, t.image AS logoUri,
        toUnixTimestamp64Milli(g.ts) AS createdAt,
+       toUnixTimestamp64Milli(g.ts) AS graduatedAt,
        coalesce(lt.last_price_sol, 0) * {sol:Float64} AS price,
        coalesce(lt.mcap_sol, 0) AS marketCapSol,
        coalesce(lt.mcap_sol, 0) * {sol:Float64} AS marketCap,
+       coalesce(lt.real_sol, 0) * 2 * {sol:Float64} AS liquidity,
        coalesce(lt.vol_sol, 0) * {sol:Float64} AS volume24h,
-       coalesce(lt.tx, 0) AS txCount
-     FROM (SELECT mint, max(ts) AS ts FROM graduations GROUP BY mint HAVING ts > now() - INTERVAL 30 MINUTE ORDER BY ts DESC LIMIT {limit:UInt32}) g
+       coalesce(lt.vol_1h, 0) * {sol:Float64} AS volume1h,
+       coalesce(lt.fees_sol, 0) AS feesPaidSol,
+       coalesce(lt.tx, 0) AS txCount,
+       coalesce(lt.buys, 0) AS buys,
+       coalesce(lt.sells, 0) AS sells,
+       toUnixTimestamp64Milli(lt.last_ts) AS lastTradeAt,
+       if(lt.first_price_sol > 0, (lt.last_price_sol - lt.first_price_sol) / lt.first_price_sol * 100, 0) AS priceChange24h
+     FROM (
+       SELECT mint, max(ts) AS ts FROM graduations
+       GROUP BY mint
+       HAVING ts > now() - INTERVAL {maxAge:UInt32} HOUR
+     ) g
      LEFT JOIN tokens t FINAL ON g.mint = t.mint
      LEFT JOIN (${TRADE_AGG}) lt ON g.mint = lt.mint
+     WHERE 1 ${where}
      ORDER BY g.ts DESC
+     LIMIT {limit:UInt32}
      SETTINGS join_use_nulls = 1`,
-    { limit, sol: solPrice, maxAge: MAX_AGE_DAYS }
+    { limit, sol: solPrice, fee: FEE_RATE, maxAge: f.maxAgeHours ?? 24, ...params }
   );
-  return rows.map((r) => ({ ...shapePair(r, solPrice), complete: true, progress: 100, destination: "pumpswap" }));
+  return rows.map((r) => ({
+    ...shapePair(r, solPrice),
+    complete: true, progress: 100, destination: "pumpswap",
+    liquidity: Number(r.liquidity) || 0,
+    volume1h: Number(r.volume1h) || 0,
+    feesPaidSol: Number(r.feesPaidSol) || 0,
+    buys: Number(r.buys) || 0,
+    sells: Number(r.sells) || 0,
+    graduatedAt: Number(r.graduatedAt) || 0,
+    lastTradeAt: Number(r.lastTradeAt) || 0,
+  }));
 }
+
+
 
 export async function getTokenData(mint: string, solPrice: number) {
   const rows = await q<any>(

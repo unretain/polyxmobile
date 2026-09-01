@@ -2,9 +2,11 @@
 
 import { useEffect, useCallback, useRef, useState, useMemo } from "react";
 import Image from "next/image";
+import { FiltersPanel } from "@/components/pulse/FiltersPanel";
+import { PulseFilters, EMPTY_FILTERS, loadFilters, saveFilters, applyFilter, activeCount } from "@/lib/pulseFilters";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Activity, RefreshCw, Copy, Search } from "lucide-react";
+import { Activity, RefreshCw, Copy, Search, SlidersHorizontal } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import { formatNumber, formatPercent, shortenAddress, cn } from "@/lib/utils";
 import { usePulseStore, type PulseToken } from "@/stores/pulseStore";
@@ -192,6 +194,12 @@ export default function PulsePage() {
   } = usePulseStore();
 
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  // Start empty and hydrate from localStorage after mount — reading storage during
+  // render would mismatch the server-rendered markup.
+  const [filters, setFilters] = useState<PulseFilters>(EMPTY_FILTERS);
+  useEffect(() => { setFilters(loadFilters()); }, []);
+  const applyFilters = (f: PulseFilters) => { setFilters(f); saveFilters(f); };
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
   const [searchHistory, setSearchHistory] = useState<PulseToken[]>([]);
@@ -336,7 +344,14 @@ export default function PulsePage() {
     };
   }, [connectRealtime, disconnectRealtime]);
 
-  const totalTokens = newPairs.length + graduatingPairs.length + graduatedPairs.length;
+  // The socket replaces these lists every second, so filtering has to happen here on
+  // each render rather than once at fetch time.
+  const shownNew = applyFilter(newPairs, filters.new);
+  const shownFinal = applyFilter(graduatingPairs, filters.final);
+  const shownMigrated = applyFilter(graduatedPairs, filters.migrated);
+  const filterCount = activeCount(filters.new) + activeCount(filters.final) + activeCount(filters.migrated);
+
+  const totalTokens = shownNew.length + shownFinal.length + shownMigrated.length;
 
   return (
     <div className="h-full flex flex-col gap-4">
@@ -353,6 +368,23 @@ export default function PulsePage() {
           </div>
         </div>
 
+        <div className="flex items-center gap-2">
+        {/* Filters */}
+        <button
+          onClick={() => setIsFiltersOpen(true)}
+          className={`flex items-center gap-2 border px-2 md:px-3 py-2 text-sm transition-all hover:border-[#FF6B4A]/30 ${
+            isDark
+              ? 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
+              : 'bg-black/5 border-black/10 text-gray-500 hover:bg-black/10'
+          }`}
+        >
+          <SlidersHorizontal className="h-4 w-4" />
+          <span className="hidden md:inline">Filters</span>
+          {filterCount > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/80 text-white">{filterCount}</span>
+          )}
+        </button>
+
         {/* Search Button - icon only on mobile */}
         <button
           onClick={openSearch}
@@ -366,6 +398,7 @@ export default function PulsePage() {
           <span className="hidden md:inline">Search by name, ticker, or CA...</span>
           <kbd className={`hidden md:inline ml-2 px-1.5 py-0.5 text-xs ${isDark ? 'bg-white/10 text-white/40' : 'bg-black/10 text-gray-400'}`}>Esc</kbd>
         </button>
+        </div>
       </div>
 
       {/* Error */}
@@ -381,7 +414,7 @@ export default function PulsePage() {
         <TokenColumn
           title="New Pairs"
           subtitle="Just launched on pump.fun"
-          tokens={newPairs}
+          tokens={shownNew}
           emptyMessage="Waiting for new tokens..."
           isDark={isDark}
         />
@@ -390,7 +423,7 @@ export default function PulsePage() {
         <TokenColumn
           title="Final Stretch"
           subtitle="Near bonding curve completion"
-          tokens={graduatingPairs}
+          tokens={shownFinal}
           emptyMessage="No tokens graduating..."
           showProgress
           isDark={isDark}
@@ -400,11 +433,21 @@ export default function PulsePage() {
         <TokenColumn
           title="Migrated"
           subtitle="Graduated to Raydium/PumpSwap"
-          tokens={graduatedPairs}
+          tokens={shownMigrated}
           emptyMessage="No migrated tokens yet..."
           isDark={isDark}
         />
       </div>
+
+      {/* Filters */}
+      {isFiltersOpen && (
+        <FiltersPanel
+          filters={filters}
+          onChange={applyFilters}
+          onClose={() => setIsFiltersOpen(false)}
+          isDark={isDark}
+        />
+      )}
 
       {/* Search Modal */}
       {isSearchOpen && (

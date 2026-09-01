@@ -40,6 +40,13 @@ export const SCHEMA_STATEMENTS: string[] = [
     price_sol             Float64,
     mcap_sol              Float64,
     real_token_reserves   Float64,
+    -- SOL side of the bonding curve. Liquidity is real_sol * 2 (both sides), which we
+    -- could not compute from ClickHouse before because only the token side was stored.
+    real_sol              Float64 DEFAULT 0,
+    -- Fees ACTUALLY paid, from the trade event. Not volume * a rate: pump.fun's
+    -- protocol bps come from a market-cap tier table and some trades pay zero.
+    fee_sol               Float64 DEFAULT 0,
+    creator_fee_sol       Float64 DEFAULT 0,
     trader                String DEFAULT '',
     -- Monotonic write order. Block time is only SECOND-precise, so dozens of trades
     -- in one second share an identical ts and argMin/argMax(price, ts) tie — they
@@ -63,6 +70,9 @@ export const SCHEMA_STATEMENTS: string[] = [
 
   // Existing deployments predate `seq` — add it in place (no-op once present).
   `ALTER TABLE trades ADD COLUMN IF NOT EXISTS seq UInt64 DEFAULT 0`,
+  `ALTER TABLE trades ADD COLUMN IF NOT EXISTS real_sol Float64 DEFAULT 0`,
+  `ALTER TABLE trades ADD COLUMN IF NOT EXISTS fee_sol Float64 DEFAULT 0`,
+  `ALTER TABLE trades ADD COLUMN IF NOT EXISTS creator_fee_sol Float64 DEFAULT 0`,
 
   // Candles in SOL (converted to USD at read). open/close via argMin/argMax on ts.
   `CREATE TABLE IF NOT EXISTS candles_1m (
