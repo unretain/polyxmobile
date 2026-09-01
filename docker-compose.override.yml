@@ -1,0 +1,5 @@
+# Local-only: host 5432 is taken by another project's dev-db-1 container.
+services:
+  postgres:
+    ports: !override
+      - "5434:5432"
