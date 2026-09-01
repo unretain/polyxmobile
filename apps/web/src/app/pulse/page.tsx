@@ -381,7 +381,7 @@ export default function PulsePage() {
           <SlidersHorizontal className="h-4 w-4" />
           <span className="hidden md:inline">Filters</span>
           {filterCount > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/80 text-white">{filterCount}</span>
+            <span className="px-1.5 text-[10px] border border-[#FF6B4A]/40 text-[#FF6B4A]">{filterCount}</span>
           )}
         </button>
 

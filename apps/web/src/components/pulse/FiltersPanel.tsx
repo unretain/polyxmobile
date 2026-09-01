@@ -2,19 +2,23 @@
 
 /**
  * Filters panel for the pulse lists. One tab per column, each with its own saved set,
- * so "New Pairs" can be wide open while "Migrated" is narrowed to coins still doing
+ * so "New Pairs" can stay wide open while "Migrated" is narrowed to coins still doing
  * volume. Values persist in localStorage.
+ *
+ * Styling follows the pulse page's own conventions: square corners, bg-[#111] on a
+ * blurred black backdrop, #FF6B4A as the accent, white//black alpha borders.
  */
 import { useState } from "react";
+import { X } from "lucide-react";
 import {
   PulseFilter, PulseFilters, TabKey, Range,
   EMPTY_FILTER, activeCount,
 } from "@/lib/pulseFilters";
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: "new", label: "New Pairs" },
-  { key: "final", label: "Final Stretch" },
-  { key: "migrated", label: "Migrated" },
+  { key: "new", label: "new pairs" },
+  { key: "final", label: "final stretch" },
+  { key: "migrated", label: "migrated" },
 ];
 
 const FIELDS: { key: keyof PulseFilter; label: string }[] = [
@@ -37,7 +41,7 @@ interface Props {
 
 export function FiltersPanel({ filters, onChange, onClose, isDark }: Props) {
   const [tab, setTab] = useState<TabKey>("new");
-  // Edited locally, committed on Apply — so half-typed bounds don't thrash the lists.
+  // Edited locally and committed on Apply, so half-typed bounds don't thrash the lists.
   const [draft, setDraft] = useState<PulseFilters>(filters);
   const cur = draft[tab];
 
@@ -52,32 +56,48 @@ export function FiltersPanel({ filters, onChange, onClose, isDark }: Props) {
     setField(key, r);
   };
 
-  const input = isDark
-    ? "bg-black/40 border-white/10 text-white placeholder-white/30"
-    : "bg-black/5 border-black/10 text-black placeholder-black/30";
-  const panel = isDark ? "bg-[#0d0d12] border-white/10 text-white" : "bg-white border-black/10 text-black";
+  const field = `w-full px-3 py-2 text-sm border outline-none transition-colors focus:border-[#FF6B4A]/50 ${
+    isDark
+      ? "bg-white/5 border-white/10 text-white placeholder-white/30"
+      : "bg-black/5 border-gray-200 text-gray-900 placeholder-gray-400"
+  }`;
+  const label = `block text-[11px] mb-1.5 ${isDark ? "text-white/40" : "text-gray-500"}`;
+  const divide = isDark ? "border-white/10" : "border-gray-200";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[6vh] px-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className={`relative w-full max-w-md rounded-2xl border shadow-2xl ${panel} max-h-[85vh] flex flex-col`}>
-        {/* header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-inherit">
-          <h2 className="text-base font-semibold">Filters</h2>
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[8vh]">
+      {/* Backdrop */}
+      <div
+        className={`absolute inset-0 backdrop-blur-sm ${isDark ? "bg-black/60" : "bg-black/40"}`}
+        onClick={onClose}
+      />
+
+      {/* Modal */}
+      <div
+        className={`relative w-full max-w-2xl mx-4 border shadow-2xl flex flex-col max-h-[80vh] ${
+          isDark ? "bg-[#111] border-white/10" : "bg-white border-gray-200"
+        }`}
+      >
+        {/* Header */}
+        <div className={`flex items-center justify-between p-4 border-b ${divide}`}>
+          <h2 className="text-sm font-bold text-[#FF6B4A]">[filters]</h2>
           <div className="flex items-center gap-3">
             <button
               onClick={() => setDraft({ ...draft, [tab]: { ...EMPTY_FILTER } })}
-              className="text-xs opacity-60 hover:opacity-100"
-              title="Reset this tab"
+              className={`text-xs transition-colors ${
+                isDark ? "text-white/40 hover:text-white/70" : "text-gray-400 hover:text-gray-700"
+              }`}
             >
-              Reset
+              reset tab
             </button>
-            <button onClick={onClose} className="opacity-60 hover:opacity-100 text-lg leading-none">×</button>
+            <button onClick={onClose} className={isDark ? "text-white/40 hover:text-white" : "text-gray-400 hover:text-gray-900"}>
+              <X className="h-4 w-4" />
+            </button>
           </div>
         </div>
 
-        {/* tabs */}
-        <div className="flex gap-1 px-3 pt-3">
+        {/* Tabs */}
+        <div className={`flex border-b ${divide}`}>
           {TABS.map((t) => {
             const n = activeCount(draft[t.key]);
             const on = tab === t.key;
@@ -85,85 +105,95 @@ export function FiltersPanel({ filters, onChange, onClose, isDark }: Props) {
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
-                className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition flex items-center justify-center gap-1.5 ${
+                className={`flex-1 px-3 py-2.5 text-xs font-medium transition-colors flex items-center justify-center gap-1.5 border-b-2 ${
                   on
-                    ? isDark ? "bg-white/10" : "bg-black/10"
-                    : "opacity-60 hover:opacity-100"
+                    ? "border-[#FF6B4A] text-[#FF6B4A] bg-[#FF6B4A]/5"
+                    : `border-transparent ${isDark ? "text-white/40 hover:text-white/70" : "text-gray-400 hover:text-gray-700"}`
                 }`}
               >
-                {t.label}
+                [{t.label}]
                 {n > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-500/80 text-white">{n}</span>
+                  <span className={`px-1.5 text-[10px] border ${
+                    on ? "border-[#FF6B4A]/40 text-[#FF6B4A]" : isDark ? "border-white/15 text-white/40" : "border-gray-200 text-gray-400"
+                  }`}>
+                    {n}
+                  </span>
                 )}
               </button>
             );
           })}
         </div>
 
-        {/* body */}
-        <div className="px-5 py-4 space-y-4 overflow-y-auto">
-          <div className="grid grid-cols-2 gap-3">
+        {/* Body */}
+        <div className="p-4 space-y-4 overflow-y-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] mb-1.5 opacity-60">Search Keywords</label>
+              <label className={label}>Search Keywords</label>
               <input
                 value={cur.search}
                 onChange={(e) => setField("search", e.target.value)}
                 placeholder="keyword1, keyword2..."
-                className={`w-full px-3 py-2 rounded-lg border text-sm outline-none ${input}`}
+                className={field}
               />
             </div>
             <div>
-              <label className="block text-[11px] mb-1.5 opacity-60">Exclude Keywords</label>
+              <label className={label}>Exclude Keywords</label>
               <input
                 value={cur.exclude}
                 onChange={(e) => setField("exclude", e.target.value)}
                 placeholder="rug, test..."
-                className={`w-full px-3 py-2 rounded-lg border text-sm outline-none ${input}`}
+                className={field}
               />
             </div>
           </div>
 
-          {FIELDS.map((f) => {
-            const r = cur[f.key] as Range;
-            return (
-              <div key={String(f.key)}>
-                <label className="block text-[11px] mb-1.5 opacity-60">{f.label}</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    value={r.min ?? ""}
-                    onChange={(e) => setBound(f.key, "min", e.target.value)}
-                    placeholder="Min"
-                    className={`w-full px-3 py-2 rounded-lg border text-sm outline-none ${input}`}
-                  />
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    value={r.max ?? ""}
-                    onChange={(e) => setBound(f.key, "max", e.target.value)}
-                    placeholder="Max"
-                    className={`w-full px-3 py-2 rounded-lg border text-sm outline-none ${input}`}
-                  />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-3 gap-y-4">
+            {FIELDS.map((f) => {
+              const r = cur[f.key] as Range;
+              return (
+                <div key={String(f.key)}>
+                  <label className={label}>{f.label}</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      value={r.min ?? ""}
+                      onChange={(e) => setBound(f.key, "min", e.target.value)}
+                      placeholder="Min"
+                      className={field}
+                    />
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      value={r.max ?? ""}
+                      onChange={(e) => setBound(f.key, "max", e.target.value)}
+                      placeholder="Max"
+                      className={field}
+                    />
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
 
-        {/* footer */}
-        <div className="flex items-center justify-between px-5 py-4 border-t border-inherit">
+        {/* Footer */}
+        <div className={`flex items-center justify-between p-4 border-t ${divide}`}>
           <button
-            onClick={() => setDraft({ new: { ...EMPTY_FILTER }, final: { ...EMPTY_FILTER }, migrated: { ...EMPTY_FILTER } })}
-            className="text-xs opacity-60 hover:opacity-100"
+            onClick={() =>
+              setDraft({ new: { ...EMPTY_FILTER }, final: { ...EMPTY_FILTER }, migrated: { ...EMPTY_FILTER } })
+            }
+            className={`text-xs transition-colors ${
+              isDark ? "text-white/40 hover:text-white/70" : "text-gray-400 hover:text-gray-700"
+            }`}
           >
-            Clear all
+            clear all
           </button>
           <button
             onClick={() => { onChange(draft); onClose(); }}
-            className="px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition"
+            className="px-5 py-2 text-sm font-medium bg-[#FF6B4A]/10 text-[#FF6B4A] border border-[#FF6B4A]/30 hover:bg-[#FF6B4A]/20 transition-colors"
           >
-            Apply All
+            apply all
           </button>
         </div>
       </div>
