@@ -72,22 +72,31 @@ function rebucket(bars: Bar[], ivMs: number): Bar[] {
 
 
 
-function timeframeToSeconds(tf: string): number {
+/**
+ * Timeframe -> bar width in MILLISECONDS.
+ *
+ * "1s" maps to 250ms on purpose. These coins trade ~6x a second, so one-second bars
+ * collapse most of the price action (3217 trades became 514 bars). The in-memory tier
+ * is already 250ms; this keeps that resolution instead of rebucketing it away, and
+ * ClickHouse now matches it via recv_ts.
+ */
+function timeframeToMs(tf: string): number {
   switch (tf) {
-    case "1s": return 1;   // true per-second candles from our stream
-    case "5s": return 5;
-    case "15s": return 15;
-    case "30s": return 30;
-    case "1m": case "1min": return 60;
-    case "5m": case "5min": return 300;
-    case "15m": case "15min": return 900;
-    case "1h": case "1hour": return 3600;
-    case "4h": return 14400;
-    case "1d": case "1day": return 86400;
-    case "1w": return 604800;
-    default: return 60;
+    case "1s": return 250;   // fine tier — 4 bars/sec, matches the live feed
+    case "5s": return 5000;
+    case "15s": return 15000;
+    case "30s": return 30000;
+    case "1m": case "1min": return 60000;
+    case "5m": case "5min": return 300000;
+    case "15m": case "15min": return 900000;
+    case "1h": case "1hour": return 3600000;
+    case "4h": return 14400000;
+    case "1d": case "1day": return 86400000;
+    case "1w": return 604800000;
+    default: return 60000;
   }
 }
+
 
 feedRoutes.get("/status", (_req, res) => {
   res.json({ connected: isPulseConnected(), solPrice: getSolPrice() });
@@ -158,7 +167,8 @@ feedRoutes.get("/token/:mint", async (req, res) => {
 // 1m+ history (candles_1m). Sub-minute intervals only exist in memory.
 feedRoutes.get("/ohlcv/:mint", async (req, res) => {
   const mint = req.params.mint;
-  const iv = timeframeToSeconds(String(req.query.timeframe || "1m"));
+  const ivMs = timeframeToMs(String(req.query.timeframe || "1m"));
+  const iv = Math.max(1, Math.round(ivMs / 1000)); // in-memory getCandles still takes seconds
   const limit = Math.min(parseInt(String(req.query.limit)) || 1000, 5000);
   let data = getCandles(mint, iv, limit);
   let source = "grpc";
@@ -192,7 +202,7 @@ feedRoutes.get("/ohlcv/:mint", async (req, res) => {
   if (clickhouseEnabled()) {
     try {
       const want = Math.min(limit, 2000);
-      const chData = await memo(`f:cndl:${mint}:${iv}:${want}`, 1000, () => ch.getTradeCandles(mint, iv, want, getSolPrice()));
+      const chData = await memo(`f:cndl:${mint}:${ivMs}:${want}`, 1000, () => ch.getTradeCandles(mint, ivMs, want, getSolPrice()));
       if (chData.length) {
         if (!data.length) {
           data = chData;
@@ -203,7 +213,7 @@ feedRoutes.get("/ohlcv/:mint", async (req, res) => {
           // and slicing to `limit` instead would drop the very history we just added
           // (memory alone can already be `limit` candles long), and it would mix bar
           // widths — memory's fine tier is 250ms, CH's is the requested interval.
-          const ivMsGap = Math.max(250, iv * 1000);
+          const ivMsGap = ivMs;
           const chLast = chData[chData.length - 1].timestamp;
           const liveTail = data.filter((c) => c.timestamp > chLast + ivMsGap);
           data = [...chData, ...liveTail];
@@ -216,7 +226,6 @@ feedRoutes.get("/ohlcv/:mint", async (req, res) => {
   // is 250ms — mixing them on one axis was half the choppiness). We do NOT gap-fill:
   // padding quiet stretches with zero-volume bars at the last price drew long flat
   // shelves across the chart, which looked far worse than the honest gaps it replaced.
-  const ivMs = Math.max(250, iv * 1000);
   data = rebucket(data as Bar[], ivMs).slice(-limit);
   res.json({ data, source, hasHistory: hasCandles(mint) || data.length > 0 });
 });

@@ -47,6 +47,10 @@ export const SCHEMA_STATEMENTS: string[] = [
     -- protocol bps come from a market-cap tier table and some trades pay zero.
     fee_sol               Float64 DEFAULT 0,
     creator_fee_sol       Float64 DEFAULT 0,
+    -- Block time (ts) is SECOND-precise, so it can never produce a sub-second bar.
+    -- This is our receive time in ms: the only way to chart finer than 1s over
+    -- history. Ordering within a second still comes from seq.
+    recv_ts               DateTime64(3) DEFAULT now64(3),
     trader                String DEFAULT '',
     -- Monotonic write order. Block time is only SECOND-precise, so dozens of trades
     -- in one second share an identical ts and argMin/argMax(price, ts) tie — they
@@ -73,6 +77,7 @@ export const SCHEMA_STATEMENTS: string[] = [
   `ALTER TABLE trades ADD COLUMN IF NOT EXISTS real_sol Float64 DEFAULT 0`,
   `ALTER TABLE trades ADD COLUMN IF NOT EXISTS fee_sol Float64 DEFAULT 0`,
   `ALTER TABLE trades ADD COLUMN IF NOT EXISTS creator_fee_sol Float64 DEFAULT 0`,
+  `ALTER TABLE trades ADD COLUMN IF NOT EXISTS recv_ts DateTime64(3) DEFAULT now64(3)`,
 
   // Candles in SOL (converted to USD at read). open/close via argMin/argMax on ts.
   `CREATE TABLE IF NOT EXISTS candles_1m (

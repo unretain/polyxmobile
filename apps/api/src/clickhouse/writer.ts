@@ -9,7 +9,7 @@
 import { getClickHouse } from "./client";
 
 export type TokenRow = { mint: string; name: string; symbol: string; uri: string; image: string; creator: string; created_at: string; created_slot: number };
-export type TradeRow = { mint: string; signature: string; slot: number; seq?: number; ts: string; is_buy: number; sol_amount: number; token_amount: number; price_sol: number; mcap_sol: number; real_token_reserves: number; real_sol?: number; fee_sol?: number; creator_fee_sol?: number; trader: string };
+export type TradeRow = { mint: string; signature: string; slot: number; seq?: number; ts: string; is_buy: number; sol_amount: number; token_amount: number; price_sol: number; mcap_sol: number; real_token_reserves: number; real_sol?: number; fee_sol?: number; creator_fee_sol?: number; recv_ts?: string; trader: string };
 export type GradRow = { mint: string; ts: string };
 
 let tokenBuf: TokenRow[] = [];
@@ -31,7 +31,14 @@ const READONLY = String(process.env.CH_READONLY || "").toLowerCase() === "true";
 export function recordToken(r: TokenRow) { if (flushTimer && !READONLY) tokenBuf.push(r); }
 // Stamped here, not at the call sites, so every trade gets ordering for free.
 let tradeSeq = 0;
-export function recordTrade(r: TradeRow) { if (flushTimer && !READONLY) { r.seq = ++tradeSeq; tradeBuf.push(r); } }
+export function recordTrade(r: TradeRow) {
+  if (flushTimer && !READONLY) {
+    r.seq = ++tradeSeq;
+    // Millisecond receive time — block time only has second resolution.
+    if (!r.recv_ts) r.recv_ts = chDateTime(Date.now());
+    tradeBuf.push(r);
+  }
+}
 export function recordGraduation(r: GradRow) { if (flushTimer && !READONLY) gradBuf.push(r); }
 
 async function flush() {

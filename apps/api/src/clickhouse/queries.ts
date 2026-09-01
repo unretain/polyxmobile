@@ -283,22 +283,34 @@ export async function getTokenData(mint: string, solPrice: number) {
 // OHLCV built from the RAW trades table at any interval (down to 1s), converted to
 // USD. Finer than getOhlcv (which uses 1m aggregates) — used for the chart so a
 // wiped/stopped coin still shows detailed candles from its durable trade history.
-export async function getTradeCandles(mint: string, intervalSec: number, limit: number, solPrice: number) {
-  const iv = Math.max(1, Math.floor(intervalSec));
+/**
+ * Candles from raw trades. `intervalMs` may be SUB-SECOND: pump.fun coins do ~6 trades
+ * a second, so 1s bars throw most of the shape away (514 bars for 3217 trades). Block
+ * time can't express that, so anything finer than a second buckets on `recv_ts`, our
+ * millisecond receive time. Older rows have recv_ts defaulted at insert, which is
+ * within a second or two of block time — fine at this granularity.
+ */
+export async function getTradeCandles(mint: string, intervalMs: number, limit: number, solPrice: number) {
+  const iv = Math.max(1, Math.floor(intervalMs));
+  const sub = iv < 1000;
+  const timeCol = sub ? "recv_ts" : "ts";
+  const bucket = sub
+    ? `toUnixTimestamp64Milli(toStartOfInterval(recv_ts, INTERVAL {iv:UInt32} MILLISECOND))`
+    : `toUnixTimestamp(toStartOfInterval(ts, INTERVAL {ivs:UInt32} SECOND)) * 1000`;
   const rows = await q<any>(
     `SELECT
-       toUnixTimestamp(toStartOfInterval(ts, INTERVAL {iv:UInt32} SECOND)) * 1000 AS timestamp,
-       argMin(price_sol, (ts, seq)) AS open_sol,
+       ${bucket} AS timestamp,
+       argMin(price_sol, (${timeCol}, seq)) AS open_sol,
        max(price_sol)        AS high_sol,
        min(price_sol)        AS low_sol,
-       argMax(price_sol, (ts, seq)) AS close_sol,
+       argMax(price_sol, (${timeCol}, seq)) AS close_sol,
        sum(sol_amount)       AS vol_sol
      FROM trades
      WHERE mint = {mint:String} AND price_sol > 0
      GROUP BY timestamp
      ORDER BY timestamp DESC
      LIMIT {limit:UInt32}`,
-    { mint, iv, limit }
+    { mint, iv, ivs: Math.max(1, Math.floor(iv / 1000)), limit }
   );
   const p = solPrice || 0;
   return rows
@@ -312,6 +324,7 @@ export async function getTradeCandles(mint: string, intervalSec: number, limit: 
     }))
     .sort((a, b) => a.timestamp - b.timestamp);
 }
+
 
 // OHLCV rolled up from candles_1m (stored in SOL) to any timeframe, converted to USD.
 export async function getOhlcv(mint: string, intervalSec: number, limit: number, solPrice: number) {
