@@ -355,6 +355,9 @@ export default function TokenClient() {
   // Real USD-per-SOL rate, derived from the token snapshot (the API computes it with
   // the live SOL price). Cached so the socket trade handler never falls back to 200.
   const solRateRef = useRef<number | null>(null);
+  // Flips once, the first time a real USD/SOL rate arrives. Lets the average lines
+  // compute exactly once more instead of watching a ref they cannot react to.
+  const [solRateReady, setSolRateReady] = useState(false);
 
   // Volume-weighted average entry and exit, drawn as horizontal lines on the chart.
   // Weighted by TOKEN amount, not trade count, so one big fill moves the line more
@@ -383,14 +386,22 @@ export default function TokenClient() {
       return (sol / tokens) * rate * supply;
     };
     return { avgEntry: avg("buy"), avgExit: avg("sell") };
-  }, [isDemo, demoTrades, loggedTrades, address, userWallet, ohlcv]);
+    // NOT recomputed on every candle tick. Depending on `ohlcv` re-derived the level
+    // several times a second against a moving SOL rate, so the line crept instead of
+    // sitting still. It should only move when the position actually changes — i.e.
+    // when you DCA in or sell more. solRateReady covers the one case where the rate
+    // was not known yet on first render.
+  }, [isDemo, demoTrades, loggedTrades, address, userWallet, solRateReady]);
 
   useEffect(() => {
     const p = pulseToken as any;
     if (!p) return;
     const rate = p.marketCapSol > 0 ? p.marketCap / p.marketCapSol
                : (p.priceSol > 0 ? p.price / p.priceSol : 0);
-    if (rate && isFinite(rate) && rate > 0) solRateRef.current = rate;
+    if (rate && isFinite(rate) && rate > 0) {
+      solRateRef.current = rate;
+      if (!solRateReady) setSolRateReady(true);
+    }
   }, [pulseToken]);
 
   // Current timeframe as a ref so the live socket handlers can read it WITHOUT the

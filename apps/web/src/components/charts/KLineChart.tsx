@@ -592,43 +592,30 @@ export function KLineChart({
   }, [data, chartReady, supply]);
 
   // ---- average entry / exit lines -----------------------------------------
-  // Two horizontal levels: what the user paid on average, and what they sold at.
-  // Kept in their own overlay ids so they can be replaced in place rather than
-  // accumulating a new line every time a trade lands.
-  const avgOverlayIds = useRef<{ entry?: string; exit?: string }>({});
+  // Two levels from the user's own fills: where they bought on average, where they
+  // sold. Each uses a FIXED overlay id, so a redraw replaces the line in place.
+  // Tracking ids returned from createOverlay was not enough — any redraw that failed
+  // to capture the id left the old line on the chart, and they stacked up.
   useEffect(() => {
     const chart = chartRef.current;
     if (!chartReady || !chart) return;
 
-    const draw = (
-      key: "entry" | "exit",
-      value: number | null | undefined,
-      color: string,
-      label: string
-    ) => {
-      const existing = avgOverlayIds.current[key];
-      if (existing) {
-        // v10 takes a filter object here, not a bare id.
-        chart.removeOverlay({ id: existing });
-        avgOverlayIds.current[key] = undefined;
-      }
+    const draw = (id: string, value: number | null | undefined, color: string) => {
+      // Remove by id first, unconditionally: this is what guarantees one line.
+      chart.removeOverlay({ id });
       if (!value || !isFinite(value) || value <= 0) return;
-      const id = chart.createOverlay({
+      chart.createOverlay({
+        id,
         name: "horizontalStraightLine",
-        // The y-axis renders market cap, so the level is price * supply — the caller
-        // passes it already converted.
+        // The y-axis is market cap, so the caller passes price * supply.
         points: [{ value }],
-        lock: true,          // not draggable: it is derived from real fills
-        styles: {
-          line: { color, size: 1, style: "dashed" },
-        },
-        extendData: label,
+        lock: true, // derived from real fills — not draggable
+        styles: { line: { color, size: 1, style: "dashed" } },
       });
-      if (typeof id === "string") avgOverlayIds.current[key] = id;
     };
 
-    draw("entry", avgEntry, UP, "avg entry");
-    draw("exit", avgExit, DOWN, "avg exit");
+    draw("avg-entry", avgEntry, UP);
+    draw("avg-exit", avgExit, DOWN);
   }, [avgEntry, avgExit, chartReady]);
 
   // ---- toolbar actions ----------------------------------------------------
