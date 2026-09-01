@@ -732,7 +732,7 @@ export function KLineChart({
   // container never exists, init never runs, and the chart stays blank forever.
   // Loading/empty are rendered as overlays instead.
   const toolBtn = (active: boolean) =>
-    `flex items-center justify-center h-7 w-7 rounded transition-colors ${
+    `flex items-center justify-center h-7 w-7 transition-colors ${
       active
         ? "bg-[#FF6B4A] text-white"
         : isDark
@@ -741,7 +741,7 @@ export function KLineChart({
     }`;
 
   return (
-    <div className={`h-full w-full flex ${isDark ? "bg-[#0a0a0a]" : "bg-gray-50"}`}>
+    <div className={`h-full w-full flex ${isDark ? "bg-[#0a0a0a]" : "bg-white"}`}>
       {/* Drawing toolbar — a real column rather than an overlay, so it never
           covers candles on the left edge of the plot. */}
       <div
@@ -792,8 +792,8 @@ export function KLineChart({
       {/* Text tool: type the label, then click the chart to place it */}
       {textPromptOpen && (
         <div
-          className={`absolute top-10 left-2 z-30 flex items-center gap-1 p-1 rounded border shadow-lg ${
-            isDark ? "bg-[#141414] border-white/10" : "bg-white border-black/10"
+          className={`absolute top-10 left-2 z-30 flex items-center gap-1 p-1 border shadow-lg ${
+            isDark ? "bg-[#111] border-white/10" : "bg-white border-black/10"
           }`}
         >
           <input
@@ -808,7 +808,7 @@ export function KLineChart({
               }
             }}
             placeholder="Label, then click chart"
-            className={`px-1.5 py-1 text-[10px] rounded outline-none w-40 ${
+            className={`px-1.5 py-1 text-[10px] outline-none w-40 ${
               isDark
                 ? "bg-white/5 text-white/80 placeholder:text-white/25"
                 : "bg-black/5 text-gray-700 placeholder:text-gray-400"
@@ -816,7 +816,7 @@ export function KLineChart({
           />
           <button
             onClick={commitText}
-            className="px-2 py-1 text-[10px] font-medium rounded bg-[#FF6B4A] text-white"
+            className="px-2 py-1 text-[10px] font-medium bg-[#FF6B4A] text-white"
           >
             Add
           </button>
@@ -830,7 +830,7 @@ export function KLineChart({
               <button
                 key={tf.value}
                 onClick={() => onTimeframeChange(tf.value)}
-                className={`px-1.5 py-1 text-[9px] font-medium rounded transition-colors ${
+                className={`px-1.5 py-1 text-[9px] font-medium transition-colors ${
                   timeframe === tf.value
                     ? "bg-[#FF6B4A] text-white"
                     : isDark
@@ -851,7 +851,7 @@ export function KLineChart({
           <div className="relative">
             <button
               onClick={() => setIndicatorMenuOpen((o) => !o)}
-              className={`flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded transition-colors ${
+              className={`flex items-center gap-1 px-2 py-1 text-[10px] font-medium transition-colors ${
                 activeIndicators.length
                   ? "bg-[#FF6B4A] text-white"
                   : isDark
@@ -866,8 +866,8 @@ export function KLineChart({
 
             {indicatorMenuOpen && (
               <div
-                className={`absolute right-0 mt-1 w-36 rounded border shadow-lg overflow-hidden ${
-                  isDark ? "bg-[#141414] border-white/10" : "bg-white border-black/10"
+                className={`absolute right-0 mt-1 w-36 border shadow-lg overflow-hidden ${
+                  isDark ? "bg-[#111] border-white/10" : "bg-white border-black/10"
                 }`}
               >
                 {[
@@ -911,7 +911,7 @@ export function KLineChart({
               <button
                 key={t}
                 onClick={() => setInternalChartType(t)}
-                className={`px-2 py-1 text-[10px] font-medium rounded transition-colors ${
+                className={`px-2 py-1 text-[10px] font-medium transition-colors ${
                   chartType === t
                     ? "bg-[#FF6B4A] text-white"
                     : isDark
@@ -934,7 +934,7 @@ export function KLineChart({
         {bubbles.map((b, i) => (
           <div
             key={i}
-            className="absolute flex items-center justify-center rounded-full"
+            className="absolute flex items-center justify-center"
             style={{
               left: `${b.x}px`,
               top: `${b.y}px`,
@@ -962,9 +962,9 @@ export function KLineChart({
 
       {/* Loading / empty as overlays (never early-return the container away) */}
       {isLoading && (!data || data.length === 0) && (
-        <div className={`absolute inset-0 flex items-center justify-center ${isDark ? "bg-[#0a0a0a]" : "bg-gray-50"}`}>
+        <div className={`absolute inset-0 flex items-center justify-center ${isDark ? "bg-[#0a0a0a]" : "bg-white"}`}>
           <div className="flex flex-col items-center gap-3">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#FF6B4A] border-t-transparent" />
+            <div className="h-8 w-8 animate-spin border-2 border-[#FF6B4A] border-t-transparent" />
             <span className={`text-sm ${isDark ? "text-white/50" : "text-gray-500"}`}>Loading chart...</span>
           </div>
         </div>
