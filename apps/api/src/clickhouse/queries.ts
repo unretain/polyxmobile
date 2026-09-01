@@ -405,3 +405,17 @@ export async function getWalletTrades(trader: string, limit: number) {
     priceSol: Number(r.price_sol),
   }));
 }
+
+/** Coins we stored without an image but WITH a metadata uri — i.e. ones whose logo
+ *  never got resolved (or resolved after the coin fell out of memory, so nothing
+ *  wrote it back). Fed to the image backfill sweep. */
+export async function getTokensMissingImages(limit: number, hours = 6) {
+  return q<any>(
+    `SELECT mint, name, symbol, uri, toUnixTimestamp64Milli(created_at) AS created_ms
+     FROM tokens FINAL
+     WHERE image = '' AND uri != '' AND created_at > now() - INTERVAL {hours:UInt16} HOUR
+     ORDER BY created_at DESC
+     LIMIT {limit:UInt32}`,
+    { limit, hours }
+  );
+}

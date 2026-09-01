@@ -1,0 +1,14 @@
+C:\Users\owenz\Desktop\Polyxmobile_fresh\launchpad\target\release\deps\serde-89af773439b9a90d.d: C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs C:\Users\owenz\Desktop\Polyxmobile_fresh\launchpad\target\release\build\serde-873fb199d52c83b0\out/private.rs
+
+C:\Users\owenz\Desktop\Polyxmobile_fresh\launchpad\target\release\deps\libserde-89af773439b9a90d.rlib: C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs C:\Users\owenz\Desktop\Polyxmobile_fresh\launchpad\target\release\build\serde-873fb199d52c83b0\out/private.rs
+
+C:\Users\owenz\Desktop\Polyxmobile_fresh\launchpad\target\release\deps\libserde-89af773439b9a90d.rmeta: C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs C:\Users\owenz\Desktop\Polyxmobile_fresh\launchpad\target\release\build\serde-873fb199d52c83b0\out/private.rs
+
+C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\lib.rs:
+C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\integer128.rs:
+C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\mod.rs:
+C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\de.rs:
+C:\Users\owenz\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.229\src\private\ser.rs:
+C:\Users\owenz\Desktop\Polyxmobile_fresh\launchpad\target\release\build\serde-873fb199d52c83b0\out/private.rs:
+
+# env-dep:OUT_DIR=C:\\Users\\owenz\\Desktop\\Polyxmobile_fresh\\launchpad\\target\\release\\build\\serde-873fb199d52c83b0\\out

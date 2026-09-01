@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Polyx Launchpad</title>
+<style>
+  :root { --bg:#0b0b0f; --card:#15151c; --line:#26262f; --fg:#f2f2f5; --mut:#8a8a99; --accent:#ff6b4a; --green:#22c55e; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 ui-sans-serif,system-ui,Inter,sans-serif; }
+  .wrap { max-width:520px; margin:0 auto; padding:32px 20px 80px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--mut); margin:0 0 24px; font-size:13px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:20px; }
+  label { display:block; font-size:12px; color:var(--mut); margin:14px 0 6px; text-transform:uppercase; letter-spacing:.04em; }
+  input, textarea { width:100%; background:#0e0e13; border:1px solid var(--line); color:var(--fg); border-radius:10px; padding:11px 12px; font:inherit; }
+  textarea { resize:vertical; min-height:64px; }
+  .row { display:flex; gap:12px; }
+  .row > div { flex:1; }
+  .drop { border:1px dashed var(--line); border-radius:12px; padding:18px; text-align:center; color:var(--mut); cursor:pointer; }
+  .drop img { max-height:120px; border-radius:10px; margin-top:8px; }
+  button { width:100%; margin-top:20px; padding:13px; border:0; border-radius:12px; background:var(--accent); color:#fff; font-weight:600; font-size:15px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .ghost { background:#22222b; }
+  .status { margin-top:16px; font-size:13px; white-space:pre-wrap; word-break:break-all; }
+  .ok { color:var(--green); }
+  .err { color:#ef4444; }
+  a { color:var(--accent); }
+  .cfg { margin-top:24px; font-size:12px; color:var(--mut); }
+  .cfg input { font-size:12px; padding:8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>[polyx] launchpad</h1>
+  <p class="sub">Launch a token on your own bonding curve — fee-free. Devnet.</p>
+
+  <!-- CREATE card (hidden when opened as a first-buy link) -->
+  <div class="card" id="createCard">
+    <button id="connect" class="ghost">Connect Phantom</button>
+
+    <label>Token name</label>
+    <input id="name" maxlength="32" placeholder="e.g. Polyx Cat" />
+
+    <div class="row">
+      <div>
+        <label>Ticker</label>
+        <input id="symbol" maxlength="10" placeholder="PCAT" />
+      </div>
+    </div>
+
+    <label>Description</label>
+    <textarea id="desc" placeholder="What's this coin about?"></textarea>
+
+    <label>Image</label>
+    <div class="drop" id="drop">
+      <span id="dropText">Click to upload logo (PNG/JPG)</span>
+      <input id="file" type="file" accept="image/*" hidden />
+      <div id="preview"></div>
+    </div>
+
+    <label>Dev buy (SOL) — optional</label>
+    <input id="devbuy" type="number" step="0.01" min="0" placeholder="0" />
+    <p class="cfg" style="margin-top:8px">Dev buy &gt; 0: you launch on-chain now and pay the rent (you're the first buyer).<br>Dev buy = 0: the coin is reserved and you pay nothing — the first buyer covers the rent (like pump.fun).</p>
+
+    <button id="launch" disabled>Launch token</button>
+    <div class="status" id="status"></div>
+  </div>
+
+  <!-- FIRST-BUY card (shown when opened as ?mint=... link) -->
+  <div class="card" id="buyCard" style="display:none">
+    <button id="connect2" class="ghost">Connect Phantom</button>
+    <div id="buyMeta"></div>
+    <label>Buy amount (SOL)</label>
+    <input id="buyAmt" type="number" step="0.01" min="0.01" placeholder="0.1" />
+    <p class="cfg" style="margin-top:8px">This coin isn't on-chain yet. Your buy launches it — you cover the one-time ~0.0074 SOL account rent (refundable), plus your buy.</p>
+    <button id="firstbuy" disabled>Buy &amp; launch</button>
+    <div class="status" id="buyStatus"></div>
+  </div>
+</div>
+
+<script type="module">
+import {
+  Connection, PublicKey, Keypair, Transaction, TransactionInstruction,
+  SystemProgram, SYSVAR_RENT_PUBKEY, LAMPORTS_PER_SOL, ComputeBudgetProgram,
+} from "https://esm.sh/@solana/web3.js@1.95.3";
+import {
+  getAssociatedTokenAddressSync, createAssociatedTokenAccountIdempotentInstruction,
+  TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID,
+} from "https://esm.sh/@solana/spl-token@0.4.9";
+import { Buffer } from "https://esm.sh/buffer@6.0.3";
+globalThis.Buffer = globalThis.Buffer || Buffer;
+
+// ---- baked-in config (users never see this) ----
+const PROGRAM_ID = new PublicKey("CCkwT5o6ieiyxuJvMJNtmrVe1tBwKU7sK47QLCnfTgL4");
+const UPLOAD_URL = "http://localhost:8788";
+const RPC = "https://devnet.helius-rpc.com/?api-key=REDACTED";
+// Token-2022 (metadata lives inside the mint — no separate Metaplex account).
+const TOKEN_2022_PROGRAM = new PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+const conn = new Connection(RPC, "confirmed");
+
+const $ = (id) => document.getElementById(id);
+const status = (msg, cls="") => { $("status").className = "status " + cls; $("status").textContent = msg; };
+
+let wallet = null, imageFile = null;
+
+$("connect").onclick = async () => {
+  const provider = window.phantom?.solana || window.solana;
+  if (!provider) return status("Phantom not found — install it.", "err");
+  const res = await provider.connect();
+  wallet = provider;
+  $("connect").textContent = res.publicKey.toBase58().slice(0,4) + "…" + res.publicKey.toBase58().slice(-4);
+  $("launch").disabled = false;
+};
+
+$("drop").onclick = () => $("file").click();
+$("file").onchange = (e) => {
+  imageFile = e.target.files[0];
+  if (!imageFile) return;
+  const url = URL.createObjectURL(imageFile);
+  $("preview").innerHTML = `<img src="${url}" />`;
+  $("dropText").textContent = imageFile.name;
+};
+
+// ---- borsh-ish encoders ----
+const te = new TextEncoder();
+function encStr(s) { const b = te.encode(s); const len = new Uint8Array(4); new DataView(len.buffer).setUint32(0, b.length, true); return concat(len, b); }
+function u64(nBig) { const a = new Uint8Array(8); let v = BigInt(nBig); for (let i=0;i<8;i++){ a[i]=Number(v & 0xffn); v >>= 8n; } return a; }
+function concat(...arrs) { const total = arrs.reduce((n,a)=>n+a.length,0); const out = new Uint8Array(total); let o=0; for (const a of arrs){ out.set(a,o); o+=a.length; } return out; }
+async function disc(name) { const h = await crypto.subtle.digest("SHA-256", te.encode("global:"+name)); return new Uint8Array(h).slice(0,8); }
+
+// ---- upload (image + metadata) via our server; no user key ----
+async function uploadMeta(uploadUrl, file, name, symbol, description) {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("name", name);
+  fd.append("symbol", symbol);
+  fd.append("description", description);
+  const r = await fetch(uploadUrl.replace(/\/$/, "") + "/upload", { method: "POST", body: fd });
+  if (!r.ok) throw new Error("upload failed: " + await r.text());
+  const j = await r.json();
+  if (!j.uri) throw new Error("upload server returned no uri");
+  return j.uri;
+}
+
+async function sendTx(ixs, signers=[]) {
+  const tx = new Transaction().add(...ixs);
+  tx.feePayer = new PublicKey(wallet.publicKey);
+  tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
+  for (const s of signers) tx.partialSign(s);
+  const signed = await wallet.signTransaction(tx);
+  const sig = await conn.sendRawTransaction(signed.serialize());
+  await conn.confirmTransaction(sig, "confirmed");
+  return sig;
+}
+
+$("launch").onclick = async () => {
+  try {
+    const programId = PROGRAM_ID;
+    const uploadUrl = UPLOAD_URL;
+    const name = $("name").value.trim(), symbol = $("symbol").value.trim(), description = $("desc").value.trim();
+    if (!name || !symbol) return status("Name and ticker required.", "err");
+    if (!imageFile) return status("Upload an image.", "err");
+    $("launch").disabled = true;
+
+    const owner = new PublicKey(wallet.publicKey);
+    const devBuy = parseFloat($("devbuy").value) || 0;
+
+    // Dev buy = 0 -> RESERVE only. Nothing hits the chain and you pay nothing; the
+    // first buyer launches it on-chain and covers the rent (pump.fun's model).
+    if (devBuy <= 0) {
+      status("Reserving coin — you pay nothing…");
+      const fd = new FormData();
+      fd.append("file", imageFile);
+      fd.append("name", name); fd.append("symbol", symbol); fd.append("description", description);
+      fd.append("creator", owner.toBase58());
+      const r = await fetch(uploadUrl.replace(/\/$/, "") + "/reserve", { method: "POST", body: fd });
+      if (!r.ok) throw new Error("reserve failed: " + await r.text());
+      const { mint } = await r.json();
+      const link = location.origin + location.pathname + "?mint=" + mint;
+      status(`✅ Reserved ${symbol} — you paid nothing.\nThe first buyer launches it on-chain. Share this link:\n${link}`, "ok");
+      $("launch").disabled = false;
+      return;
+    }
+
+    // Dev buy > 0 -> launch on-chain now; you're the first buyer and pay the rent.
+    status("Uploading image + metadata…");
+    const uri = await uploadMeta(uploadUrl, imageFile, name, symbol, description);
+    const global = PublicKey.findProgramAddressSync([te.encode("global")], programId)[0];
+
+    // Build every step into ONE transaction so Phantom prompts a single time:
+    //   [compute budget] -> [initialize?] -> create -> ata + buy
+    // Instructions run in order and settle atomically.
+    const ixs = [ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 })];
+
+    // one-time: initialize the launchpad if it hasn't been seeded yet.
+    const g = await conn.getAccountInfo(global);
+    if (!g) {
+      const initData = concat(
+        await disc("initialize"),
+        new Uint8Array([6]),                       // mint_decimals
+        u64("1000000000000000"),                   // total supply (1B * 1e6)
+        u64("1073000000000000"),                   // virtual token
+        u64("30000000000"),                        // virtual sol (30 SOL)
+        u64("793100000000000"),                    // real token
+        u64("500000000"),                          // graduation 0.5 SOL
+      );
+      ixs.push(new TransactionInstruction({ programId, keys:[
+        { pubkey: global, isSigner:false, isWritable:true },
+        { pubkey: owner, isSigner:true, isWritable:true },
+        { pubkey: SystemProgram.programId, isSigner:false, isWritable:false },
+      ], data: Buffer.from(initData) }));
+    }
+
+    const mintKp = Keypair.generate();
+    const mint = mintKp.publicKey;
+    const curve = PublicKey.findProgramAddressSync([te.encode("bonding_curve"), mint.toBuffer()], programId)[0];
+    const curveVault = getAssociatedTokenAddressSync(mint, curve, true, TOKEN_2022_PROGRAM);
+
+    const createData = concat(await disc("create"), encStr(name), encStr(symbol), encStr(uri));
+    ixs.push(new TransactionInstruction({ programId, keys:[
+      { pubkey: global, isSigner:false, isWritable:false },
+      { pubkey: mint, isSigner:true, isWritable:true },
+      { pubkey: curve, isSigner:false, isWritable:true },
+      { pubkey: curveVault, isSigner:false, isWritable:true },
+      { pubkey: owner, isSigner:true, isWritable:true },
+      { pubkey: TOKEN_2022_PROGRAM, isSigner:false, isWritable:false },
+      { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner:false, isWritable:false },
+      { pubkey: SystemProgram.programId, isSigner:false, isWritable:false },
+      { pubkey: SYSVAR_RENT_PUBKEY, isSigner:false, isWritable:false },
+    ], data: Buffer.from(createData) }));
+
+    // Optional dev buy — buy your own token in the same transaction.
+    if (devBuy > 0) {
+      const myAta = getAssociatedTokenAddressSync(mint, owner, true, TOKEN_2022_PROGRAM);
+      ixs.push(createAssociatedTokenAccountIdempotentInstruction(owner, myAta, owner, mint, TOKEN_2022_PROGRAM));
+      const buyData = concat(await disc("buy"), u64(BigInt(Math.floor(devBuy * LAMPORTS_PER_SOL))), u64(0));
+      ixs.push(new TransactionInstruction({ programId, keys:[
+        { pubkey: global, isSigner:false, isWritable:false },
+        { pubkey: curve, isSigner:false, isWritable:true },
+        { pubkey: mint, isSigner:false, isWritable:false },
+        { pubkey: curveVault, isSigner:false, isWritable:true },
+        { pubkey: myAta, isSigner:false, isWritable:true },
+        { pubkey: owner, isSigner:true, isWritable:true },
+        { pubkey: TOKEN_2022_PROGRAM, isSigner:false, isWritable:false },
+        { pubkey: SystemProgram.programId, isSigner:false, isWritable:false },
+      ], data: Buffer.from(buyData) }));
+    }
+
+    status("Launching token on-chain…");
+    await sendTx(ixs, [mintKp]);
+
+    status(`🚀 Launched ${symbol}!\nmint: ${mint.toBase58()}\nhttps://solscan.io/token/${mint.toBase58()}?cluster=devnet`, "ok");
+  } catch (e) {
+    status("Failed: " + (e.message || e), "err");
+  } finally {
+    $("launch").disabled = false;
+  }
+};
+
+// =====================================================================
+// FIRST-BUY MODE — opened via ?mint=<pubkey>. Shows the reserved coin and
+// lets the first buyer launch it on-chain (they cover the rent + their buy).
+// =====================================================================
+const buyStatus = (msg, cls="") => { $("buyStatus").className = "status " + cls; $("buyStatus").textContent = msg; };
+
+$("connect2").onclick = async () => {
+  const provider = window.phantom?.solana || window.solana;
+  if (!provider) return buyStatus("Phantom not found — install it.", "err");
+  const res = await provider.connect();
+  wallet = provider;
+  $("connect2").textContent = res.publicKey.toBase58().slice(0,4) + "…" + res.publicKey.toBase58().slice(-4);
+  $("firstbuy").disabled = false;
+};
+
+async function initFirstBuy(mintStr) {
+  $("createCard").style.display = "none";
+  $("buyCard").style.display = "block";
+  try {
+    const r = await fetch(UPLOAD_URL.replace(/\/$/, "") + "/pending/" + mintStr);
+    if (!r.ok) { buyStatus("This coin was not found — it may already be launched.", "err"); return; }
+    const p = await r.json();
+    let img = "";
+    try { const m = await (await fetch(p.uri)).json(); img = m.image || ""; } catch {}
+    $("buyMeta").innerHTML =
+      `${img ? `<img src="${img}" style="max-height:96px;border-radius:12px;display:block;margin-bottom:10px"/>` : ""}` +
+      `<h1 style="margin:0">${p.name} <span style="color:var(--mut)">$${p.symbol}</span></h1>` +
+      `<p class="sub" style="margin:4px 0 0">${p.description || ""}</p>`;
+  } catch (e) { buyStatus("Failed to load coin: " + (e.message || e), "err"); }
+
+  $("firstbuy").onclick = async () => {
+    try {
+      if (!wallet) return buyStatus("Connect Phantom first.", "err");
+      const solIn = parseFloat($("buyAmt").value) || 0;
+      if (solIn <= 0) return buyStatus("Enter a buy amount.", "err");
+      $("firstbuy").disabled = true;
+      buyStatus("Building launch transaction…");
+      const buyer = new PublicKey(wallet.publicKey).toBase58();
+      const r = await fetch(UPLOAD_URL.replace(/\/$/, "") + "/launch-tx", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mint: mintStr, buyer, solIn }),
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const { tx: b64 } = await r.json();
+      const tx = Transaction.from(Buffer.from(b64, "base64"));
+      buyStatus("Launching on-chain…");
+      const signed = await wallet.signTransaction(tx);
+      const sig = await conn.sendRawTransaction(signed.serialize());
+      await conn.confirmTransaction(sig, "confirmed");
+      buyStatus(`🚀 Launched & bought!\nmint: ${mintStr}\nhttps://solscan.io/token/${mintStr}?cluster=devnet`, "ok");
+    } catch (e) {
+      buyStatus("Failed: " + (e.message || e), "err");
+      $("firstbuy").disabled = false;
+    }
+  };
+}
+
+const mintParam = new URLSearchParams(location.search).get("mint");
+if (mintParam) initFirstBuy(mintParam);
+</script>
+</body>
+</html>

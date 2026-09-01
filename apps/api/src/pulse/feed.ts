@@ -14,7 +14,7 @@ import bs58 from "bs58";
 import { createHash } from "crypto";
 // Dual-write persistence: this single decoder feeds ClickHouse too (no 2nd gRPC).
 import { recordToken, recordTrade, recordGraduation, chDateTime } from "../clickhouse/writer";
-import { getGraduatingPairs as chGraduatingPairs, getGraduatedPairs as chGraduatedPairs, getNewPairs as chNewPairs } from "../clickhouse/queries";
+import { getGraduatingPairs as chGraduatingPairs, getGraduatedPairs as chGraduatedPairs, getNewPairs as chNewPairs, getTokensMissingImages } from "../clickhouse/queries";
 import { clickhouseEnabled } from "../clickhouse/client";
 import { memo } from "../lib/memo";
 import { proxyImg } from "../lib/imgurl";
@@ -961,6 +961,48 @@ function maybeFillPumpSwapGap(mint: string) {
 }
 
 // ---- public API ------------------------------------------------------------
+
+/**
+ * Resolve logos for coins that never got one.
+ *
+ * recordToken only writes an image when the coin is STILL in memory at the moment its
+ * metadata resolves — so anything evicted first (newTokens caps at 400, ~15 min of
+ * launches) keeps image='' forever, and the lists are served from ClickHouse. That is
+ * why ~25-47% of coins had no logo regardless of age. This sweeps them up.
+ */
+let imageSweepBusy = false;
+async function backfillMissingImages() {
+  if (!clickhouseEnabled() || imageSweepBusy) return;
+  imageSweepBusy = true;
+  try {
+    const rows: any[] = await getTokensMissingImages(120);
+    let fixed = 0;
+    // Small concurrency: the resolver is one hop away, but don't stampede it.
+    for (let i = 0; i < rows.length; i += 10) {
+      const batch = rows.slice(i, i + 10);
+      await Promise.all(batch.map(async (r) => {
+        try {
+          const j = await fetchMetadata(String(r.uri));
+          const img = typeof j?.image === "string" ? j.image.trim() : "";
+          if (!img) return;
+          recordToken({
+            mint: r.mint, name: r.name || "", symbol: r.symbol || "",
+            uri: String(r.uri), image: img, creator: "",
+            created_at: chDateTime(Number(r.created_ms) || Date.now()), created_slot: 0,
+          });
+          prefetch(img);
+          fixed++;
+        } catch { /* try again next sweep */ }
+      }));
+    }
+    if (fixed) console.log(`[pulse] image backfill: resolved ${fixed}/${rows.length} missing logos`);
+  } catch (e) {
+    console.error("[pulse] image backfill failed:", (e as Error).message);
+  } finally {
+    imageSweepBusy = false;
+  }
+}
+
 export function startPulseFeed() {
   const endpoint = process.env.GRPC_ENDPOINT;
   if (!endpoint) { console.log("[pulse] GRPC_ENDPOINT not set — feed disabled"); return; }
@@ -972,6 +1014,9 @@ export function startPulseFeed() {
   setInterval(() => { refreshSolPrice().catch(() => {}); }, 30000);
   setInterval(() => { checkGraduations().catch(() => {}); }, 15000);
   setInterval(() => sweepImages(), 5000); // retry missing logos off the hot path
+  // ...and sweep the durable store for coins whose logo never landed at all.
+  setInterval(() => { backfillMissingImages().catch(() => {}); }, 30000);
+  setTimeout(() => { backfillMissingImages().catch(() => {}); }, 15000);
   // Keep the PumpSwap filter in sync with the set of migrated tokens.
   setInterval(() => { maybeResubscribe().catch(() => {}); }, 3000);
   setInterval(() => {

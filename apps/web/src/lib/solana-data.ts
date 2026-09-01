@@ -10,7 +10,9 @@ const METADATA_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt
 
 // RPC URL - use Helius free tier (better rate limits than public mainnet)
 // Helius free: ~10 req/s vs public mainnet: ~2 req/s
-const RPC_URL = process.env.SOLANA_RPC_URL || "https://mainnet.helius-rpc.com/?api-key=REDACTED_HELIUS_KEY";
+// No hardcoded fallback: a real API key sat here as the default, which meant it was
+// committed to a public repo. Configure SOLANA_RPC_URL instead.
+const RPC_URL = process.env.SOLANA_RPC_URL || "";
 
 // Create connection (reusable) - HTTP only, no WebSocket
 let _connection: Connection | null = null;

@@ -1,0 +1,16 @@
+{
+  "name": "polyx-launchpad-upload",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Tiny image/metadata upload backend for the Polyx launchpad UI (like pump.fun's server-side upload).",
+  "scripts": {
+    "start": "node upload.mjs"
+  },
+  "dependencies": {
+    "@solana/spl-token": "^0.4.9",
+    "@solana/web3.js": "^1.95.3",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}

@@ -240,6 +240,26 @@ feedRoutes.get("/ohlcv/:mint", async (req, res) => {
   // padding quiet stretches with zero-volume bars at the last price drew long flat
   // shelves across the chart, which looked far worse than the honest gaps it replaced.
   data = rebucket(data as Bar[], ivMs).slice(-outLimit);
+
+  // Bars must OPEN where the previous one CLOSED. Without this each bar opens at
+  // whatever its own first trade was, so consecutive candles don't touch — the chart
+  // renders as disconnected floating bars with holes between them. The in-memory path
+  // has always done this (see getCandles) and the client does it for live ticks, but
+  // the ClickHouse path never did, and ClickHouse now serves nearly the whole chart.
+  //
+  // This invents no prices: every open/high/low/close still comes from real trades. It
+  // only carries the last traded price forward as the next bar's open, which is what it
+  // actually was — nothing traded in between to move it.
+  for (let i = 1; i < data.length; i++) {
+    const prevClose = data[i - 1].close;
+    const c = data[i];
+    data[i] = {
+      ...c,
+      open: prevClose,
+      high: Math.max(c.high, prevClose),
+      low: Math.min(c.low, prevClose),
+    };
+  }
   res.json({ data, source, hasHistory: hasCandles(mint) || data.length > 0 });
 });
 
