@@ -62,6 +62,8 @@ export interface PulseToken {
   marketCapSol: number;
   migrationMc: number;
   txCount: number;
+  buys?: number;
+  sells?: number;
   createdAt: number;
   source: string;
   complete: boolean;
@@ -301,6 +303,8 @@ function newToken(mint: string, name: string, symbol: string, uri: string): Puls
     marketCapSol: INITIAL_MC_SOL,
     migrationMc: MIGRATION_MC_SOL * state.solPrice,
     txCount: 0,
+    buys: 0,
+    sells: 0,
     createdAt: Date.now(),
     source: "pump.fun",
     complete: false,
@@ -437,6 +441,7 @@ function handleTransaction(update: any) {
         token.priceChange24h = token.launchPriceSol > 0 ? ((priceSol - token.launchPriceSol) / token.launchPriceSol) * 100 : 0;
         token.volume24h += (solLamports / 1e9) * state.solPrice;
         token.txCount++;
+        if (isBuy) token.buys = (token.buys || 0) + 1; else token.sells = (token.sells || 0) + 1;
         // Record at RECEIVE time so the 250ms fine candles get real sub-second
         // resolution (block time is only 1s-precise). The stream is smooth end-to-end
         // (verified), so this no longer piles a burst into one wrong bucket.

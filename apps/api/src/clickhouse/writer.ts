@@ -23,11 +23,16 @@ export function chDateTime(ms: number): string {
   return new Date(ms).toISOString().replace("T", " ").replace("Z", "");
 }
 
-export function recordToken(r: TokenRow) { if (flushTimer) tokenBuf.push(r); }
+// Guard against a second API writing to the same ClickHouse. Two writers on one
+// stream means every row lands twice — it doubled volume/fees/tx counts and drew
+// phantom candles. Local dev sets CH_READONLY=true and reads without writing.
+const READONLY = String(process.env.CH_READONLY || "").toLowerCase() === "true";
+
+export function recordToken(r: TokenRow) { if (flushTimer && !READONLY) tokenBuf.push(r); }
 // Stamped here, not at the call sites, so every trade gets ordering for free.
 let tradeSeq = 0;
-export function recordTrade(r: TradeRow) { if (flushTimer) { r.seq = ++tradeSeq; tradeBuf.push(r); } }
-export function recordGraduation(r: GradRow) { if (flushTimer) gradBuf.push(r); }
+export function recordTrade(r: TradeRow) { if (flushTimer && !READONLY) { r.seq = ++tradeSeq; tradeBuf.push(r); } }
+export function recordGraduation(r: GradRow) { if (flushTimer && !READONLY) gradBuf.push(r); }
 
 async function flush() {
   const ch = getClickHouse();

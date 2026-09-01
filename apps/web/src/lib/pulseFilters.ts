@@ -76,8 +76,18 @@ export function activeCount(f: PulseFilter): number {
 
 const words = (s: string) => s.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
 
-const inRange = (v: number | undefined, r: Range) => {
-  const x = Number(v) || 0;
+/**
+ * A MISSING metric is unknown, not zero.
+ *
+ * Treating it as 0 emptied whole columns: not every source carries every field (the
+ * in-memory feed has no buy/sell counts), so `Num Buys >= 1` scored every one of those
+ * rows as 0 and filtered them all out. A filter silently deleting the list because the
+ * data lacks a column is worse than one that lets an unknown through.
+ */
+const inRange = (v: number | undefined | null, r: Range) => {
+  if (r.min === undefined && r.max === undefined) return true;
+  if (v === undefined || v === null || Number.isNaN(Number(v))) return true; // unknown -> keep
+  const x = Number(v);
   if (r.min !== undefined && x < r.min) return false;
   if (r.max !== undefined && x > r.max) return false;
   return true;
