@@ -41,6 +41,13 @@ export const SCHEMA_STATEMENTS: string[] = [
     mcap_sol              Float64,
     real_token_reserves   Float64,
     trader                String DEFAULT '',
+    -- Monotonic write order. Block time is only SECOND-precise, so dozens of trades
+    -- in one second share an identical ts and argMin/argMax(price, ts) tie — they
+    -- returned the same row for open AND close, which rendered every candle flat
+    -- (a wick with no body). One decoder writes in stream order, so seq is the true
+    -- intra-second ordering. ingested_at can't do this: now64() is evaluated once
+    -- per insert block, so a whole batch shares one value.
+    seq                   UInt64 DEFAULT 0,
     ingested_at           DateTime64(3) DEFAULT now64(3)
   ) ENGINE = MergeTree
   PARTITION BY toYYYYMMDD(ts)
@@ -53,6 +60,9 @@ export const SCHEMA_STATEMENTS: string[] = [
     ingested_at  DateTime64(3) DEFAULT now64(3)
   ) ENGINE = ReplacingMergeTree(ingested_at)
   ORDER BY mint`,
+
+  // Existing deployments predate `seq` — add it in place (no-op once present).
+  `ALTER TABLE trades ADD COLUMN IF NOT EXISTS seq UInt64 DEFAULT 0`,
 
   // Candles in SOL (converted to USD at read). open/close via argMin/argMax on ts.
   `CREATE TABLE IF NOT EXISTS candles_1m (

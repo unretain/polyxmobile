@@ -5,6 +5,7 @@
  * cancels), so it's always correct even if the price feed hiccups.
  */
 import { getClickHouse } from "./client";
+import { proxyImg } from "../lib/imgurl";
 
 const INITIAL_REAL_TOKEN_RAW = 793_100_000 * 1e6;
 const MIGRATION_MC_SOL = 410.9;
@@ -21,13 +22,10 @@ async function q<T>(sql: string, params: Record<string, unknown>): Promise<T[]> 
   return (await rs.json()) as T[];
 }
 
-// Re-route logos through our own /img proxy so browsers don't block IPFS gateways
-// cross-origin (matches feed.ts; the proxy route lives in index.ts).
-const PUBLIC_API_URL = process.env.PUBLIC_API_URL || "https://api.polyx.trade";
-function proxyImg(u: string | null): string | null {
-  if (!u || !/^https?:\/\//i.test(u) || u.startsWith(PUBLIC_API_URL)) return u;
-  return `${PUBLIC_API_URL}/img?u=${encodeURIComponent(u)}`;
-}
+// Logo URLs are built by the SHARED proxyImg in ../lib/imgurl. This file used to
+// carry its own copy, which drifted out of sync with feed.ts — it still dropped
+// ipfs:// URLs and still pointed at the API host. Most list rows come from here, so
+// that stale copy silently undid the fixes made in feed.ts.
 
 // USD fields are already computed in SQL; this just normalizes/labels the row.
 function shapePair(r: any, solPrice: number) {
@@ -175,10 +173,10 @@ export async function getTradeCandles(mint: string, intervalSec: number, limit: 
   const rows = await q<any>(
     `SELECT
        toUnixTimestamp(toStartOfInterval(ts, INTERVAL {iv:UInt32} SECOND)) * 1000 AS timestamp,
-       argMin(price_sol, ts) AS open_sol,
+       argMin(price_sol, (ts, seq)) AS open_sol,
        max(price_sol)        AS high_sol,
        min(price_sol)        AS low_sol,
-       argMax(price_sol, ts) AS close_sol,
+       argMax(price_sol, (ts, seq)) AS close_sol,
        sum(sol_amount)       AS vol_sol
      FROM trades
      WHERE mint = {mint:String} AND price_sol > 0

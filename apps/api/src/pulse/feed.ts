@@ -11,10 +11,15 @@
 import { EventEmitter } from "events";
 import { PublicKey, Connection } from "@solana/web3.js";
 import bs58 from "bs58";
+import { createHash } from "crypto";
 // Dual-write persistence: this single decoder feeds ClickHouse too (no 2nd gRPC).
 import { recordToken, recordTrade, recordGraduation, chDateTime } from "../clickhouse/writer";
-import { getGraduatingPairs as chGraduatingPairs } from "../clickhouse/queries";
+import { getGraduatingPairs as chGraduatingPairs, getGraduatedPairs as chGraduatedPairs, getNewPairs as chNewPairs } from "../clickhouse/queries";
 import { clickhouseEnabled } from "../clickhouse/client";
+import { memo } from "../lib/memo";
+import { proxyImg } from "../lib/imgurl";
+import { prefetch } from "./imagecache";
+import { fetchMetadata } from "./ipfs";
 
 const PUMP_FUN_PROGRAM = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 // PumpSwap (pump.fun's AMM) — where tokens trade AFTER graduation. Verified live.
@@ -216,16 +221,11 @@ function b58(buf: Buffer): string {
 
 const NO_IMAGE = "\x00none"; // sentinel: metadata fetched OK but has no image (stop retrying)
 
-// A datacenter box can't reach ipfs.io / cloudflare-ipfs (where much pump.fun
-// metadata lives) — the fetch just fails and logos never resolve. Rewrite those to
-// dweb.link, a general IPFS gateway that serves any CID and IS reachable. Non-IPFS
-// hosts are left as-is.
-function gatewayFix(u: string): string {
-  return u.replace(
-    /^https:\/\/(ipfs\.io|cf-ipfs\.com|cloudflare-ipfs\.com)\/ipfs\//,
-    "https://dweb.link/ipfs/"
-  );
-}
+// Superseded by the hedged multi-gateway fetch in ./ipfs. That used to rewrite every
+// CID onto dweb.link because a datacenter box couldn't reach ipfs.io — which made ONE
+// gateway a single point of failure for every logo and social link on the site.
+// hedgedFetch tries gateways in order and falls through on slowness, so an unreachable
+// or throttling gateway costs a second instead of the whole metadata pipeline.
 
 async function resolveImage(mint: string, uri: string) {
   if (!uri) return;
@@ -238,8 +238,8 @@ async function resolveImage(mint: string, uri: string) {
   if (cached) { attach(cached); return; }           // already resolved — (re)attach
   state.imageCache.set(uri, "");                     // mark in-flight
   try {
-    const res = await fetch(gatewayFix(uri), { signal: AbortSignal.timeout(8000) });
-    const j = await res.json();
+    const j = await fetchMetadata(uri);
+    if (!j) throw new Error("metadata unavailable");
     const img = typeof j?.image === "string" ? j.image : "";
     // Socials live in the same metadata JSON (top-level or under extensions).
     const t = state.newTokens.get(mint) || state.graduatingTokens.get(mint) || state.graduatedTokens.get(mint);
@@ -256,6 +256,10 @@ async function resolveImage(mint: string, uri: string) {
     if (!img) { state.imageCache.set(uri, NO_IMAGE); return; }
     state.imageCache.set(uri, img);
     attach(img);
+    // Pull the bytes to our own disk NOW, while the coin is seconds old. By the
+    // time it reaches a user's screen /img serves it from local NVMe instead of
+    // paying an IPFS gateway round trip in front of the user.
+    prefetch(img);
     // Persist the resolved logo to ClickHouse so CH-served lists (new-pairs,
     // graduated) show it too — not just the in-memory (final-stretch) list. The
     // tokens table is a ReplacingMergeTree, so re-inserting the same mint with the
@@ -269,10 +273,8 @@ async function resolveImage(mint: string, uri: string) {
 // Re-route logos through our own /img proxy so browsers don't block the IPFS gateways
 // cross-origin (see the proxy route in index.ts). Applied at output time only.
 const PUBLIC_API_URL = process.env.PUBLIC_API_URL || "https://api.polyx.trade";
-function proxyImg(u: string | null): string | null {
-  if (!u || !/^https?:\/\//i.test(u) || u.startsWith(PUBLIC_API_URL)) return u;
-  return `${PUBLIC_API_URL}/img?u=${encodeURIComponent(u)}`;
-}
+// proxyImg is shared with the ClickHouse query layer — see ../lib/imgurl.
+
 
 function usd(token: PulseToken): PulseToken {
   const p = state.solPrice;
@@ -311,6 +313,9 @@ function newToken(mint: string, name: string, symbol: string, uri: string): Puls
 function handleTransaction(update: any) {
   const tx = update.transaction?.transaction;
   if (!tx?.meta) return;
+  // Real slot, not 0. Every trade row was landing with slot=0, which threw away the
+  // only on-chain ordering signal we had inside a second.
+  const slot = Number(update.transaction?.slot ?? 0) || 0;
   // FULL account list, in runtime order: static keys, then the addresses resolved
   // from Address Lookup Tables (writable, then readonly). PumpSwap swaps put the
   // program + pool accounts in an ALT, so a static-only key list makes us miss every
@@ -378,8 +383,29 @@ function handleTransaction(update: any) {
         // event yet keep trading on the bonding curve. Without this lookup its price
         // froze the moment it was marked complete (the "nukes/stops working" bug).
         const token = state.newTokens.get(mint) || state.graduatingTokens.get(mint) || state.graduatedTokens.get(mint);
-        if (!token) continue; // only tokens we saw created (no fake entries)
         const priceSol = (vSol / 1e9) / (vTok / 1e6);
+        if (!token) {
+          // NOT tracked in memory — evicted by the MAX_NEW_TOKENS cap (~15 min of
+          // coins at current launch rate), or created before this process started.
+          // We still RECEIVED the trade, so throwing it away was manufacturing holes
+          // in the chart out of data we already had. The in-memory state needs a
+          // token object; ClickHouse does not. Persist it and move on.
+          if (priceSol > 0) {
+            recordTrade({
+              mint, signature, slot,
+              ts: chDateTime(tsSec > 0 ? tsSec * 1000 : Date.now()),
+              is_buy: isBuy ? 1 : 0,
+              sol_amount: solLamports / 1e9,
+              token_amount: tokenRaw / 1e6,
+              price_sol: priceSol,
+              mcap_sol: priceSol * TOTAL_SUPPLY,
+              real_token_reserves: realTok,
+              trader,
+            });
+            state.stats.trades++;
+          }
+          continue;
+        }
         token.priceSol = priceSol;
         token.marketCapSol = priceSol * TOTAL_SUPPLY;
         const mcapUsd = token.marketCapSol * state.solPrice;
@@ -396,7 +422,7 @@ function handleTransaction(update: any) {
         // resolution (block time is only 1s-precise). The stream is smooth end-to-end
         // (verified), so this no longer piles a burst into one wrong bucket.
         recordCandle(mint, priceSol, solLamports / 1e9);
-        recordTrade({ mint, signature, slot: 0, ts: chDateTime(tsSec > 0 ? tsSec * 1000 : Date.now()), is_buy: isBuy ? 1 : 0, sol_amount: solLamports / 1e9, token_amount: tokenRaw / 1e6, price_sol: priceSol, mcap_sol: token.marketCapSol, real_token_reserves: realTok, trader });
+        recordTrade({ mint, signature, slot, ts: chDateTime(tsSec > 0 ? tsSec * 1000 : Date.now()), is_buy: isBuy ? 1 : 0, sol_amount: solLamports / 1e9, token_amount: tokenRaw / 1e6, price_sol: priceSol, mcap_sol: token.marketCapSol, real_token_reserves: realTok, trader });
         // Per-trade event for the token page's live "recent trades" panel — built +
         // broadcast ONLY when someone actually has this coin's chart open (see hasViewer).
         // Every trade goes out; the client batches them per animation frame so the
@@ -447,12 +473,12 @@ function handleTransaction(update: any) {
   }
 
   // PumpSwap (post-graduation AMM). A token we track trading here = it MIGRATED.
-  if (keys.some((k) => bytesEqual(k, PUMPSWAP_PROGRAM_BYTES))) handlePumpSwap(tx, signature, keys);
+  if (keys.some((k) => bytesEqual(k, PUMPSWAP_PROGRAM_BYTES))) handlePumpSwap(tx, signature, keys, slot);
 }
 
 // Price from pool reserves (uiAmount handles decimals) — IDL-independent, robust
 // to pump changing their event layout. quote=WSOL(9), base=token.
-function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = []) {
+function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot = 0) {
   const post = tx.meta.postTokenBalances || [];
   if (!post.length) return;
   const mints = [...new Set(post.map((b: any) => b.mint))].filter((m: any) => m && m !== WSOL) as string[];
@@ -520,7 +546,7 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = []) {
   // history (not just its bonding-curve life) and the chart's durable fallback works
   // after migration. real_token_reserves isn't tracked on PumpSwap (pool AMM) -> 0.
   recordTrade({
-    mint, signature, slot: 0, ts: chDateTime(Date.now()), is_buy: isBuy ? 1 : 0,
+    mint, signature, slot, ts: chDateTime(Date.now()), is_buy: isBuy ? 1 : 0,
     sol_amount: volSol, token_amount: absTok, price_sol: priceSol,
     mcap_sol: priceSol * TOTAL_SUPPLY, real_token_reserves: 0, trader,
   });
@@ -549,7 +575,11 @@ let lastSubSig = "";
 // new pairs by minutes. A few hundred recent, mostly-quiet mints is cheap; the whole
 // program is not. The gap-backfill only covers coins older than this window.
 const GRADUATED_MAX = 120;
-const MAX_SUB_MINTS = 180;
+// Was a hard 180 to stay inside the trial provider's ~50 TPS ceiling. On our own
+// node the provider ceiling is gone (the geyser filter limits are ours to set), so
+// this is env-tunable — but raise it deliberately: the remaining constraint is the
+// single Node decoder in this process, not the node. See the note in pumpswapWatchMints.
+const MAX_SUB_MINTS = Number(process.env.PULSE_MAX_SUB_MINTS || 180);
 
 // Mints trading on PumpSwap (post-migration). We watch ONLY these, never the full
 // PumpSwap firehose — that's what blows the rate limit. Scoped like this it's tiny.
@@ -578,7 +608,7 @@ function pumpswapWatchMints(): string[] {
 
 // Explicitly watch a mint's PumpSwap trades on-demand (e.g. a user opened an
 // already-migrated coin we didn't see graduate). Picked up by maybeResubscribe().
-const MAX_WATCHED = 120;
+const MAX_WATCHED = Number(process.env.PULSE_MAX_WATCHED || 120);
 export function watchMint(mint: string) {
   const isNew = !state.watched.has(mint);
   // Refresh recency (delete + re-add moves it to the end) so a chart that's polling
@@ -1055,4 +1085,35 @@ export function hasCandles(mint: string): boolean {
 }
 export function getSnapshot() {
   return { newPairs: getNewPairs(60), graduating: getGraduating(30), graduated: getGraduated(30), solPrice: state.solPrice };
+}
+
+/**
+ * Snapshot for the websocket, backed by ClickHouse exactly like the HTTP routes.
+ *
+ * The memory-only snapshot lies after a restart: graduatedTokens is empty for up to
+ * 30 minutes (nothing has migrated since boot), so we pushed `graduated: []` every
+ * second. The client can't tell "feed not ready" from "genuinely nothing migrated",
+ * so it keeps whatever it had — which is why the migrated list never cleared until a
+ * hard reload. Filling from CH makes an empty list mean empty, and lets the client
+ * replace unconditionally.
+ *
+ * `authoritative` says the lists can be trusted to be complete (CH answered, or we
+ * have live in-memory data) — the client only replaces on a snapshot that says so.
+ */
+export async function getSnapshotDurable() {
+  const sol = state.solPrice;
+  let newPairs = getNewPairs(60);
+  let graduating = getGraduating(30);
+  let graduated = getGraduated(30);
+  let authoritative = state.connected;
+  if (clickhouseEnabled()) {
+    try {
+      // Memoised at 1s: this runs on the broadcast tick, so it is one query per
+      // second for every connected client, not one per client.
+      if (!newPairs.length) newPairs = (await memo("ws:np", 1000, () => chNewPairs(60, sol))) as any;
+      if (!graduated.length) graduated = (await memo("ws:ge", 1000, () => chGraduatedPairs(30, sol))) as any;
+      authoritative = true;
+    } catch { /* CH blip — fall back to whatever memory has */ }
+  }
+  return { newPairs, graduating, graduated, solPrice: sol, authoritative };
 }

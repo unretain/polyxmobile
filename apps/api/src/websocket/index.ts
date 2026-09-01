@@ -4,7 +4,7 @@ import { getGrpcService } from "../grpc";
 import { Timeframe } from "../ohlcv";
 import { prisma } from "../lib/prisma";
 import crypto from "crypto";
-import { getSnapshot, feedEvents, addViewer, removeViewer } from "../pulse/feed";
+import { getSnapshot, getSnapshotDurable, feedEvents, addViewer, removeViewer } from "../pulse/feed";
 
 // ==========================================
 // Rate Limiting
@@ -195,7 +195,7 @@ export function setupWebSocket(io: Server) {
         state.pulse = true;
         socket.join("pulse");
         // Send the current snapshot immediately so late-joiners aren't empty.
-        socket.emit("pulse:snapshot", getSnapshot());
+        getSnapshotDurable().then((s) => socket.emit("pulse:snapshot", s)).catch(() => socket.emit("pulse:snapshot", getSnapshot()));
       }
     });
 
@@ -1306,7 +1306,9 @@ export function setupWebSocket(io: Server) {
   // Meteora polling, the price-update simulation, and the old duplicate gRPC-OHLCV
   // service are all removed — the pulse feed is the single source now.
   setInterval(() => {
-    io.to("pulse").emit("pulse:snapshot", getSnapshot());
+    getSnapshotDurable()
+      .then((s) => io.to("pulse").emit("pulse:snapshot", s))
+      .catch(() => io.to("pulse").emit("pulse:snapshot", getSnapshot()));
   }, 1000);
   // Push brand-new tokens instantly (don't wait for the next 1s tick).
   feedEvents.on("new", (token) => io.to("pulse").emit("pulse:new", token));

@@ -21,6 +21,7 @@ import { getNewPairs, getGraduating, getGraduated, getCandles, getToken, getSolP
 // in-memory feed as fallback, so coins stop randomly dropping.
 import * as ch from "../clickhouse/queries";
 import { clickhouseEnabled } from "../clickhouse/client";
+import { memo } from "../lib/memo";
 
 export const pulseRoutes = Router();
 
@@ -38,7 +39,9 @@ pulseRoutes.get("/new-pairs", async (req, res) => {
 
     if (clickhouseEnabled()) {
       try {
-        const chData = await ch.getNewPairs(limit, getSolPrice());
+        // 1s memo: the socket carries live updates, so this snapshot only needs to be
+        // a second fresh. Without it every client paid a Chicago round trip per request.
+        const chData = await memo(`np:${limit}`, 1000, () => ch.getNewPairs(limit, getSolPrice()));
         if (chData.length) return res.json({ data: chData, total: chData.length, timestamp: Date.now(), sources: ["clickhouse"] });
       } catch (e) { console.error("[pulse] CH new-pairs:", (e as Error).message); }
     }
@@ -64,7 +67,7 @@ pulseRoutes.get("/graduating", async (req, res) => {
     if (data.length) return res.json({ data, total: data.length, timestamp: Date.now(), sources: ["grpc"] });
     if (clickhouseEnabled()) {
       try {
-        const chData = await ch.getGraduatingPairs(100, getSolPrice());
+        const chData = await memo('grad-ing', 1000, () => ch.getGraduatingPairs(100, getSolPrice()));
         if (chData.length) return res.json({ data: chData, total: chData.length, timestamp: Date.now(), sources: ["clickhouse"] });
       } catch (e) { console.error("[pulse] CH graduating:", (e as Error).message); }
     }
@@ -81,7 +84,7 @@ pulseRoutes.get("/graduated", async (req, res) => {
   try {
     if (clickhouseEnabled()) {
       try {
-        const chData = await ch.getGraduatedPairs(50, getSolPrice());
+        const chData = await memo('grad-ed', 1000, () => ch.getGraduatedPairs(50, getSolPrice()));
         if (chData.length) return res.json({ data: chData, total: chData.length, timestamp: Date.now(), sources: ["clickhouse"] });
       } catch (e) { console.error("[pulse] CH graduated:", (e as Error).message); }
     }
@@ -229,7 +232,7 @@ pulseRoutes.get("/token/:address", async (req, res) => {
     if (live) return res.json({ ...live, source: "grpc" });
     if (clickhouseEnabled()) {
       try {
-        const chTok = await ch.getTokenData(address, getSolPrice());
+        const chTok = await memo(`tok:${address}`, 1000, () => ch.getTokenData(address, getSolPrice()));
         if (chTok) return res.json({ ...chTok, source: "clickhouse" });
       } catch (e) { console.error("[pulse] CH token:", (e as Error).message); }
     }
@@ -458,7 +461,7 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
           // has every trade since launch. Pull the durable 1s history and prepend
           // everything OLDER than the in-memory tail, so the full life of the coin
           // shows (launch included) while the live tail stays at 250ms detail.
-          const chData = await ch.getTradeCandles(address, intervalSec, 3000, getSolPrice());
+          const chData = await memo(`cndl:${address}:${intervalSec}:3000`, 1000, () => ch.getTradeCandles(address, intervalSec, 3000, getSolPrice()));
           if (chData.length) {
             if (ohlcv.length === 0) {
               ohlcv = chData;
@@ -472,7 +475,7 @@ pulseRoutes.get("/ohlcv/:address", async (req, res) => {
         } else if (ohlcv.length === 0) {
           // Coarser views: the in-memory 1m series already covers ~12h, so only reach
           // for CH when a wiped/stopped coin has nothing in memory at all.
-          const chData = await ch.getTradeCandles(address, intervalSec, 600, getSolPrice());
+          const chData = await memo(`cndl:${address}:${intervalSec}:600`, 1000, () => ch.getTradeCandles(address, intervalSec, 600, getSolPrice()));
           if (chData.length) { ohlcv = chData; source = "clickhouse"; }
         }
       } catch (e) { console.error("[pulse] CH ohlcv:", (e as Error).message); }
@@ -559,7 +562,7 @@ pulseRoutes.get("/trades/:address", async (req, res) => {
     // prisma.tokenSwap path queried a dead DB and always returned empty.
     let trades: any[] = [];
     if (clickhouseEnabled()) {
-      const chTrades = await ch.getTrades(address, limit, getSolPrice());
+      const chTrades = await memo(`trades:${address}:${limit}`, 1000, () => ch.getTrades(address, limit, getSolPrice()));
       trades = chTrades.map((t: any) => ({
         txHash: "",
         timestamp: t.timestamp,

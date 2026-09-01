@@ -9,7 +9,7 @@
 import { getClickHouse } from "./client";
 
 export type TokenRow = { mint: string; name: string; symbol: string; uri: string; image: string; creator: string; created_at: string; created_slot: number };
-export type TradeRow = { mint: string; signature: string; slot: number; ts: string; is_buy: number; sol_amount: number; token_amount: number; price_sol: number; mcap_sol: number; real_token_reserves: number; trader: string };
+export type TradeRow = { mint: string; signature: string; slot: number; seq?: number; ts: string; is_buy: number; sol_amount: number; token_amount: number; price_sol: number; mcap_sol: number; real_token_reserves: number; trader: string };
 export type GradRow = { mint: string; ts: string };
 
 let tokenBuf: TokenRow[] = [];
@@ -24,7 +24,9 @@ export function chDateTime(ms: number): string {
 }
 
 export function recordToken(r: TokenRow) { if (flushTimer) tokenBuf.push(r); }
-export function recordTrade(r: TradeRow) { if (flushTimer) tradeBuf.push(r); }
+// Stamped here, not at the call sites, so every trade gets ordering for free.
+let tradeSeq = 0;
+export function recordTrade(r: TradeRow) { if (flushTimer) { r.seq = ++tradeSeq; tradeBuf.push(r); } }
 export function recordGraduation(r: GradRow) { if (flushTimer) gradBuf.push(r); }
 
 async function flush() {

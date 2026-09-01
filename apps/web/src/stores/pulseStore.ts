@@ -275,13 +275,17 @@ export const usePulseStore = create<PulseStore>()(
       const nn = (snap.newPairs || []).map(mapTokenData);
       const ng = (snap.graduating || []).map(mapTokenData);
       const nd = (snap.graduated || []).map(mapTokenData);
-      // Never let an EMPTY in-memory snapshot (e.g. right after an API redeploy,
-      // before the live feed refills) wipe the ClickHouse-backed list we already
-      // loaded over HTTP. Keep the existing list until the socket has real data.
+      // The server now marks a snapshot `authoritative` when its lists are
+      // ClickHouse-backed (or the live feed is connected). On those we REPLACE, so an
+      // empty list actually empties — previously "keep what we had if the snapshot is
+      // empty" meant the migrated list could never clear after an API restart, because
+      // graduatedTokens is empty for up to 30 min after boot and the socket pushed
+      // `graduated: []` every second. Non-authoritative snapshots still can't wipe us.
+      const trust = snap.authoritative !== false;
       set({
-        newPairs: nn.length ? nn : st.newPairs,
-        graduatingPairs: ng.length ? ng : st.graduatingPairs,
-        graduatedPairs: nd.length ? nd : st.graduatedPairs,
+        newPairs: nn.length || trust ? nn : st.newPairs,
+        graduatingPairs: ng.length || trust ? ng : st.graduatingPairs,
+        graduatedPairs: nd.length || trust ? nd : st.graduatedPairs,
         lastUpdate: Date.now(),
       });
     };

@@ -62,3 +62,6 @@ Screen\ Recording*
 # Scripts with potential secrets
 run-prisma.*
 setup-stripe.js
+
+# local logo disk cache (apps/api/.imgcache)
+.imgcache/
