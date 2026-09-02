@@ -646,8 +646,10 @@ export function KLineChart({
     };
 
     // Only drawn when the side actually has fills: no sells means no exit line.
-    draw("avg-entry", avgEntry, UP, "AVG ENTRY");
-    draw("avg-exit", avgExit, DOWN, "AVG EXIT");
+    // Value in the label: a line you can't read a number off is impossible to sanity
+    // check against your own fills.
+    draw("avg-entry", avgEntry, UP, `AVG ENTRY ${avgEntry ? formatCompactUsd(avgEntry) : ""}`);
+    draw("avg-exit", avgExit, DOWN, `AVG EXIT ${avgExit ? formatCompactUsd(avgExit) : ""}`);
   }, [avgEntry, avgExit, chartReady]);
 
   // ---- toolbar actions ----------------------------------------------------

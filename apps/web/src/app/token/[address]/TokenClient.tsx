@@ -369,7 +369,12 @@ export default function TokenClient() {
   const { avgEntry, avgExit } = useMemo(() => {
     const source = isDemo
       ? demoTrades.filter((t) => t.mint === address)
-      : loggedTrades.filter((t) => t.mint === address && (!userWallet || t.wallet === userWallet));
+      // Older log rows predate wallet tagging, and a trade made before the wallet
+      // connected has no `wallet` at all. Dropping those silently lost the buys and
+      // left the position with an exit line but no entry line.
+      : loggedTrades.filter(
+          (t) => t.mint === address && (!userWallet || !t.wallet || t.wallet === userWallet)
+        );
 
     const rate = solRateRef.current || 0;
     const supply = PUMP_FUN_SUPPLY;
