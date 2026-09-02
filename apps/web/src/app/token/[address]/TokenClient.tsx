@@ -370,32 +370,48 @@ export default function TokenClient() {
     const source = isDemo
       ? demoTrades.filter((t) => t.mint === address)
       // Older log rows predate wallet tagging, and a trade made before the wallet
-      // connected has no `wallet` at all. Dropping those silently lost the buys and
-      // left the position with an exit line but no entry line.
+      // connected has no `wallet` at all — don't drop those.
       : loggedTrades.filter(
           (t) => t.mint === address && (!userWallet || !t.wallet || t.wallet === userWallet)
         );
 
     const rate = solRateRef.current || 0;
-    const supply = PUMP_FUN_SUPPLY;
-    const avg = (side: "buy" | "sell") => {
-      let sol = 0;
-      let tokens = 0;
-      for (const t of source) {
-        if (t.side !== side) continue;
-        if (!(t.tokenAmount > 0) || !(t.solAmount > 0)) continue;
-        sol += t.solAmount;
-        tokens += t.tokenAmount;
+    if (!source.length || rate <= 0) return { avgEntry: null, avgExit: null };
+
+    // Walk the fills in order and track the CURRENT position only.
+    //
+    // Averaging every fill ever made on this mint is what drew a green line well below
+    // the buy that opened the position, and a red "exit" on a position that had never
+    // been sold — both were bleeding in from an earlier round trip on the same coin.
+    // Selling out closes the book: the next buy starts a fresh average.
+    let qty = 0;      // tokens currently held
+    let buySol = 0;   // SOL paid into the open position
+    let buyQty = 0;
+    let sellSol = 0;  // SOL taken back out of THIS position
+    let sellQty = 0;
+
+    for (const t of [...source].sort((a, b) => a.ts - b.ts)) {
+      if (!(t.tokenAmount > 0) || !(t.solAmount > 0)) continue;
+      if (t.side === "buy") {
+        // Opening a position after being flat wipes the previous round trip.
+        if (qty <= 1e-9) { buySol = 0; buyQty = 0; sellSol = 0; sellQty = 0; }
+        qty += t.tokenAmount;
+        buySol += t.solAmount;
+        buyQty += t.tokenAmount;
+      } else {
+        qty -= t.tokenAmount;
+        sellSol += t.solAmount;
+        sellQty += t.tokenAmount;
+        if (qty < 1e-9) qty = 0; // flat — the next buy resets the book
       }
-      if (tokens <= 0 || rate <= 0) return null;
-      return (sol / tokens) * rate * supply;
-    };
-    return { avgEntry: avg("buy"), avgExit: avg("sell") };
-    // NOT recomputed on every candle tick. Depending on `ohlcv` re-derived the level
-    // several times a second against a moving SOL rate, so the line crept instead of
-    // sitting still. It should only move when the position actually changes — i.e.
-    // when you DCA in or sell more. solRateReady covers the one case where the rate
-    // was not known yet on first render.
+    }
+
+    const level = (sol: number, tokens: number) =>
+      tokens > 0 ? (sol / tokens) * rate * PUMP_FUN_SUPPLY : null;
+
+    // No sells in this position means no exit line at all.
+    return { avgEntry: level(buySol, buyQty), avgExit: level(sellSol, sellQty) };
+    // NOT recomputed on every candle tick — only when the position changes.
   }, [isDemo, demoTrades, loggedTrades, address, userWallet, solRateReady]);
 
   useEffect(() => {
