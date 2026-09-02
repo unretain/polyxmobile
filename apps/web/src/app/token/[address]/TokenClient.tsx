@@ -369,50 +369,70 @@ export default function TokenClient() {
   const { avgEntry, avgExit } = useMemo(() => {
     const source = isDemo
       ? demoTrades.filter((t) => t.mint === address)
-      // Older log rows predate wallet tagging, and a trade made before the wallet
-      // connected has no `wallet` at all — don't drop those.
+      // Rows written before the wallet connected have no `wallet` — don't drop them.
       : loggedTrades.filter(
           (t) => t.mint === address && (!userWallet || !t.wallet || t.wallet === userWallet)
         );
+    if (!source.length) return { avgEntry: null, avgExit: null };
 
-    const rate = solRateRef.current || 0;
-    if (!source.length || rate <= 0) return { avgEntry: null, avgExit: null };
-
-    // Walk the fills in order and track the CURRENT position only.
+    // Price a fill AT THE CHART'S OWN MARKET CAP.
     //
-    // Averaging every fill ever made on this mint is what drew a green line well below
-    // the buy that opened the position, and a red "exit" on a position that had never
-    // been sold — both were bleeding in from an earlier round trip on the same coin.
-    // Selling out closes the book: the next buy starts a fresh average.
-    let qty = 0;      // tokens currently held
-    let buySol = 0;   // SOL paid into the open position
-    let buyQty = 0;
-    let sellSol = 0;  // SOL taken back out of THIS position
-    let sellQty = 0;
+    // solAmount/tokenAmount is the EXECUTED price — it carries slippage and the 1%
+    // fee, and converting it needs a USD/SOL rate from the moment of the trade that
+    // we never stored. Both errors push the level off the candles, so the line could
+    // not sit where the fill visibly happened. The candle covering the fill is already
+    // in the exact units the chart plots, so read the level straight off it and no
+    // conversion is involved at all.
+    const candles = ohlcv;
+    const capAt = (ts: number): number | null => {
+      if (!candles.length) return null;
+      let best = candles[0];
+      let bestGap = Math.abs(candles[0].timestamp - ts);
+      for (const c of candles) {
+        const gap = Math.abs(c.timestamp - ts);
+        if (gap < bestGap) { bestGap = gap; best = c; }
+      }
+      // A fill far outside the loaded window has no candle to sit on.
+      if (bestGap > 10 * 60 * 1000) return null;
+      return best.close * PUMP_FUN_SUPPLY;
+    };
+
+    // Fall back to the executed price when the fill predates the loaded history.
+    const rate = solRateRef.current || 0;
+    const executedCap = (t: { solAmount: number; tokenAmount: number }) =>
+      rate > 0 && t.tokenAmount > 0 ? (t.solAmount / t.tokenAmount) * rate * PUMP_FUN_SUPPLY : null;
+
+    // Track the CURRENT position: selling out closes the book, the next buy starts
+    // a fresh average. A sell never moves the entry line.
+    let qty = 0;
+    let buyCap = 0, buyQty = 0;
+    let sellCap = 0, sellQty = 0;
 
     for (const t of [...source].sort((a, b) => a.ts - b.ts)) {
       if (!(t.tokenAmount > 0) || !(t.solAmount > 0)) continue;
+      const cap = capAt(t.ts) ?? executedCap(t);
+      if (!cap || !isFinite(cap) || cap <= 0) continue;
       if (t.side === "buy") {
-        // Opening a position after being flat wipes the previous round trip.
-        if (qty <= 1e-9) { buySol = 0; buyQty = 0; sellSol = 0; sellQty = 0; }
+        if (qty <= 1e-9) { buyCap = 0; buyQty = 0; sellCap = 0; sellQty = 0; }
         qty += t.tokenAmount;
-        buySol += t.solAmount;
+        buyCap += cap * t.tokenAmount;   // weighted by size
         buyQty += t.tokenAmount;
       } else {
         qty -= t.tokenAmount;
-        sellSol += t.solAmount;
+        sellCap += cap * t.tokenAmount;
         sellQty += t.tokenAmount;
-        if (qty < 1e-9) qty = 0; // flat — the next buy resets the book
+        if (qty < 1e-9) qty = 0;
       }
     }
 
-    const level = (sol: number, tokens: number) =>
-      tokens > 0 ? (sol / tokens) * rate * PUMP_FUN_SUPPLY : null;
-
-    // No sells in this position means no exit line at all.
-    return { avgEntry: level(buySol, buyQty), avgExit: level(sellSol, sellQty) };
-    // NOT recomputed on every candle tick — only when the position changes.
-  }, [isDemo, demoTrades, loggedTrades, address, userWallet, solRateReady]);
+    return {
+      avgEntry: buyQty > 0 ? buyCap / buyQty : null,
+      // No sells in this position -> no exit line.
+      avgExit: sellQty > 0 ? sellCap / sellQty : null,
+    };
+    // ohlcv is in here because the level is read off it, but past candles never change,
+    // so the value is stable once the history has loaded.
+  }, [isDemo, demoTrades, loggedTrades, address, userWallet, solRateReady, ohlcv]);
 
   useEffect(() => {
     const p = pulseToken as any;
