@@ -114,6 +114,9 @@ const NOTABLE_MCAP_USD = 10_000;
 // then dump and never graduate, so without a cap it grows unbounded — which made
 // checkGraduations poll hundreds of RPC accounts per tick and stall. Evict oldest.
 const MAX_GRADUATING = 150;
+// How long a migrated coin stays in the list. Filters are the way to narrow it now,
+// not a fixed window that silently drops coins mid-session.
+const MIGRATED_HOURS = Number(process.env.PULSE_MIGRATED_HOURS || 24);
 
 const state = {
   connected: false,
@@ -975,11 +978,14 @@ async function backfillMissingImages() {
   if (!clickhouseEnabled() || imageSweepBusy) return;
   imageSweepBusy = true;
   try {
-    const rows: any[] = await getTokensMissingImages(120);
+    const rows: any[] = await getTokensMissingImages(200);
     let fixed = 0;
-    // Small concurrency: the resolver is one hop away, but don't stampede it.
-    for (let i = 0; i < rows.length; i += 10) {
-      const batch = rows.slice(i, i + 10);
+    // The resolver is on loopback, so the old batch of 10 every 30s was leaving
+    // coins logo-less for minutes when more than half of them were resolvable the
+    // whole time — a brand-new coin would sit blank while the sweep worked through
+    // the queue. 24 at a time closes that window without stampeding anything.
+    for (let i = 0; i < rows.length; i += 24) {
+      const batch = rows.slice(i, i + 24);
       await Promise.all(batch.map(async (r) => {
         try {
           const j = await fetchMetadata(String(r.uri));
@@ -1015,7 +1021,7 @@ export function startPulseFeed() {
   setInterval(() => { checkGraduations().catch(() => {}); }, 15000);
   setInterval(() => sweepImages(), 5000); // retry missing logos off the hot path
   // ...and sweep the durable store for coins whose logo never landed at all.
-  setInterval(() => { backfillMissingImages().catch(() => {}); }, 30000);
+  setInterval(() => { backfillMissingImages().catch(() => {}); }, 10000);
   setTimeout(() => { backfillMissingImages().catch(() => {}); }, 15000);
   // Keep the PumpSwap filter in sync with the set of migrated tokens.
   setInterval(() => { maybeResubscribe().catch(() => {}); }, 3000);
@@ -1080,9 +1086,10 @@ export function sweepImages() {
   for (const [mint, t] of state.graduatingTokens) if (!t.logoUri && t.uri) resolveImage(mint, t.uri).catch(() => {});
 }
 export function getGraduated(limit = 20): PulseToken[] {
-  // Migrated list = RECENT migrations only (last 30 min), newest-first. Drops the
-  // stale hour-old coins that used to linger just because they once graduated.
-  const cutoff = Date.now() - 30 * 60 * 1000;
+  // Migrated coins stay for MIGRATED_HOURS (24h by default), newest-first. A hard
+  // 30-minute cutoff meant a coin vanished from the column ~40 minutes after it
+  // migrated, even though ClickHouse still had it and the HTTP list still served it.
+  const cutoff = Date.now() - MIGRATED_HOURS * 3600 * 1000;
   return Array.from(state.graduatedTokens.values())
     .filter((t) => (t.graduatedAt ?? t.createdAt) > cutoff)
     .sort((a, b) => (b.graduatedAt ?? b.createdAt) - (a.graduatedAt ?? a.createdAt))
@@ -1183,7 +1190,12 @@ export async function getSnapshotDurable() {
       // Memoised at 1s: this runs on the broadcast tick, so it is one query per
       // second for every connected client, not one per client.
       if (!newPairs.length) newPairs = (await memo("ws:np", 1000, () => chNewPairs(60, sol))) as any;
-      if (!graduated.length) graduated = (await memo("ws:ge", 1000, () => chGraduatedPairs(30, sol))) as any;
+      // ALWAYS take migrated from ClickHouse, not just when memory is empty. Memory
+      // only holds what has migrated since this process started, so the socket was
+      // overwriting the client's fuller HTTP list with a short one every second —
+      // which is what made coins disappear from the column after ~40 minutes.
+      const chGrad = (await memo("ws:ge", 1000, () => chGraduatedPairs(60, sol))) as any[];
+      if (chGrad?.length) graduated = chGrad;
       authoritative = true;
     } catch { /* CH blip — fall back to whatever memory has */ }
   }
