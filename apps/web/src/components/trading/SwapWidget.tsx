@@ -48,6 +48,9 @@ interface SwapWidgetProps {
   outputDecimals?: number;
   outputImage?: string;
   currentPriceSol?: number;
+  // Live market cap in USD, stamped onto each logged fill so the chart's average
+  // lines can be pinned to where the trade actually happened.
+  currentMarketCapUsd?: number;
   isGraduated?: boolean;
   compactMobile?: boolean;
 }
@@ -115,6 +118,7 @@ export function SwapWidget({
   outputDecimals = 9,
   outputImage,
   currentPriceSol = 0,
+  currentMarketCapUsd = 0,
   isGraduated = true,
   compactMobile = false,
 }: SwapWidgetProps) {
@@ -408,6 +412,9 @@ export function SwapWidget({
             wallet: wallet.publicKey,
             signature: result?.signature,
             image: outputImage,
+            // Pin the level NOW. Recovering it later from the candle covering this
+            // fill reads a `close` that keeps moving until that candle closes.
+            capUsd: currentMarketCapUsd > 0 ? currentMarketCapUsd : undefined,
           });
         }
 
@@ -498,9 +505,10 @@ export function SwapWidget({
   };
 
   const formatOutputAmount = () => {
-    if (!quote) return "0.0";
-    const outDecimals = isBuy ? outputDecimals : 9;
-    const amount = Number(quote.outAmount) / Math.pow(10, outDecimals);
+    // estimateFill() prefers the quote when it has landed and falls back to the live
+    // price, so this has a real number to show from the first keystroke.
+    const amount = estimateFill();
+    if (!(amount > 0)) return "0.0";
     return amount.toLocaleString(undefined, { maximumFractionDigits: 6 });
   };
 
@@ -1148,12 +1156,11 @@ export function SwapWidget({
             <span className={cn("text-xs uppercase tracking-wide", isDark ? "text-white/40" : "text-gray-400")}>You Receive</span>
             <span className={cn("text-sm", isDark ? "text-white/60" : "text-gray-500")}>{isBuy ? outputSymbol : "SOL"}</span>
           </div>
+          {/* No spinner. The estimate off the live price is available the instant you
+              type, and the quote only ever refines it — showing a loader instead meant
+              staring at nothing for a round trip to learn a number we already knew. */}
           <div className={cn("mt-2 text-xl font-mono", isDark ? "text-white" : "text-gray-900")}>
-            {loading ? (
-              <Loader2 className={cn("w-4 h-4 animate-spin", isDark ? "text-white/40" : "text-gray-400")} />
-            ) : (
-              formatOutputAmount()
-            )}
+            {formatOutputAmount()}
           </div>
         </div>
 

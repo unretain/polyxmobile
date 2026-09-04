@@ -16,6 +16,11 @@ export interface LoggedTrade {
   wallet: string; // signer pubkey, so a wallet switch shows the right history
   signature?: string;
   image?: string; // token logo, captured at trade time for the portfolio
+  // Market cap in USD at the instant the fill landed — the chart's own y-axis unit.
+  // Stamped here because it is the ONLY moment it can be known exactly. Deriving it
+  // later from the candle covering the fill reads that candle's `close`, which keeps
+  // moving until the candle closes, so the average lines drifted after every trade.
+  capUsd?: number;
 }
 
 interface TradeLogState {

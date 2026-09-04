@@ -355,6 +355,9 @@ export default function TokenClient() {
   // Real USD-per-SOL rate, derived from the token snapshot (the API computes it with
   // the live SOL price). Cached so the socket trade handler never falls back to 200.
   const solRateRef = useRef<number | null>(null);
+  // Once a fill's market-cap level is resolved it is never recomputed — see the
+  // comment in the avgEntry/avgExit memo. Keyed by trade signature.
+  const frozenCapRef = useRef<Map<string, number>>(new Map());
   // Flips once, the first time a real USD/SOL rate arrives. Lets the average lines
   // compute exactly once more instead of watching a ref they cannot react to.
   const [solRateReady, setSolRateReady] = useState(false);
@@ -383,8 +386,17 @@ export default function TokenClient() {
     // not sit where the fill visibly happened. The candle covering the fill is already
     // in the exact units the chart plots, so read the level straight off it and no
     // conversion is involved at all.
+    //
+    // THE LEVEL MUST NOT MOVE ONCE SET. Reading it from the nearest candle means that,
+    // for a fill you just made, the nearest candle is the LIVE one — and its `close`
+    // tracks the price until the candle closes, dragging the line along with it. Two
+    // defences, in order:
+    //   1. `capUsd`, stamped onto the trade at execution time. Exact, and immune by
+    //      construction. Every new fill has it.
+    //   2. For fills logged before that existed: resolve from candles ONCE and freeze
+    //      it in a ref. A frozen approximation beats a level that crawls.
     const candles = ohlcv;
-    const capAt = (ts: number): number | null => {
+    const candleCap = (ts: number): number | null => {
       if (!candles.length) return null;
       let best = candles[0];
       let bestGap = Math.abs(candles[0].timestamp - ts);
@@ -396,11 +408,24 @@ export default function TokenClient() {
       if (bestGap > 10 * 60 * 1000) return null;
       return best.close * PUMP_FUN_SUPPLY;
     };
-
     // Fall back to the executed price when the fill predates the loaded history.
+    // NOTE declared before capForTrade, which calls it — a const arrow referenced
+    // above its own declaration is a runtime TDZ crash that tsc will not catch.
     const rate = solRateRef.current || 0;
     const executedCap = (t: { solAmount: number; tokenAmount: number }) =>
       rate > 0 && t.tokenAmount > 0 ? (t.solAmount / t.tokenAmount) * rate * PUMP_FUN_SUPPLY : null;
+
+    const frozen = frozenCapRef.current;
+    const capForTrade = (t: { ts: number; solAmount: number; tokenAmount: number; capUsd?: number }, key: string) => {
+      if (t.capUsd && t.capUsd > 0) return t.capUsd;
+      const cached = frozen.get(key);
+      if (cached !== undefined) return cached;
+      const resolved = candleCap(t.ts) ?? executedCap(t);
+      // Only freeze a real answer; null means "history hasn't loaded yet", which we
+      // want to retry on the next render rather than cache forever.
+      if (resolved && resolved > 0) frozen.set(key, resolved);
+      return resolved;
+    };
 
     // Track the CURRENT position: selling out closes the book, the next buy starts
     // a fresh average. A sell never moves the entry line.
@@ -410,7 +435,9 @@ export default function TokenClient() {
 
     for (const t of [...source].sort((a, b) => a.ts - b.ts)) {
       if (!(t.tokenAmount > 0) || !(t.solAmount > 0)) continue;
-      const cap = capAt(t.ts) ?? executedCap(t);
+      // Stable identity so the frozen level survives re-renders and snapshot churn.
+      const key = (t as { signature?: string }).signature || `${t.side}:${t.ts}:${t.tokenAmount}`;
+      const cap = capForTrade(t, key);
       if (!cap || !isFinite(cap) || cap <= 0) continue;
       if (t.side === "buy") {
         if (qty <= 1e-9) { buyCap = 0; buyQty = 0; sellCap = 0; sellQty = 0; }
@@ -1274,6 +1301,7 @@ export default function TokenClient() {
                 outputDecimals={6}
                 outputImage={getTokenLogoUrl(token?.logoUri, address) || undefined}
                 currentPriceSol={(token as PulseTokenData)?.marketCapSol && token?.marketCap && token?.price ? token.price * (token as PulseTokenData).marketCapSol! / token.marketCap : 0}
+                currentMarketCapUsd={token?.marketCap || 0}
                 isGraduated={(token as PulseTokenData)?.complete === true || (token as PulseTokenData)?.destination === "pumpswap"}
               />
             </div>
@@ -1285,6 +1313,7 @@ export default function TokenClient() {
                 outputDecimals={6}
                 outputImage={getTokenLogoUrl(token?.logoUri, address) || undefined}
                 currentPriceSol={(token as PulseTokenData)?.marketCapSol && token?.marketCap && token?.price ? token.price * (token as PulseTokenData).marketCapSol! / token.marketCap : 0}
+                currentMarketCapUsd={token?.marketCap || 0}
                 isGraduated={(token as PulseTokenData)?.complete === true || (token as PulseTokenData)?.destination === "pumpswap"}
                 compactMobile={true}
               />

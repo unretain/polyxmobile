@@ -13,10 +13,20 @@
  */
 import { useCallback, useRef, useState } from "react";
 
+interface Tweet {
+  text: string;
+  author: string;
+  handle: string;
+  url: string;
+}
+
 type Preview =
-  | { kind: "tweet"; text: string; author: string; handle: string; url: string }
+  | ({ kind: "tweet"; quoted?: Tweet } & Tweet)
   | { kind: "profile"; handle: string; url: string }
   | { kind: "link"; url: string };
+
+const CARD_W = 340;
+const CARD_MAX_H = 380;
 
 // Shared across rows and across re-renders: the same coin re-enters the list on
 // every websocket snapshot, and a tweet doesn't change.
@@ -57,10 +67,22 @@ export function TweetHover({ url, isDark }: { url: string; isDark: boolean }) {
     const el = ref.current;
     if (!el) return;
     const r = el.getBoundingClientRect();
-    // Flip above the icon when there isn't room below, so rows near the bottom of
-    // the viewport still show the whole card.
-    const below = window.innerHeight - r.bottom > 200;
-    setPos({ x: Math.min(r.left, window.innerWidth - 340), y: below ? r.bottom + 6 : r.top - 6 });
+    // Resolve the FINAL top-left here and render with left/top only.
+    //
+    // The previous version stored y as either a top or a bottom depending on which
+    // way it flipped, then re-derived "did I flip?" from `y < 200` at render — which
+    // is a different question entirely. Any row in the top 200px of the viewport was
+    // treated as flipped when it wasn't, and the card landed nowhere near its bird.
+    //
+    // Sits to the RIGHT of the icon so it never covers the row you're pointing at,
+    // falling back to the left side when that would run off the edge.
+    const M = 8;
+    let left = r.right + M;
+    if (left + CARD_W > window.innerWidth - M) left = r.left - CARD_W - M;
+    if (left < M) left = Math.max(M, window.innerWidth - CARD_W - M);
+    let top = r.top - 8;
+    if (top + CARD_MAX_H > window.innerHeight - M) top = window.innerHeight - CARD_MAX_H - M;
+    setPos({ x: left, y: Math.max(M, top) });
     load(url).then((p) => p && setPreview(p));
   }, [url]);
 
@@ -73,8 +95,6 @@ export function TweetHover({ url, isDark }: { url: string; isDark: boolean }) {
     e.stopPropagation();
     window.open(url, "_blank", "noopener,noreferrer");
   };
-
-  const flipped = pos !== null && pos.y < 200;
 
   return (
     <>
@@ -98,9 +118,10 @@ export function TweetHover({ url, isDark }: { url: string; isDark: boolean }) {
           style={{
             position: "fixed",
             left: pos.x,
-            top: flipped ? undefined : pos.y,
-            bottom: flipped ? window.innerHeight - pos.y : undefined,
-            width: 320,
+            top: pos.y,
+            width: CARD_W,
+            maxHeight: CARD_MAX_H,
+            overflowY: "auto",
           }}
           className={`z-[100] border p-3 shadow-2xl cursor-pointer text-xs ${
             isDark ? "bg-[#111] border-white/10 text-white/80" : "bg-white border-gray-200 text-gray-700"
@@ -115,10 +136,29 @@ export function TweetHover({ url, isDark }: { url: string; isDark: boolean }) {
                   <BirdIcon />
                 </span>
                 <span className="font-semibold truncate">{preview.author}</span>
-                <span className={isDark ? "text-white/30" : "text-gray-400"}>@{preview.handle}</span>
+                <span className={`truncate ${isDark ? "text-white/30" : "text-gray-400"}`}>@{preview.handle}</span>
               </div>
               {/* Server-decoded plain text — never third-party markup. */}
               <p className="whitespace-pre-wrap break-words leading-snug line-clamp-6">{preview.text}</p>
+              {/* Quote tweets: the coin's pitch is often entirely in the tweet it
+                  quotes, so the outer one alone tells you nothing. */}
+              {preview.quoted && (
+                <div className={`mt-2 border-l-2 pl-2 ${isDark ? "border-white/15" : "border-gray-300"}`}>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className={`font-semibold truncate ${isDark ? "text-white/70" : "text-gray-600"}`}>
+                      {preview.quoted.author}
+                    </span>
+                    <span className={`truncate ${isDark ? "text-white/25" : "text-gray-400"}`}>
+                      @{preview.quoted.handle}
+                    </span>
+                  </div>
+                  <p className={`whitespace-pre-wrap break-words leading-snug line-clamp-6 ${
+                    isDark ? "text-white/60" : "text-gray-500"
+                  }`}>
+                    {preview.quoted.text}
+                  </p>
+                </div>
+              )}
             </>
           ) : preview.kind === "profile" ? (
             <div className="flex items-center gap-1.5">
