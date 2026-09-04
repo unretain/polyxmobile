@@ -67,6 +67,11 @@ export interface PulseToken {
   txCount: number;
   buys?: number;
   sells?: number;
+  // Fees ACTUALLY paid on this coin (protocol + creator), summed from the trade
+  // events. Without it, memory-served rows had no value for the filter to test and
+  // a min-fees bound let every one of them through — a coin with no fees showed up
+  // under "min 0.5 SOL".
+  feesPaidSol?: number;
   createdAt: number;
   source: string;
   complete: boolean;
@@ -117,6 +122,12 @@ const MAX_GRADUATING = 150;
 // How long a migrated coin stays in the list. Filters are the way to narrow it now,
 // not a fixed window that silently drops coins mid-session.
 const MIGRATED_HOURS = Number(process.env.PULSE_MIGRATED_HOURS || 24);
+// How long after migrating we keep a coin in the PumpSwap subscription. This is the
+// window where its trading is heaviest; MAX_SUB_MINTS still caps the total.
+// Every coin still shown in the migrated column stays subscribed. Anything narrower
+// leaves those coins frozen at their last bonding-curve trade: GOAF sat at $33.81K
+// market cap and $0 liquidity for hours while it actually traded at $14M on the AMM.
+const MIGRATED_WATCH_MINUTES = Number(process.env.PULSE_MIGRATED_WATCH_MINUTES || 360);
 
 const state = {
   connected: false,
@@ -311,6 +322,7 @@ function newToken(mint: string, name: string, symbol: string, uri: string): Puls
     txCount: 0,
     buys: 0,
     sells: 0,
+    feesPaidSol: 0,
     createdAt: Date.now(),
     source: "pump.fun",
     complete: false,
@@ -448,6 +460,7 @@ function handleTransaction(update: any) {
         token.volume24h += (solLamports / 1e9) * state.solPrice;
         token.txCount++;
         if (isBuy) token.buys = (token.buys || 0) + 1; else token.sells = (token.sells || 0) + 1;
+        token.feesPaidSol = (token.feesPaidSol || 0) + feeSol + creatorFeeSol;
         // Record at RECEIVE time so the 250ms fine candles get real sub-second
         // resolution (block time is only 1s-precise). The stream is smooth end-to-end
         // (verified), so this no longer piles a burst into one wrong bucket.
@@ -609,7 +622,10 @@ const GRADUATED_MAX = 120;
 // node the provider ceiling is gone (the geyser filter limits are ours to set), so
 // this is env-tunable — but raise it deliberately: the remaining constraint is the
 // single Node decoder in this process, not the node. See the note in pumpswapWatchMints.
-const MAX_SUB_MINTS = Number(process.env.PULSE_MAX_SUB_MINTS || 180);
+// 180 was sized for the rented trial node (~50 TPS) whose geyser capped a filter at
+// 10 accounts. We own the node now and set its filter limits ourselves (1000), so the
+// only real constraint is this process keeping up — watch feedLag after changing it.
+const MAX_SUB_MINTS = Number(process.env.PULSE_MAX_SUB_MINTS || 500);
 
 // Mints trading on PumpSwap (post-migration). We watch ONLY these, never the full
 // PumpSwap firehose — that's what blows the rate limit. Scoped like this it's tiny.
@@ -633,6 +649,15 @@ function pumpswapWatchMints(): string[] {
   // live the instant someone opens it (watchMint -> immediate resubscribe).
   for (const m of state.watched) add(m);              // explicit view — always keep
   for (const m of state.graduatingTokens.keys()) add(m); // about to migrate — always keep
+  // Coins that JUST migrated. Their trading moves to PumpSwap the moment they
+  // graduate, and without this we saw almost none of it — one coin had 100+ on-chain
+  // transactions in two minutes while we captured 2. That is why migrated coins showed
+  // near-zero fees, volume and txns: we were only watching coins someone had open.
+  // Newest-first and capped, so this stays bounded no matter how many migrate.
+  const recent = Array.from(state.graduatedTokens.values())
+    .filter((t) => (t.graduatedAt ?? 0) > Date.now() - MIGRATED_WATCH_MINUTES * 60_000)
+    .sort((a, b) => (b.graduatedAt ?? 0) - (a.graduatedAt ?? 0));
+  for (const t of recent) add(t.address);
   return out.slice(0, MAX_SUB_MINTS);
 }
 

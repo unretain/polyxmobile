@@ -124,8 +124,11 @@ function ensureOverlays() {
         },
         {
           type: "text",
-          attrs: { x: 4, y: y - 2, text: label, align: "left", baseline: "bottom" },
-          styles: { color, size: 10, family: "monospace" },
+          // drawText forces textBaseline='top' and ignores align/baseline attrs, so y
+          // is the TOP of the text — offset upward to sit above the line rather than
+          // across it. Same family the library uses for its own axis labels.
+          attrs: { x: 6, y: y - 14, text: label },
+          styles: { color, size: 10, family: "Helvetica Neue" },
         },
       ];
     },
@@ -648,8 +651,8 @@ export function KLineChart({
     // Only drawn when the side actually has fills: no sells means no exit line.
     // Value in the label: a line you can't read a number off is impossible to sanity
     // check against your own fills.
-    draw("avg-entry", avgEntry, UP, `AVG ENTRY ${avgEntry ? formatCompactUsd(avgEntry) : ""}`);
-    draw("avg-exit", avgExit, DOWN, `AVG EXIT ${avgExit ? formatCompactUsd(avgExit) : ""}`);
+    draw("avg-entry", avgEntry, UP, `AVG COST BASIS  ${avgEntry ? formatCompactUsd(avgEntry) : ""}`);
+    draw("avg-exit", avgExit, DOWN, `AVG EXIT  ${avgExit ? formatCompactUsd(avgExit) : ""}`);
   }, [avgEntry, avgExit, chartReady]);
 
   // ---- toolbar actions ----------------------------------------------------

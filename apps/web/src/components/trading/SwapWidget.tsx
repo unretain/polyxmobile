@@ -53,11 +53,25 @@ interface SwapWidgetProps {
 }
 
 interface TokenStats {
-  bought: number;
-  sold: number;
-  holding: number;
+  bought: number;      // tokens bought
+  sold: number;        // tokens sold
+  holding: number;     // tokens still held
+  solSpent: number;    // SOL paid in
+  solReceived: number; // SOL taken out
+  pnlSol: number;      // realized + unrealized, in SOL
   pnlPercent: number;
 }
+
+  // Compact SOL: these sit in a narrow four-column row, so keep them short but never
+  // round a real position down to "0".
+  const fmtSol = (v: number) => {
+    const a = Math.abs(v);
+    if (a === 0) return "0";
+    if (a >= 100) return v.toFixed(1);
+    if (a >= 1) return v.toFixed(2);
+    if (a >= 0.001) return v.toFixed(3);
+    return v.toExponential(1);
+  };
 
 // Sound effects for trades
 const playTradeSound = (isBuy: boolean) => {
@@ -138,9 +152,13 @@ export function SwapWidget({
       : loggedTrades.filter(
           (t) => t.mint === defaultOutputMint && (!wallet?.publicKey || t.wallet === wallet.publicKey)
         );
-    if (!rows.length) return { bought: 0, sold: 0, holding: 0, pnlPercent: 0 };
+    if (!rows.length) return { bought: 0, sold: 0, holding: 0, solSpent: 0, solReceived: 0, pnlSol: 0, pnlPercent: 0 };
     const p = tokenPnl(rows, currentPriceSol);
-    return { bought: p.bought, sold: p.sold, holding: p.holding, pnlPercent: p.pnlPercent };
+    return {
+      bought: p.bought, sold: p.sold, holding: p.holding,
+      solSpent: p.solSpent, solReceived: p.solReceived,
+      pnlSol: p.totalPnl, pnlPercent: p.pnlPercent,
+    };
   }, [defaultOutputMint, loggedTrades, demoTradesStats, isDemoStats, wallet?.publicKey, currentPriceSol]);
 
   const inputMint = isBuy ? SOL_MINT : defaultOutputMint;
@@ -1147,17 +1165,13 @@ export function SwapWidget({
             <div>
               <div className={cn("text-[10px] uppercase", isDark ? "text-white/30" : "text-gray-400")}>Bought</div>
               <div className={cn("text-xs font-mono", isDark ? "text-white/50" : "text-gray-500")}>
-                {tokenStats ? (tokenStats.bought >= 1000000 ? `${(tokenStats.bought / 1000000).toFixed(1)}M` :
-                  tokenStats.bought >= 1000 ? `${(tokenStats.bought / 1000).toFixed(1)}K` :
-                  tokenStats.bought.toFixed(tokenStats.bought < 1 ? 4 : 2)) : "0"}
+                {tokenStats ? `${fmtSol(tokenStats.solSpent)} SOL` : "0 SOL"}
               </div>
             </div>
             <div>
               <div className={cn("text-[10px] uppercase", isDark ? "text-white/30" : "text-gray-400")}>Sold</div>
               <div className={cn("text-xs font-mono", isDark ? "text-white/50" : "text-gray-500")}>
-                {tokenStats ? (tokenStats.sold >= 1000000 ? `${(tokenStats.sold / 1000000).toFixed(1)}M` :
-                  tokenStats.sold >= 1000 ? `${(tokenStats.sold / 1000).toFixed(1)}K` :
-                  tokenStats.sold.toFixed(tokenStats.sold < 1 ? 4 : 2)) : "0"}
+                {tokenStats ? `${fmtSol(tokenStats.solReceived)} SOL` : "0 SOL"}
               </div>
             </div>
             <div>
@@ -1172,11 +1186,13 @@ export function SwapWidget({
               <div className={cn("text-[10px] uppercase", isDark ? "text-white/30" : "text-gray-400")}>PnL</div>
               <div className={cn(
                 "text-xs font-mono",
-                tokenStats && tokenStats.pnlPercent !== 0
-                  ? tokenStats.pnlPercent > 0 ? "text-green-400" : "text-red-400"
+                tokenStats && tokenStats.pnlSol !== 0
+                  ? tokenStats.pnlSol > 0 ? "text-green-400" : "text-red-400"
                   : isDark ? "text-white/50" : "text-gray-500"
               )}>
-                {tokenStats ? `${tokenStats.pnlPercent >= 0 ? "+" : ""}${tokenStats.pnlPercent.toFixed(1)}%` : "+0%"}
+                {tokenStats
+                  ? `${tokenStats.pnlSol >= 0 ? "+" : ""}${fmtSol(tokenStats.pnlSol)} SOL (${tokenStats.pnlPercent >= 0 ? "+" : ""}${tokenStats.pnlPercent.toFixed(1)}%)`
+                  : "0 SOL"}
               </div>
             </div>
           </div>

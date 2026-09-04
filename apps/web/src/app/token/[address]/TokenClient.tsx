@@ -522,6 +522,12 @@ export default function TokenClient() {
         setPulseToken((prev) => prev ? {
           ...prev,
           marketCap: feedMc,
+          // price and marketCapSol MUST move with marketCap. The swap widget derives
+          // the live SOL price as price * marketCapSol / marketCap, so updating only
+          // marketCap left the other two stale and drove that ratio the WRONG WAY —
+          // PnL drifted opposite to the actual price instead of tracking it.
+          price: (priceUsd && priceUsd > 0) ? priceUsd : prev.price,
+          marketCapSol: (data.marketCapSol && data.marketCapSol > 0) ? data.marketCapSol : (prev as any).marketCapSol,
           // Live volume + liquidity from the feed (only overwrite with real values).
           volume24h: (data.volume24h && data.volume24h > 0) ? data.volume24h : prev.volume24h,
           liquidity: (data.liquidity && data.liquidity > 0) ? data.liquidity : prev.liquidity,
