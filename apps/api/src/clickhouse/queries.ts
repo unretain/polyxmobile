@@ -424,3 +424,23 @@ export async function getTokensMissingImages(limit: number, hours = 6) {
     { limit, hours }
   );
 }
+
+/** Coins that resolved a logo BEFORE we started keeping socials, so they show no
+ *  bird on pulse even when the metadata has a Twitter. Distinct from the image
+ *  sweep: these have an image, they're just missing the newer columns.
+ *
+ *  Unlike a missing image, "no twitter" is the NORMAL case — most coins have none —
+ *  so this can't retry forever on the same rows. The caller remembers every uri it
+ *  has fetched and skips it, which bounds the sweep to one fetch per coin per
+ *  process, and the window keeps it to coins recent enough to still be on screen. */
+export async function getTokensMissingSocials(limit: number, hours = 6) {
+  return q<any>(
+    `SELECT mint, name, symbol, uri, image, toUnixTimestamp64Milli(created_at) AS created_ms
+     FROM tokens FINAL
+     WHERE twitter = '' AND telegram = '' AND website = '' AND uri != '' AND image != ''
+       AND created_at > now() - INTERVAL {hours:UInt16} HOUR
+     ORDER BY created_at DESC
+     LIMIT {limit:UInt32}`,
+    { limit, hours }
+  );
+}

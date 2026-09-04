@@ -14,7 +14,7 @@ import bs58 from "bs58";
 import { createHash } from "crypto";
 // Dual-write persistence: this single decoder feeds ClickHouse too (no 2nd gRPC).
 import { recordToken, recordTrade, recordGraduation, chDateTime } from "../clickhouse/writer";
-import { getGraduatingPairs as chGraduatingPairs, getGraduatedPairs as chGraduatedPairs, getNewPairs as chNewPairs, getTokensMissingImages } from "../clickhouse/queries";
+import { getGraduatingPairs as chGraduatingPairs, getGraduatedPairs as chGraduatedPairs, getNewPairs as chNewPairs, getTokensMissingImages, getTokensMissingSocials } from "../clickhouse/queries";
 import { clickhouseEnabled } from "../clickhouse/client";
 import { memo } from "../lib/memo";
 import { proxyImg } from "../lib/imgurl";
@@ -1048,6 +1048,56 @@ async function backfillMissingImages() {
   }
 }
 
+/**
+ * Backfill socials for coins that resolved a logo before we stored them.
+ *
+ * The retry rule is the opposite of the image sweep's. A coin with no logo is
+ * broken and worth re-attempting; a coin with no Twitter is just a coin with no
+ * Twitter, and most of them are — so re-querying them forever would be a permanent
+ * pointless load on the IPFS gateways. `socialsChecked` holds every uri we've
+ * fetched, so each coin costs exactly one metadata read for the life of the process.
+ */
+const socialsChecked = new Set<string>();
+let socialSweepBusy = false;
+async function backfillMissingSocials() {
+  if (!clickhouseEnabled() || socialSweepBusy) return;
+  socialSweepBusy = true;
+  try {
+    const rows: any[] = await getTokensMissingSocials(150);
+    const todo = rows.filter((r) => r.uri && !socialsChecked.has(String(r.uri)));
+    let fixed = 0;
+    for (let i = 0; i < todo.length; i += 16) {
+      await Promise.all(todo.slice(i, i + 16).map(async (r) => {
+        const uri = String(r.uri);
+        socialsChecked.add(uri); // mark before the await: one attempt, win or lose
+        try {
+          const j = await fetchMetadata(uri);
+          if (!j) return;
+          const ext = (j as any)?.extensions || {};
+          const pick = (a: unknown, b: unknown) =>
+            (typeof a === "string" && a ? a : typeof b === "string" && b ? b : "");
+          const twitter = pick((j as any)?.twitter, ext.twitter) || pick((j as any)?.twitter_url, ext.twitter_url);
+          const telegram = pick((j as any)?.telegram, ext.telegram);
+          const website = pick((j as any)?.website, ext.website);
+          if (!twitter && !telegram && !website) return; // genuinely has none
+          recordToken({
+            mint: r.mint, name: r.name || "", symbol: r.symbol || "",
+            uri, image: String(r.image || ""), creator: "",
+            twitter, telegram, website,
+            created_at: chDateTime(Number(r.created_ms) || Date.now()), created_slot: 0,
+          });
+          fixed++;
+        } catch { /* one shot; the uri is already marked */ }
+      }));
+    }
+    if (fixed) console.log(`[pulse] socials backfill: ${fixed}/${todo.length} coins got links`);
+  } catch (e) {
+    console.error("[pulse] socials backfill failed:", (e as Error).message);
+  } finally {
+    socialSweepBusy = false;
+  }
+}
+
 export function startPulseFeed() {
   const endpoint = process.env.GRPC_ENDPOINT;
   if (!endpoint) { console.log("[pulse] GRPC_ENDPOINT not set — feed disabled"); return; }
@@ -1061,6 +1111,10 @@ export function startPulseFeed() {
   setInterval(() => sweepImages(), 5000); // retry missing logos off the hot path
   // ...and sweep the durable store for coins whose logo never landed at all.
   setInterval(() => { backfillMissingImages().catch(() => {}); }, 10000);
+  // Slower than the image sweep: nothing is visibly broken while it runs, and the
+  // checked-set means it goes quiet on its own once it has seen everything.
+  setInterval(() => { backfillMissingSocials().catch(() => {}); }, 20000);
+  setTimeout(() => { backfillMissingSocials().catch(() => {}); }, 25000);
   setTimeout(() => { backfillMissingImages().catch(() => {}); }, 15000);
   // Keep the PumpSwap filter in sync with the set of migrated tokens.
   setInterval(() => { maybeResubscribe().catch(() => {}); }, 3000);
