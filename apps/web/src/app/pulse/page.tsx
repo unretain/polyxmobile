@@ -3,6 +3,7 @@
 import { useEffect, useCallback, useRef, useState, useMemo } from "react";
 import Image from "next/image";
 import { FiltersPanel } from "@/components/pulse/FiltersPanel";
+import { TweetHover } from "@/components/pulse/TweetHover";
 import { PulseFilters, EMPTY_FILTERS, loadFilters, saveFilters, applyFilter, activeCount } from "@/lib/pulseFilters";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -92,6 +93,7 @@ function TokenRow({ token, showProgress = false, isDark }: TokenRowProps) {
           <span className={`text-xs truncate max-w-[80px] ${isDark ? 'text-white/40' : 'text-gray-500'}`}>{token.name}</span>
         </div>
         <div className={`flex items-center gap-2 text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
+          {token.twitter && <TweetHover url={token.twitter} isDark={isDark} />}
           <span className="font-medium">{formatMC(token.marketCap)}</span>
           <span>•</span>
           <span>{timeAgo(token.createdAt)}</span>

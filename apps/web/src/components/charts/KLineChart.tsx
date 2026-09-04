@@ -117,12 +117,14 @@ function ensureOverlays() {
       const ext = (overlay.extendData as any) || {};
       const color = ext.color || ACCENT;
       const label = ext.label || "";
-      // drawText forces textBaseline='top' and ignores align/baseline attrs, so y is
-      // the TOP of the text. Entry sits above its line, exit below its own, so the two
-      // labels can never land on top of each other when the levels are close.
-      // Clamped into the pane as well: at y-14 a level near the top of the view drew
-      // its label off-canvas, which is how the exit label went missing entirely.
-      const raw = ext.below ? y + 4 : y - 14;
+      // getTextRect honours attrs.align/baseline, so the label is anchored to the
+      // RIGHT edge of the pane — beside the price axis, where you read the level off,
+      // and out of the way of the candles on the left.
+      //
+      // Entry sits above its line, exit below its own, so the two can never land on
+      // top of each other when the levels are close. Clamped into the pane as well:
+      // a level near the top drew its label off-canvas and vanished.
+      const raw = ext.below ? y + 3 : y - 13;
       const ty = Math.max(2, Math.min(bounding.height - 12, raw));
       return [
         {
@@ -132,9 +134,24 @@ function ensureOverlays() {
         },
         {
           type: "text",
-          // Same family the library uses for its own axis labels.
-          attrs: { x: 6, y: ty, text: label },
-          styles: { color, size: 10, family: "Helvetica Neue" },
+          attrs: { x: bounding.width - 6, y: ty, text: label, align: "right", baseline: "top" },
+          // The library's default overlay text is a SOLID BLUE TAG (backgroundColor
+          // #1677FF, blue border, 4px padding). Overriding only color/size/family left
+          // that box wrapped around the label. Strip it back to bare text in the
+          // family the library uses for its own axis labels.
+          styles: {
+            color,
+            size: 10,
+            family: "Helvetica Neue",
+            weight: "bold",
+            backgroundColor: "transparent",
+            borderSize: 0,
+            borderColor: "transparent",
+            paddingLeft: 0,
+            paddingRight: 0,
+            paddingTop: 0,
+            paddingBottom: 0,
+          },
         },
       ];
     },

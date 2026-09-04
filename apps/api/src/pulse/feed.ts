@@ -283,7 +283,14 @@ async function resolveImage(mint: string, uri: string) {
     // graduated) show it too — not just the in-memory (final-stretch) list. The
     // tokens table is a ReplacingMergeTree, so re-inserting the same mint with the
     // image replaces the empty-image row on read.
-    if (t) recordToken({ mint, name: t.name, symbol: t.symbol, uri, image: img, creator: "", created_at: chDateTime(t.createdAt), created_slot: 0 });
+    if (t) recordToken({
+      mint, name: t.name, symbol: t.symbol, uri, image: img, creator: "",
+      // Socials ride along on the same write — otherwise the CH-served lists (which
+      // is most rows) would never learn a coin has a Twitter, even though we just
+      // read it out of the metadata two lines above.
+      twitter: t.twitter || "", telegram: t.telegram || "", website: t.website || "",
+      created_at: chDateTime(t.createdAt), created_slot: 0,
+    });
   } catch {
     state.imageCache.delete(uri);
   }
@@ -1016,9 +1023,16 @@ async function backfillMissingImages() {
           const j = await fetchMetadata(String(r.uri));
           const img = typeof j?.image === "string" ? j.image.trim() : "";
           if (!img) return;
+          // We already paid for the metadata fetch — take the socials too.
+          const ext = (j as any)?.extensions || {};
+          const pick = (a: unknown, b: unknown) =>
+            (typeof a === "string" && a ? a : typeof b === "string" && b ? b : "");
           recordToken({
             mint: r.mint, name: r.name || "", symbol: r.symbol || "",
             uri: String(r.uri), image: img, creator: "",
+            twitter: pick((j as any)?.twitter, ext.twitter) || pick((j as any)?.twitter_url, ext.twitter_url),
+            telegram: pick((j as any)?.telegram, ext.telegram),
+            website: pick((j as any)?.website, ext.website),
             created_at: chDateTime(Number(r.created_ms) || Date.now()), created_slot: 0,
           });
           prefetch(img);

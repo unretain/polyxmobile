@@ -20,6 +20,9 @@ export const SCHEMA_STATEMENTS: string[] = [
     uri           String,
     image         String DEFAULT '',
     creator       String DEFAULT '',
+    twitter       String DEFAULT '',
+    telegram      String DEFAULT '',
+    website       String DEFAULT '',
     created_at    DateTime64(3),
     created_slot  UInt64 DEFAULT 0,
     ingested_at   DateTime64(3) DEFAULT now64(3)
@@ -78,6 +81,13 @@ export const SCHEMA_STATEMENTS: string[] = [
   `ALTER TABLE trades ADD COLUMN IF NOT EXISTS fee_sol Float64 DEFAULT 0`,
   `ALTER TABLE trades ADD COLUMN IF NOT EXISTS creator_fee_sol Float64 DEFAULT 0`,
   `ALTER TABLE trades ADD COLUMN IF NOT EXISTS recv_ts DateTime64(3) DEFAULT now64(3)`,
+
+  // Socials from the token metadata JSON. Empty-string default (not now64-style
+  // computed) so backfilling one on an existing row is just a re-insert — the
+  // tokens table is a ReplacingMergeTree keyed on mint.
+  `ALTER TABLE tokens ADD COLUMN IF NOT EXISTS twitter String DEFAULT ''`,
+  `ALTER TABLE tokens ADD COLUMN IF NOT EXISTS telegram String DEFAULT ''`,
+  `ALTER TABLE tokens ADD COLUMN IF NOT EXISTS website String DEFAULT ''`,
 
   // Candles in SOL (converted to USD at read). open/close via argMin/argMax on ts.
   `CREATE TABLE IF NOT EXISTS candles_1m (

@@ -37,6 +37,11 @@ function shapePair(r: any, solPrice: number) {
     symbol: r.symbol || r.address.slice(0, 6),
     name: r.name || r.symbol || r.address.slice(0, 8),
     logoUri: proxyImg(r.logoUri || null),
+    // Empty string means "no link", not "unknown" — undefined keeps the JSON small
+    // and lets the client test truthiness without a special case.
+    twitter: r.twitter || undefined,
+    telegram: r.telegram || undefined,
+    website: r.website || undefined,
     price: Number(r.price) || 0,
     priceChange24h: Number(r.priceChange24h) || 0,
     volume24h: Number(r.volume24h) || 0,
@@ -75,7 +80,7 @@ async function activePairs(limit: number, solPrice: number, f: PairFilters = {})
   const { where, params } = filterSql(f, solPrice);
   const rows = await q<any>(
     `SELECT
-       t.mint AS address, t.name AS name, t.symbol AS symbol, t.image AS logoUri,
+       t.mint AS address, t.name AS name, t.symbol AS symbol, t.image AS logoUri, t.twitter AS twitter, t.telegram AS telegram, t.website AS website,
        toUnixTimestamp64Milli(t.created_at) AS createdAt,
        coalesce(lt.last_price_sol, 0) * {sol:Float64} AS price,
        coalesce(lt.mcap_sol, {initMcSol:Float64}) AS marketCapSol,
@@ -109,7 +114,7 @@ export async function getGraduatingPairs(limit: number, solPrice: number, f: Pai
   // via >0 + NOT IN graduations.
   const rows = await q<any>(
     `SELECT
-       t.mint AS address, t.name AS name, t.symbol AS symbol, t.image AS logoUri,
+       t.mint AS address, t.name AS name, t.symbol AS symbol, t.image AS logoUri, t.twitter AS twitter, t.telegram AS telegram, t.website AS website,
        toUnixTimestamp64Milli(t.created_at) AS createdAt,
        lt.last_price_sol * {sol:Float64} AS price,
        lt.mcap_sol AS marketCapSol,
@@ -220,7 +225,7 @@ export async function getGraduatedPairs(limit: number, solPrice: number, f: Pair
   const { where, params } = filterSql(f, solPrice);
   const rows = await q<any>(
     `SELECT
-       g.mint AS address, t.name AS name, t.symbol AS symbol, t.image AS logoUri,
+       g.mint AS address, t.name AS name, t.symbol AS symbol, t.image AS logoUri, t.twitter AS twitter, t.telegram AS telegram, t.website AS website,
        toUnixTimestamp64Milli(g.ts) AS createdAt,
        toUnixTimestamp64Milli(g.ts) AS graduatedAt,
        coalesce(lt.last_price_sol, 0) * {sol:Float64} AS price,
@@ -266,7 +271,7 @@ export async function getGraduatedPairs(limit: number, solPrice: number, f: Pair
 export async function getTokenData(mint: string, solPrice: number) {
   const rows = await q<any>(
     `SELECT
-       t.mint AS address, t.name AS name, t.symbol AS symbol, t.image AS logoUri,
+       t.mint AS address, t.name AS name, t.symbol AS symbol, t.image AS logoUri, t.twitter AS twitter, t.telegram AS telegram, t.website AS website,
        toUnixTimestamp64Milli(t.created_at) AS createdAt,
        coalesce(lt.last_price_sol, 0) * {sol:Float64} AS price,
        coalesce(lt.mcap_sol, {initMcSol:Float64}) AS marketCapSol,

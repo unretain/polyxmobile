@@ -70,7 +70,9 @@ interface TokenStats {
     if (a >= 100) return v.toFixed(1);
     if (a >= 1) return v.toFixed(2);
     if (a >= 0.001) return v.toFixed(3);
-    return v.toExponential(1);
+    // Fixed, not exponential. A PnL of "+1.3e-4" is unreadable at a glance in a stats
+    // row — "+0.0001" says the same thing and lines up with the column above it.
+    return v.toFixed(4);
   };
 
 // Sound effects for trades
