@@ -165,6 +165,11 @@ export function SwapWidget({
   const outputMint = isBuy ? defaultOutputMint : SOL_MINT;
   const inputSymbol = isBuy ? "SOL" : outputSymbol;
   const inputDecimals = isBuy ? 9 : outputDecimals;
+  const amountNum = parseFloat(inputAmount);
+  const amountValid = !isNaN(amountNum) && amountNum > 0;
+  // Where the swap will actually execute. Known from the coin itself — it does NOT
+  // need the quote to come back, which is why the button no longer waits on one.
+  const venue: "jupiter" | "pumpfun" = tradingSource ?? (isGraduated ? "jupiter" : "pumpfun");
 
   // Track if user has no wallet (400 response) - don't keep polling
   const [noWallet, setNoWallet] = useState(false);
@@ -283,13 +288,29 @@ export function SwapWidget({
     return () => clearTimeout(debounce);
   }, [inputAmount, inputMint, outputMint, slippage, inputDecimals, isGraduated]);
 
+  // What the swap moves, WITHOUT needing the quote.
+  //
+  // The quote was never an input to execution — executeSwap()/executeClientPumpSwap()
+  // each fetch their own quote and build their own transaction from the raw amount.
+  // It was only ever feeding the display and the trade log, so gating the button on
+  // it just made every buy wait on a round trip for nothing. When it happens to be
+  // loaded we use it (it's exact); otherwise we estimate off the live price, and the
+  // trade log gets corrected either way once the fill is known.
+  const estimateFill = () => {
+    const outDec = isBuy ? outputDecimals : 9;
+    const fromQuote = quote ? Number(quote.outAmount) / Math.pow(10, outDec) : 0;
+    if (fromQuote > 0) return fromQuote;
+    if (!(currentPriceSol > 0)) return 0;
+    return isBuy ? amountNum / currentPriceSol : amountNum * currentPriceSol;
+  };
+
   const handleSwap = async () => {
-    if (!quote || !inputMint || !outputMint || !tradingSource) return;
+    if (!amountValid || !inputMint || !outputMint) return;
 
     // Demo mode: simulate the trade against the paper balance — never hits chain.
     const demo = useDemoStore.getState();
     if (demo.isDemo) {
-      const spend = parseFloat(inputAmount) || 0;
+      const spend = amountNum;
       // Can't spend SOL / tokens you don't have.
       if (isBuy && spend > demo.solBalance + 1e-9) {
         setError(`Insufficient balance — you have ${demo.solBalance.toFixed(3)} SOL`);
@@ -302,12 +323,18 @@ export function SwapWidget({
           return;
         }
       }
-      const outUi = Number(quote.outAmount) / Math.pow(10, isBuy ? outputDecimals : 9);
-      if (isBuy) demo.paperBuy(outputMint, outputSymbol, parseFloat(inputAmount), outUi);
-      else demo.paperSell(inputMint, outUi, parseFloat(inputAmount));
+      const outUi = estimateFill();
+      if (!(outUi > 0)) {
+        setError("No price yet — try again in a moment");
+        return;
+      }
+      if (isBuy) demo.paperBuy(outputMint, outputSymbol, spend, outUi);
+      else demo.paperSell(inputMint, outUi, spend); // (mint, solReceived, tokensSold)
       playTradeSound(isBuy);
       showToast(
-        isBuy ? `Bought ${formatOutputAmount()} ${outputSymbol}` : `Sold ${inputAmount} ${outputSymbol}`,
+        isBuy
+          ? `Bought ${spend} SOL of ${outputSymbol}`
+          : `Sold ${fmtTok(spend)} ${outputSymbol} for ${fmtSol(outUi)} SOL`,
         "success"
       );
       setSuccess("Transaction successful!");
@@ -323,9 +350,28 @@ export function SwapWidget({
     setSuccess(null);
 
     try {
-      const rawAmount = Math.floor(
-        parseFloat(inputAmount) * Math.pow(10, inputDecimals)
-      ).toString();
+      const rawAmount = Math.floor(amountNum * Math.pow(10, inputDecimals)).toString();
+
+      // The OTHER leg of the trade, for the log: tokens received on a buy, SOL out on
+      // a sell. Usually already known (the debounced quote landed while you were
+      // reading the panel), but clicking a preset fires faster than that — and logging
+      // a 0 there would poison the cost basis and the chart's average lines. Kicked
+      // off in parallel with signing so it costs no wall clock.
+      const fillPromise: Promise<number> = (async () => {
+        const local = estimateFill();
+        if (local > 0) return local;
+        try {
+          const path = venue === "pumpfun" ? "pump-quote" : "quote";
+          const r = await fetch(
+            `/api/trading/${path}?inputMint=${inputMint}&outputMint=${outputMint}&amount=${rawAmount}&slippage=${slippage}`
+          );
+          if (!r.ok) return 0;
+          const j = await r.json();
+          return Number(j.outAmount) / Math.pow(10, isBuy ? outputDecimals : 9) || 0;
+        } catch {
+          return 0;
+        }
+      })();
 
       // Try client-side swap first (for mobile wallets with local mnemonic).
       // Works for BOTH Jupiter (graduated) and pump.fun (bonding curve) so a buy
@@ -334,23 +380,22 @@ export function SwapWidget({
 
       if (mnemonic) {
         let result: { signature: string; explorerUrl: string } | undefined;
-        if (tradingSource === "jupiter") {
+        if (venue === "jupiter") {
           result = await executeClientSwap(mnemonic, inputMint!, outputMint!, rawAmount, slippage);
         } else {
           const tokenMint = isBuy ? outputMint! : inputMint!;
           result = await executeClientPumpSwap(mnemonic, tokenMint, rawAmount, slippage, isBuy);
         }
+        const filled = await fillPromise;
 
         // Record the trade locally so B/S bubbles + portfolio show it instantly and
         // reliably — the shared feed's trader field is too flaky to depend on.
         if (wallet?.publicKey) {
           const tokenMint = isBuy ? outputMint! : inputMint!;
-          const solAmount = isBuy
-            ? parseFloat(inputAmount)
-            : Number(quote.outAmount) / 1e9;
-          const tokenAmount = isBuy
-            ? Number(quote.outAmount) / Math.pow(10, outputDecimals)
-            : parseFloat(inputAmount);
+          // A buy knows its SOL exactly (it's what you typed); a sell knows its
+          // token count exactly. The other leg comes from the fill estimate.
+          const solAmount = isBuy ? amountNum : filled;
+          const tokenAmount = isBuy ? filled : amountNum;
           useTradeLogStore.getState().addTrade({
             mint: tokenMint,
             symbol: outputSymbol,
@@ -364,12 +409,13 @@ export function SwapWidget({
           });
         }
 
-        // Success! Play sound and show toast
+        // Confirmation says what you SPENT, in SOL — that's the number you chose and
+        // the one that matters. The token count is an estimate until the fill lands.
         playTradeSound(isBuy);
         showToast(
           isBuy
-            ? `Bought ${formatOutputAmount()} ${outputSymbol}`
-            : `Sold ${inputAmount} ${outputSymbol}`,
+            ? `Bought ${amountNum} SOL of ${outputSymbol}`
+            : `Sold ${fmtTok(amountNum)} ${outputSymbol}${filled > 0 ? ` for ${fmtSol(filled)} SOL` : ""}`,
           "success"
         );
 
@@ -391,7 +437,7 @@ export function SwapWidget({
       }
 
       // Fallback to server-side swap (custodial NextAuth-session users only)
-      const endpoint = tradingSource === "pumpfun"
+      const endpoint = venue === "pumpfun"
         ? "/api/trading/pump-swap"
         : "/api/trading/swap";
 
@@ -415,11 +461,12 @@ export function SwapWidget({
       }
 
       // Success! Play sound and show toast
+      const serverFilled = await fillPromise;
       playTradeSound(isBuy);
       showToast(
         isBuy
-          ? `Bought ${formatOutputAmount()} ${outputSymbol}`
-          : `Sold ${inputAmount} ${outputSymbol}`,
+          ? `Bought ${amountNum} SOL of ${outputSymbol}`
+          : `Sold ${fmtTok(amountNum)} ${outputSymbol}${serverFilled > 0 ? ` for ${fmtSol(serverFilled)} SOL` : ""}`,
         "success"
       );
 
@@ -453,6 +500,33 @@ export function SwapWidget({
     const outDecimals = isBuy ? outputDecimals : 9;
     const amount = Number(quote.outAmount) / Math.pow(10, outDecimals);
     return amount.toLocaleString(undefined, { maximumFractionDigits: 6 });
+  };
+
+  // Compact token count for labels/toasts (5,432,109 -> 5.43M).
+  const fmtTok = (v: number) =>
+    v >= 1e9 ? `${(v / 1e9).toFixed(2)}B`
+    : v >= 1e6 ? `${(v / 1e6).toFixed(2)}M`
+    : v >= 1e3 ? `${(v / 1e3).toFixed(2)}K`
+    : v.toFixed(v < 1 ? 4 : 2);
+
+  // The button says what you are SPENDING, not what a quote thinks you'll receive.
+  // "Buy 0.5 SOL" is known instantly; "Buy → 6,427,519 MEME" needed a round trip and
+  // was stale by the time you read it anyway.
+  // Name the POOL the swap goes through, not the aggregator that found it. "Jupiter"
+  // is a router, not a venue — it told you nothing about where your size was going.
+  // Graduated coins carry the real pool in the route plan (PumpSwap, Raydium, Meteora...).
+  const venueLabel = () => {
+    if (venue === "pumpfun") return "Pump.fun";
+    const hops = quote?.routePlan?.map((s) => s.label).filter(Boolean) ?? [];
+    if (!hops.length) return "AMM";
+    return [...new Set(hops)].join(" → ");
+  };
+
+  const actionLabel = () => {
+    if (!amountValid) return "Enter Amount";
+    if (isBuy) return `Buy ${amountNum} SOL`;
+    if (sellMode === "percent" && selectedPercent) return `Sell ${selectedPercent}% ${outputSymbol}`;
+    return `Sell ${fmtTok(amountNum)} ${outputSymbol}`;
   };
 
   // Handle sell percentage selection
@@ -698,14 +772,15 @@ export function SwapWidget({
           </div>
         )}
 
-        {/* Swap button - only show when amount is entered */}
-        {inputAmount && quote && (
+        {/* Swap button. Live the moment an amount is entered — it does NOT wait for a
+            quote, because execution doesn't use one (see estimateFill). */}
+        {amountValid && (
           <button
             onClick={handleSwap}
-            disabled={!quote || swapping || loading}
+            disabled={swapping}
             className={cn(
               "w-full mt-3 py-2.5 text-xs font-medium transition-colors",
-              swapping || loading
+              swapping
                 ? isDark ? "bg-white/5 text-white/30" : "bg-gray-100 text-gray-400"
                 : isBuy
                 ? "bg-[#00ffa3] text-black hover:bg-[#00dd8a]"
@@ -717,13 +792,8 @@ export function SwapWidget({
                 <Loader2 className="w-3 h-3 animate-spin" />
                 Processing...
               </span>
-            ) : loading ? (
-              <span className="flex items-center justify-center gap-2">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                Getting quote...
-              </span>
             ) : (
-              `${isBuy ? "Buy" : "Sell"} → ${formatOutputAmount()} ${isBuy ? outputSymbol : "SOL"}`
+              actionLabel()
             )}
           </button>
         )}
@@ -1107,11 +1177,11 @@ export function SwapWidget({
               <span className={isDark ? "text-white/40" : "text-gray-400"}>Route</span>
               <span className={cn(
                 "px-2 py-0.5 text-xs font-medium",
-                tradingSource === "pumpfun"
+                venue === "pumpfun"
                   ? "bg-pink-500/20 text-pink-400"
                   : "bg-[#00ffa3]/20 text-[#00ffa3]"
               )}>
-                {tradingSource === "pumpfun" ? "Pump.fun" : "Jupiter"}
+                {venueLabel()}
               </span>
             </div>
           </div>
@@ -1132,10 +1202,10 @@ export function SwapWidget({
         {/* Action Button */}
         <button
           onClick={handleSwap}
-          disabled={!quote || swapping || loading}
+          disabled={!amountValid || swapping}
           className={cn(
             "w-full py-3 text-sm font-medium transition-colors",
-            !quote || swapping || loading
+            !amountValid || swapping
               ? isDark ? "bg-white/5 text-white/30 cursor-not-allowed" : "bg-gray-100 text-gray-400 cursor-not-allowed"
               : isBuy
               ? "bg-[#00ffa3] text-black hover:bg-[#00dd8a]"
@@ -1147,12 +1217,8 @@ export function SwapWidget({
               <Loader2 className="w-4 h-4 animate-spin" />
               Processing...
             </span>
-          ) : !quote ? (
-            "Enter Amount"
-          ) : isBuy ? (
-            `Buy ${outputSymbol}`
           ) : (
-            `Sell ${outputSymbol}`
+            actionLabel()
           )}
         </button>
 
@@ -1184,15 +1250,20 @@ export function SwapWidget({
             </div>
             <div>
               <div className={cn("text-[10px] uppercase", isDark ? "text-white/30" : "text-gray-400")}>PnL</div>
+              {/* SOL and % on separate lines. Together they overflowed a quarter-width
+                  column and wrapped into the row below it. */}
               <div className={cn(
-                "text-xs font-mono",
+                "text-xs font-mono leading-tight",
                 tokenStats && tokenStats.pnlSol !== 0
                   ? tokenStats.pnlSol > 0 ? "text-green-400" : "text-red-400"
                   : isDark ? "text-white/50" : "text-gray-500"
               )}>
-                {tokenStats
-                  ? `${tokenStats.pnlSol >= 0 ? "+" : ""}${fmtSol(tokenStats.pnlSol)} SOL (${tokenStats.pnlPercent >= 0 ? "+" : ""}${tokenStats.pnlPercent.toFixed(1)}%)`
-                  : "0 SOL"}
+                <div>
+                  {tokenStats ? `${tokenStats.pnlSol >= 0 ? "+" : ""}${fmtSol(tokenStats.pnlSol)}` : "0"}
+                </div>
+                <div className="text-[10px] opacity-70">
+                  {tokenStats ? `${tokenStats.pnlPercent >= 0 ? "+" : ""}${tokenStats.pnlPercent.toFixed(1)}%` : "0.0%"}
+                </div>
               </div>
             </div>
           </div>

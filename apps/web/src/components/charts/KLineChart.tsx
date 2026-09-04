@@ -114,8 +114,16 @@ function ensureOverlays() {
     createPointFigures: ({ coordinates, bounding, overlay }) => {
       if (coordinates.length < 1) return [];
       const y = coordinates[0].y;
-      const color = (overlay.extendData as any)?.color || ACCENT;
-      const label = (overlay.extendData as any)?.label || "";
+      const ext = (overlay.extendData as any) || {};
+      const color = ext.color || ACCENT;
+      const label = ext.label || "";
+      // drawText forces textBaseline='top' and ignores align/baseline attrs, so y is
+      // the TOP of the text. Entry sits above its line, exit below its own, so the two
+      // labels can never land on top of each other when the levels are close.
+      // Clamped into the pane as well: at y-14 a level near the top of the view drew
+      // its label off-canvas, which is how the exit label went missing entirely.
+      const raw = ext.below ? y + 4 : y - 14;
+      const ty = Math.max(2, Math.min(bounding.height - 12, raw));
       return [
         {
           type: "line",
@@ -124,10 +132,8 @@ function ensureOverlays() {
         },
         {
           type: "text",
-          // drawText forces textBaseline='top' and ignores align/baseline attrs, so y
-          // is the TOP of the text — offset upward to sit above the line rather than
-          // across it. Same family the library uses for its own axis labels.
-          attrs: { x: 6, y: y - 14, text: label },
+          // Same family the library uses for its own axis labels.
+          attrs: { x: 6, y: ty, text: label },
           styles: { color, size: 10, family: "Helvetica Neue" },
         },
       ];
@@ -634,7 +640,13 @@ export function KLineChart({
     const chart = chartRef.current;
     if (!chartReady || !chart) return;
 
-    const draw = (id: string, value: number | null | undefined, color: string, label: string) => {
+    const draw = (
+      id: string,
+      value: number | null | undefined,
+      color: string,
+      label: string,
+      below: boolean
+    ) => {
       // Remove by id first, unconditionally: this is what guarantees one line.
       chart.removeOverlay({ id });
       if (!value || !isFinite(value) || value <= 0) return;
@@ -644,15 +656,15 @@ export function KLineChart({
         // The y-axis is market cap, so the caller passes price * supply.
         points: [{ value }],
         lock: true, // derived from real fills — not draggable
-        extendData: { color, label },
+        extendData: { color, label, below },
       });
     };
 
     // Only drawn when the side actually has fills: no sells means no exit line.
     // Value in the label: a line you can't read a number off is impossible to sanity
     // check against your own fills.
-    draw("avg-entry", avgEntry, UP, `AVG COST BASIS  ${avgEntry ? formatCompactUsd(avgEntry) : ""}`);
-    draw("avg-exit", avgExit, DOWN, `AVG EXIT  ${avgExit ? formatCompactUsd(avgExit) : ""}`);
+    draw("avg-entry", avgEntry, UP, `AVG COST BASIS  ${avgEntry ? formatCompactUsd(avgEntry) : ""}`, false);
+    draw("avg-exit", avgExit, DOWN, `AVG EXIT  ${avgExit ? formatCompactUsd(avgExit) : ""}`, true);
   }, [avgEntry, avgExit, chartReady]);
 
   // ---- toolbar actions ----------------------------------------------------
