@@ -74,12 +74,23 @@ interface PnLData {
   closedPositions: Position[];
 }
 
+// Live market data per traded mint, refreshed on a timer. Carries the logo as well
+// as the price: the logo captured in the trade log is frequently null (a brand-new
+// coin's metadata often hasn't resolved at the moment the swap confirms), which is
+// why positions fell back to initials while the same coin showed a logo on pulse.
+export interface MarketInfo {
+  priceSol: number;
+  logoUri: string | null;
+  symbol: string | null;
+  name: string | null;
+}
+
 // Build the portfolio straight from the locally-logged trades, valuing open
-// positions at the current price (priceMap: mint -> SOL price) for unrealized PnL.
-// This is the reliable source for a client-side wallet — the shared feed's trader
-// field is too flaky to reconstruct history from. Runs each mint through the same
-// tokenPnl() the swap panel uses, so the numbers always agree.
-function buildLocalPortfolio(trades: LoggedTrade[], priceMap: Map<string, number>): PnLData {
+// positions at the current price (market: mint -> live price/metadata) for
+// unrealized PnL. This is the reliable source for a client-side wallet — the shared
+// feed's trader field is too flaky to reconstruct history from. Runs each mint
+// through the same tokenPnl() the swap panel uses, so the numbers always agree.
+function buildLocalPortfolio(trades: LoggedTrade[], market: Map<string, MarketInfo>): PnLData {
   const byMint = new Map<string, LoggedTrade[]>();
   const meta = new Map<string, { symbol: string; image: string | null; last: number }>();
   const daily = new Map<string, DailyPnL>();
@@ -106,13 +117,16 @@ function buildLocalPortfolio(trades: LoggedTrade[], priceMap: Map<string, number
 
   const positions: Position[] = [];
   for (const [mint, mintTrades] of byMint) {
-    const p = tokenPnl(mintTrades, priceMap.get(mint) || 0);
+    const live = market.get(mint);
+    const p = tokenPnl(mintTrades, live?.priceSol || 0);
     const m = meta.get(mint)!;
     positions.push({
       mint,
-      symbol: m.symbol,
-      name: "",
-      image: m.image,
+      symbol: live?.symbol || m.symbol,
+      name: live?.name || "",
+      // Live logo wins: the trade-log copy is a snapshot from confirmation time and
+      // is null for most fresh launches.
+      image: live?.logoUri || m.image,
       totalBought: p.bought,
       totalSold: p.sold,
       avgBuyPrice: p.avgBuyPrice,
@@ -174,7 +188,8 @@ export default function PortfolioPage() {
   const [period, setPeriod] = useState<Period>("30d");
   const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
   const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth() + 1);
-  const [data, setData] = useState<PnLData | null>(null);
+  const [serverData, setServerData] = useState<PnLData | null>(null);
+  const [market, setMarket] = useState<Map<string, MarketInfo>>(new Map());
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "positions">("overview");
 
@@ -186,46 +201,85 @@ export default function PortfolioPage() {
   const shareCanvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Mobile wallet: the portfolio is built from the local trade log (the reliable
+  // record of this wallet's own trades — the shared feed's trader field is too flaky
+  // to reconstruct history from).
+  const myTrades = useMemo(
+    () => (wallet?.publicKey ? loggedTrades.filter((t) => t.wallet === wallet.publicKey) : []),
+    [loggedTrades, wallet?.publicKey]
+  );
+  const mints = useMemo(() => [...new Set(myTrades.map((t) => t.mint))], [myTrades]);
+  const mintsKey = mints.join(",");
+
+  // Poll live price + metadata for every traded mint.
+  //
+  // This used to run ONCE, inside the PnL fetch. An open position's PnL is entirely
+  // unrealized, so a single snapshot meant the number was frozen the moment the page
+  // loaded and never moved again no matter how the coin traded. It also only pulled
+  // the price, leaving the logo to the trade log's (usually null) capture.
+  useEffect(() => {
+    if (!mintsKey) return;
+    let alive = true;
+
+    const load = async () => {
+      const fresh = new Map<string, Partial<MarketInfo>>();
+      await Promise.all(
+        mints.map(async (mint) => {
+          try {
+            const r = await fetch(`/api/pulse/token/${mint}`, { cache: "no-store" });
+            if (!r.ok) return;
+            const j = await r.json();
+            // priceSol = USD price / (USD SOL rate). Derive the rate from the
+            // token's own marketCap/marketCapSol so it's internally consistent.
+            const solUsd = j.marketCapSol > 0 ? j.marketCap / j.marketCapSol : 0;
+            const ps =
+              typeof j.priceSol === "number" && j.priceSol > 0
+                ? j.priceSol
+                : solUsd > 0 && j.price
+                ? j.price / solUsd
+                : 0;
+            const info: Partial<MarketInfo> = {};
+            if (ps > 0) info.priceSol = ps;
+            if (j.logoUri) info.logoUri = j.logoUri;
+            if (j.symbol) info.symbol = j.symbol;
+            if (j.name) info.name = j.name;
+            if (Object.keys(info).length) fresh.set(mint, info);
+          } catch {
+            /* keep whatever we already had for this mint */
+          }
+        })
+      );
+      if (!alive || !fresh.size) return;
+      // Merge field-by-field: a poll that comes back without a price must not wipe
+      // the last good one and drop the position back to a frozen 0.
+      setMarket((prev) => {
+        const next = new Map(prev);
+        for (const [mint, info] of fresh) {
+          next.set(mint, { ...(next.get(mint) || { priceSol: 0, logoUri: null, symbol: null, name: null }), ...info });
+        }
+        return next;
+      });
+    };
+
+    load();
+    const id = setInterval(load, 4000);
+    return () => { alive = false; clearInterval(id); };
+  }, [mintsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const localData = useMemo(
+    () => (myTrades.length ? buildLocalPortfolio(myTrades, market) : null),
+    [myTrades, market]
+  );
+
+  // Local (mobile-wallet) data wins when we have it; otherwise the server PnL.
+  const data = localData ?? serverData;
+
   // Fetch PnL data
   useEffect(() => {
     async function fetchPnL() {
       setIsLoading(true);
       try {
-        // Mobile wallet: build the portfolio from the local trade log (the reliable
-        // record of this wallet's own trades). The shared feed's trader field is too
-        // flaky to reconstruct history from, so we don't depend on it here.
-        if (wallet?.publicKey) {
-          const mine = loggedTrades.filter((t) => t.wallet === wallet.publicKey);
-          if (mine.length) {
-            // Fetch the current SOL price of each traded token so open positions get
-            // unrealized PnL. Without this, held (unsold) positions read as -100%.
-            const mints = [...new Set(mine.map((t) => t.mint))];
-            const priceMap = new Map<string, number>();
-            await Promise.all(
-              mints.map(async (mint) => {
-                try {
-                  const r = await fetch(`/api/pulse/token/${mint}`);
-                  if (!r.ok) return;
-                  const j = await r.json();
-                  // priceSol = USD price / (USD SOL rate). Derive the rate from the
-                  // token's own marketCap/marketCapSol so it's internally consistent.
-                  const solUsd = j.marketCapSol > 0 ? j.marketCap / j.marketCapSol : 0;
-                  const ps =
-                    typeof j.priceSol === "number" && j.priceSol > 0
-                      ? j.priceSol
-                      : solUsd > 0 && j.price
-                      ? j.price / solUsd
-                      : 0;
-                  if (ps > 0) priceMap.set(mint, ps);
-                } catch {
-                  /* leave unpriced → unrealized 0 for this mint */
-                }
-              })
-            );
-            setData(buildLocalPortfolio(mine, priceMap));
-            return;
-          }
-        }
+        if (myTrades.length) return; // served by localData
 
         const params = new URLSearchParams({ period });
         if (period === "calendar") {
@@ -236,7 +290,7 @@ export default function PortfolioPage() {
         const res = await fetch(`/api/trading/pnl?${params}`);
         if (res.ok) {
           const json = await res.json();
-          setData(json);
+          setServerData(json);
         }
       } catch (error) {
         console.error("Failed to fetch PnL:", error);
@@ -245,7 +299,7 @@ export default function PortfolioPage() {
       }
     }
     fetchPnL();
-  }, [period, calendarYear, calendarMonth, wallet?.publicKey, loggedTrades]);
+  }, [period, calendarYear, calendarMonth, wallet?.publicKey, myTrades.length]);
 
   // Calculate cumulative PnL for chart
   const cumulativePnL = useMemo(() => {
@@ -982,9 +1036,15 @@ function PnLCalendar({
 // Position Card Component
 function PositionCard({ position, isDark }: { position: Position; isDark: boolean }) {
   const router = useRouter();
-  const pnlPercent = position.totalBuyCost > 0
-    ? ((position.realizedPnl / position.totalBuyCost) * 100)
-    : 0;
+  const [imgFailed, setImgFailed] = useState(false);
+  // The logo arrives on a later poll for fresh launches, so a failure against the
+  // old (null/stale) src must not stick.
+  useEffect(() => { setImgFailed(false); }, [position.image]);
+  // Realized + unrealized. Showing realized alone meant every open position read
+  // "+0.0000 / +0.0%" forever — you haven't sold, so nothing is realized yet.
+  const pnl = position.realizedPnl + position.unrealizedPnl;
+  const pnlPercent = position.totalBuyCost > 0 ? (pnl / position.totalBuyCost) * 100 : 0;
+  const up = pnl >= 0;
 
   return (
     <div
@@ -992,10 +1052,20 @@ function PositionCard({ position, isDark }: { position: Position; isDark: boolea
       className={`p-3 rounded-xl border cursor-pointer transition-colors ${isDark ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-white border-gray-200 hover:bg-gray-50"}`}
     >
       <div className="flex items-center gap-3">
-        {/* Token Image */}
+        {/* Token Image. unoptimized like every other logo on the site — routing these
+            through Next's image optimizer breaks them (the logos are already resized
+            and cached by our own /img service). */}
         <div className="w-10 h-10 rounded-full overflow-hidden bg-white/10 flex-shrink-0">
-          {position.image ? (
-            <Image src={position.image} alt={position.symbol} width={40} height={40} className="w-full h-full object-cover" />
+          {position.image && !imgFailed ? (
+            <Image
+              src={position.image}
+              alt={position.symbol}
+              width={40}
+              height={40}
+              unoptimized
+              onError={() => setImgFailed(true)}
+              className="w-full h-full object-cover"
+            />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-xs font-bold text-white/50">
               {position.symbol?.slice(0, 2)}
@@ -1028,14 +1098,19 @@ function PositionCard({ position, isDark }: { position: Position; isDark: boolea
         {/* PnL */}
         <div className="text-right">
           <div className={cn(
-            "text-sm font-semibold flex items-center gap-1",
-            position.realizedPnl >= 0 ? "text-green-500" : "text-red-500"
+            "text-sm font-semibold flex items-center justify-end gap-1",
+            up ? "text-green-500" : "text-red-500"
           )}>
-            {position.realizedPnl >= 0 ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-            {position.realizedPnl >= 0 ? "+" : ""}{position.realizedPnl.toFixed(4)}
+            {up ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+            {up ? "+" : ""}{pnl.toFixed(4)} SOL
           </div>
           <div className={`text-xs ${isDark ? "text-white/40" : "text-gray-400"}`}>
             {pnlPercent >= 0 ? "+" : ""}{pnlPercent.toFixed(1)}%
+            {position.isOpen && position.realizedPnl !== 0 && (
+              <span className="ml-1">
+                ({position.realizedPnl >= 0 ? "+" : ""}{position.realizedPnl.toFixed(3)} real)
+              </span>
+            )}
           </div>
         </div>
       </div>
