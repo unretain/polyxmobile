@@ -14,7 +14,7 @@ import bs58 from "bs58";
 import { createHash } from "crypto";
 // Dual-write persistence: this single decoder feeds ClickHouse too (no 2nd gRPC).
 import { recordToken, recordTrade, recordGraduation, chDateTime } from "../clickhouse/writer";
-import { getGraduatingPairs as chGraduatingPairs, getGraduatedPairs as chGraduatedPairs, getNewPairs as chNewPairs, getTokensMissingImages, getTokensMissingSocials, getSocialsForMints } from "../clickhouse/queries";
+import { getGraduatingPairs as chGraduatingPairs, getGraduatedPairs as chGraduatedPairs, getNewPairs as chNewPairs, getTokensMissingImages, getTokensMissingSocials, getSocialsForMints, getFeesForMints } from "../clickhouse/queries";
 import { clickhouseEnabled } from "../clickhouse/client";
 import { memo } from "../lib/memo";
 import { proxyImg } from "../lib/imgurl";
@@ -343,7 +343,12 @@ function measuredFeeLeg(tx: any, expected: number): number {
   const pre: number[] = tx?.meta?.preBalances || [];
   const post: number[] = tx?.meta?.postBalances || [];
   if (pre.length !== post.length || !pre.length) return 0;
-  const tol = expected * 0.02; // lamport rounding only; a missing fee is nowhere near
+  // 5%: the observed creator legs cluster at 30.14 bps with a 0.58 spread, so a real
+  // payment can sit ~2% off the declared amount through curve rounding. 2% was cutting
+  // genuine payments — the chain shows a creator leg on 9 of 9 sampled swaps while we
+  // were crediting only 68%. A fee that was skipped is absent entirely, not 5% off, so
+  // this cannot let a dodged fee through.
+  const tol = expected * 0.05;
   let best = 0, bestOff = Infinity;
   for (let i = 0; i < pre.length; i++) {
     const d = (post[i] - pre[i]) / 1e9;
@@ -1312,6 +1317,39 @@ let socialSweepBusy = false;
  * coin is still tracked, so the coin has a Twitter in the database and no bird on
  * screen. One small query per tick, bounded by what is actually in memory.
  */
+/**
+ * Copy DURABLE fee and buy/sell totals onto the in-memory tokens.
+ *
+ * Memory only counts what has traded since this process started, so after any restart
+ * a coin's feesPaidSol is a fraction of its real total — and /api/feed/token plus any
+ * memory-served list row answer from memory. That is how a coin ClickHouse had at
+ * 5.7591 SOL of fees was served as 0.00, and why a fee filter behaved differently
+ * depending on which copy the client happened to be holding.
+ */
+async function hydrateFeesFromCH() {
+  if (!clickhouseEnabled()) return;
+  const mints: string[] = [];
+  for (const m of [state.newTokens, state.graduatingTokens, state.graduatedTokens]) {
+    for (const mint of m.keys()) mints.push(mint);
+  }
+  if (!mints.length) return;
+  try {
+    const rows = await getFeesForMints([...new Set(mints)].slice(0, 900));
+    for (const r of rows) {
+      const t = anyToken(String(r.mint));
+      if (!t) continue;
+      const durable = Number(r.fees_sol) || 0;
+      // Durable covers every trade we ever recorded, so it is never behind memory.
+      if (durable > (t.feesPaidSol || 0)) t.feesPaidSol = durable;
+      const b = Number(r.buys) || 0, se = Number(r.sells) || 0;
+      if (b > (t.buys || 0)) t.buys = b;
+      if (se > (t.sells || 0)) t.sells = se;
+    }
+  } catch (e) {
+    console.error("[pulse] fee hydrate failed:", (e as Error).message);
+  }
+}
+
 async function hydrateSocialsFromCH() {
   if (!clickhouseEnabled()) return;
   const need: string[] = [];
@@ -1399,6 +1437,8 @@ export function startPulseFeed() {
   setTimeout(() => { backfillMissingSocials().catch(() => {}); }, 25000);
   // Cheap and idempotent, so it runs more often than the metadata sweep.
   setInterval(() => { hydrateSocialsFromCH().catch(() => {}); }, 8000);
+  setInterval(() => { hydrateFeesFromCH().catch(() => {}); }, 8000);
+  setTimeout(() => { hydrateFeesFromCH().catch(() => {}); }, 5000);
   setTimeout(() => { hydrateSocialsFromCH().catch(() => {}); }, 6000);
   setTimeout(() => { backfillMissingImages().catch(() => {}); }, 15000);
   // Keep the PumpSwap filter in sync with the set of migrated tokens.

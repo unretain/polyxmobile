@@ -311,6 +311,11 @@ export async function getTokenData(mint: string, solPrice: number) {
        coalesce(lt.mcap_sol, {initMcSol:Float64}) * {sol:Float64} AS marketCap,
        coalesce(lt.vol_sol, 0) * {sol:Float64} AS volume24h,
        coalesce(lt.tx, 0) AS txCount,
+       -- The single-token endpoint was returning 0 fees for a coin this table had at
+       -- 5.7591 SOL, simply because the column was never selected here.
+       coalesce(lt.fees_sol, 0) AS feesPaidSol,
+       coalesce(lt.buys, 0) AS buys,
+       coalesce(lt.sells, 0) AS sells,
        lt.real_tok AS real_tok,
        if(lt.first_price_sol > 0, (lt.last_price_sol - lt.first_price_sol) / lt.first_price_sol * 100, 0) AS priceChange24h,
        (t.mint IN (SELECT mint FROM graduations)) AS complete
@@ -466,6 +471,24 @@ export async function getTokensMissingImages(limit: number, hours = 6) {
  *  so this can't retry forever on the same rows. The caller remembers every uri it
  *  has fetched and skips it, which bounds the sweep to one fetch per coin per
  *  process, and the window keeps it to coins recent enough to still be on screen. */
+/** Fees (and buy/sell counts) we hold DURABLY for a set of mints.
+ *  In-memory tokens only accumulate from the moment a process starts, so their
+ *  feesPaidSol is a fraction of the real total — and /api/feed/token answers from
+ *  memory whenever a coin is still tracked. That served 0 for a coin ClickHouse had
+ *  at 5.7591. */
+export async function getFeesForMints(mints: string[]) {
+  if (!mints.length) return [] as any[];
+  return q<any>(
+    `SELECT mint,
+       sum(fee_sol) + sum(creator_fee_sol) AS fees_sol,
+       countIf(is_buy = 1) AS buys,
+       countIf(is_buy = 0) AS sells
+     FROM trades WHERE mint IN {mints:Array(String)}
+     GROUP BY mint`,
+    { mints }
+  );
+}
+
 /** Socials we already hold durably, for a specific set of mints. Used to hydrate the
  *  IN-MEMORY tokens: the durable row can be ahead of memory (a backfill from an
  *  earlier process wrote it, or the coin was re-added to a list after a restart), and
