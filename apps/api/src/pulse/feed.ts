@@ -281,31 +281,37 @@ export function readSocials(j: any): Socials {
 }
 
 /**
- * PumpSwap's creator fee, per pump.fun's published schedule (pump.fun/docs/fees).
+ * PumpSwap's fee split, per pump.fun/docs/fees. [creatorBps, totalBps] by the coin's
+ * SOL market cap — 0.300%/1.250% below 420 SOL, 0.950%/1.200% just above it, easing
+ * to 0.050%/0.300% past 98,240 SOL.
  *
- * It is NOT a flat rate. On a canonical pool the creator's share is tiered by the
- * coin's SOL-denominated market cap: 0.300% at the bottom, jumping to 0.950% once the
- * coin clears 420 SOL, then declining step by step to 0.050% above 98,240 SOL.
+ * Used ONLY as a RATIO, never as a rate against volume. Fees are avoidable: a
+ * non-canonical pool charges the creator 0%, and MEV routes can dodge them outright.
+ * Multiplying volume by a published rate bills every one of those trades for money
+ * nobody paid, and it is trivially inflated by wash volume. So the total fee is
+ * MEASURED from the SOL that moved, and this table only says how that measured amount
+ * splits. A trade that paid nothing measures zero and contributes zero.
  *
- * The chain confirms it per trade — pump.fun's fee program returns its own split as
- * [lp, protocol, creator] bps inside the transaction. Observed: [0, 95, 30] on the
- * bonding curve (matching the documented 0.95/0.300 exactly), [2, 93, 30] on an AMM
- * swap of a sub-420-SOL coin, and [20, 5, 75] on a larger one — which is this table's
- * 4,420-9,820 tier. Assuming any single rate is therefore wrong by up to 19x.
+ * The chain states the same split per transaction — pump.fun's fee program returns
+ * [lp, protocol, creator] bps inline. Observed [0,95,30] on the curve and [2,93,30]
+ * and [20,5,75] on the AMM: the documented curve rate and two of these tiers.
  */
-const PUMPSWAP_CREATOR_TIERS: Array<[number, number]> = [
-  [420, 0.00300], [1470, 0.00950], [2460, 0.00900], [3440, 0.00850],
-  [4420, 0.00800], [9820, 0.00750], [14740, 0.00700], [19650, 0.00650],
-  [24560, 0.00600], [29470, 0.00550], [34380, 0.00500], [39300, 0.00450],
-  [44210, 0.00400], [49120, 0.00350], [54030, 0.00300], [58940, 0.00275],
-  [63860, 0.00250], [68770, 0.00225], [73681, 0.00200], [78590, 0.00175],
-  [83500, 0.00150], [88400, 0.00125], [93330, 0.00100], [98240, 0.00075],
+const PUMPSWAP_FEE_TIERS: Array<[number, number, number]> = [
+  // [mcapSol ceiling, creator bps, total bps]
+  [420, 30, 125],   [1470, 95, 120],  [2460, 90, 115],   [3440, 85, 110],
+  [4420, 80, 105],  [9820, 75, 100],  [14740, 70, 95],   [19650, 65, 90],
+  [24560, 60, 85],  [29470, 55, 80],  [34380, 50, 75],   [39300, 45, 70],
+  [44210, 40, 65],  [49120, 35, 60],  [54030, 30, 55],   [58940, 27.5, 52.5],
+  [63860, 25, 50],  [68770, 22.5, 47.5], [73681, 20, 45], [78590, 17.5, 42.5],
+  [83500, 15, 40],  [88400, 12.5, 37.5], [93330, 10, 35], [98240, 7.5, 32.5],
 ];
-const PUMPSWAP_CREATOR_TOP = 0.00050; // 98,240 SOL and above
 
-function pumpswapCreatorRate(mcapSol: number): number {
-  for (const [ceiling, rate] of PUMPSWAP_CREATOR_TIERS) if (mcapSol < ceiling) return rate;
-  return PUMPSWAP_CREATOR_TOP;
+/** What share of a PumpSwap fee goes to the creator at this market cap. */
+function pumpswapCreatorShare(mcapSol: number): number {
+  for (const [ceiling, creator, total] of PUMPSWAP_FEE_TIERS) {
+    if (mcapSol < ceiling) return creator / total;
+  }
+  return 5 / 30; // 98,240 SOL and above
 }
 
 async function resolveImage(mint: string, uri: string) {
@@ -674,16 +680,24 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
    * In a swap the pool gives one asset and takes the other. Only a liquidity event
    * moves both the same way for the same account.
    */
+  //
+  // Matched narrowly: ONE account must receive BOTH full sides — the largest coin
+  // delta and the largest WSOL delta, both incoming. A first attempt only required
+  // "gained coin and gained some WSOL", which also describes an ordinary buyer who
+  // wrapped SOL and kept the change; that dropped every AMM trade on the floor.
+  let isLiquidityEvent = false;
   for (const b of post) {
+    if (isLiquidityEvent) break;
     if (b.mint !== mint || !b.owner) continue;
     const coinD = Number(b.uiTokenAmount?.uiAmount || 0) - Number(preByIdx.get(b.accountIndex)?.uiTokenAmount?.uiAmount || 0);
-    if (coinD <= 0) continue;
+    if (coinD <= 0 || coinD !== tokenDelta) continue; // must be THE coin leg, incoming
     for (const w of post) {
       if (w.mint !== WSOL || w.owner !== b.owner) continue;
       const solD = Number(w.uiTokenAmount?.uiAmount || 0) - Number(preByIdx.get(w.accountIndex)?.uiTokenAmount?.uiAmount || 0);
-      if (solD > 0) return; // gained both sides -> liquidity, not a swap
+      if (solD > 0 && solD === solDelta) { isLiquidityEvent = true; break; } // and THE sol leg
     }
   }
+  if (isLiquidityEvent) return;
 
   const coinOwners = new Set<string>();
   for (const b of post) if (b.mint === mint && b.owner) coinOwners.add(b.owner);
@@ -700,14 +714,10 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
   // routing hop, and storing it would poison the column all over again.
   if (!(feeSol > 0) || feeSol > volSol * 0.05) feeSol = 0;
 
-  /**
-   * The CREATOR share, at the rate this coin's market cap actually puts it on.
-   *
-   * A flat 30 bps was wrong: that is only the bottom tier. A coin between 420 and
-   * 1,470 SOL pays 0.950% — more than three times as much — and one above 98,240 SOL
-   * pays 0.050%. See PUMPSWAP_CREATOR_TIERS.
-   */
-  const creatorFeeSol = volSol * pumpswapCreatorRate(priceSol * TOTAL_SUPPLY);
+  // The creator's slice OF WHAT WAS ACTUALLY PAID. feeSol above is measured from the
+  // SOL that moved, so a trade routed to dodge fees contributes nothing here instead
+  // of being billed at a rate it never paid.
+  const creatorFeeSol = feeSol * pumpswapCreatorShare(priceSol * TOTAL_SUPPLY);
 
   // Safety net: drop an egregious outlier so one bad decode can't spike the chart.
   const ref = lastPrice.get(mint);
