@@ -3,11 +3,13 @@
 import { useEffect, useCallback, useRef, useState, useMemo } from "react";
 import Image from "next/image";
 import { FiltersPanel } from "@/components/pulse/FiltersPanel";
-import { TweetHover } from "@/components/pulse/TweetHover";
+import { SocialIcons } from "@/components/pulse/TweetHover";
 import { PulseFilters, EMPTY_FILTERS, loadFilters, saveFilters, applyFilter, activeCount } from "@/lib/pulseFilters";
+import { instantBuy, useInstantBuyAmounts } from "@/lib/instantBuy";
+import { useToast } from "@/components/ui/Toast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Activity, RefreshCw, Copy, Search, SlidersHorizontal } from "lucide-react";
+import { Activity, RefreshCw, Copy, Search, SlidersHorizontal, Zap, Check, Loader2 } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import { formatNumber, formatPercent, shortenAddress, cn } from "@/lib/utils";
 import { usePulseStore, type PulseToken } from "@/stores/pulseStore";
@@ -51,15 +53,52 @@ interface TokenRowProps {
   token: PulseToken;
   showProgress?: boolean;
   isDark: boolean;
+  /** SOL to spend when the lightning button is clicked; set per column. */
+  buyAmount?: number;
 }
 
-function TokenRow({ token, showProgress = false, isDark }: TokenRowProps) {
+function TokenRow({ token, showProgress = false, isDark, buyAmount = 0 }: TokenRowProps) {
   const progress = getBondingProgress(token);
   const isPositive = token.priceChange24h >= 0;
+  const [buying, setBuying] = useState(false);
+  const [buyState, setBuyState] = useState<"idle" | "ok" | "err">("idle");
+  const { showToast } = useToast();
 
   const copyAddress = (e: React.MouseEvent) => {
     e.stopPropagation();
     navigator.clipboard.writeText(token.address);
+  };
+
+  const doBuy = async (e: React.MouseEvent) => {
+    // The row is a <Link>; without this the click navigates to the token page.
+    e.preventDefault();
+    e.stopPropagation();
+    if (buying) return;
+    if (!(buyAmount > 0)) {
+      showToast("Set an instant-buy amount in the column header", "error");
+      return;
+    }
+    setBuying(true);
+    setBuyState("idle");
+    const priceSol = token.marketCapSol && token.marketCap && token.price
+      ? token.price * token.marketCapSol / token.marketCap
+      : 0;
+    const res = await instantBuy({
+      mint: token.address,
+      symbol: token.symbol,
+      solAmount: buyAmount,
+      image: token.logoUri,
+      priceSol,
+      capUsd: token.marketCap,
+      isGraduated: token.complete === true,
+    });
+    setBuying(false);
+    setBuyState(res.ok ? "ok" : "err");
+    showToast(
+      res.ok ? `Bought ${buyAmount} SOL of ${token.symbol}` : res.error || "Buy failed",
+      res.ok ? "success" : "error"
+    );
+    setTimeout(() => setBuyState("idle"), 2500);
   };
 
   return (
@@ -93,7 +132,12 @@ function TokenRow({ token, showProgress = false, isDark }: TokenRowProps) {
           <span className={`text-xs truncate max-w-[80px] ${isDark ? 'text-white/40' : 'text-gray-500'}`}>{token.name}</span>
         </div>
         <div className={`flex items-center gap-2 text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
-          {token.twitter && <TweetHover url={token.twitter} isDark={isDark} />}
+          <SocialIcons
+            twitter={token.twitter}
+            telegram={token.telegram}
+            website={token.website}
+            isDark={isDark}
+          />
           <span className="font-medium">{formatMC(token.marketCap)}</span>
           <span>•</span>
           <span>{timeAgo(token.createdAt)}</span>
@@ -123,6 +167,23 @@ function TokenRow({ token, showProgress = false, isDark }: TokenRowProps) {
         >
           <Copy className="h-3.5 w-3.5" />
         </button>
+        <button
+          onClick={doBuy}
+          disabled={buying}
+          title={buyAmount > 0 ? `Buy ${buyAmount} SOL of ${token.symbol}` : "Set an amount in the column header"}
+          className={cn(
+            "p-1.5 transition-colors",
+            buyState === "ok" ? "text-up"
+              : buyState === "err" ? "text-down"
+              : isDark ? "hover:bg-[#00ffa3]/15 text-white/60 hover:text-[#00ffa3]"
+                       : "hover:bg-[#00ffa3]/15 text-gray-500 hover:text-[#00b877]"
+          )}
+        >
+          {buying
+            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            : buyState === "ok" ? <Check className="h-3.5 w-3.5" />
+            : <Zap className="h-3.5 w-3.5" />}
+        </button>
       </div>
     </Link>
   );
@@ -137,9 +198,11 @@ interface TokenColumnProps {
   showProgress?: boolean;
   accentColor?: string;
   isDark: boolean;
+  buyAmount?: number;
+  onBuyAmountChange?: (v: number) => void;
 }
 
-function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDark }: TokenColumnProps) {
+function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDark, buyAmount, onBuyAmountChange }: TokenColumnProps) {
   return (
     <div className={`flex flex-col h-[300px] md:h-full border backdrop-blur-md overflow-hidden ${
       isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-white'
@@ -161,6 +224,28 @@ function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDa
           </div>
           <p className={`text-xs truncate ${isDark ? 'text-white/50' : 'text-gray-500'}`}>{subtitle}</p>
         </div>
+
+        {/* Instant-buy amount for THIS column. Per column on purpose: what you throw
+            at a 30-second-old launch isn't what you put into something migrated. */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <Zap className="h-3 w-3 text-[#00ffa3]" />
+          <input
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step={0.01}
+            value={buyAmount ?? ""}
+            onChange={(e) => onBuyAmountChange?.(e.target.value === "" ? 0 : Number(e.target.value))}
+            aria-label={`Instant buy amount for ${title}`}
+            className={cn(
+              "w-16 px-1.5 py-1 text-xs font-mono border outline-none transition-colors focus:border-[#00ffa3]/50",
+              isDark
+                ? "bg-black/40 border-white/10 text-white"
+                : "bg-black/5 border-gray-200 text-gray-900"
+            )}
+          />
+          <span className={`text-[10px] ${isDark ? 'text-white/40' : 'text-gray-500'}`}>SOL</span>
+        </div>
       </div>
 
       {/* Token List */}
@@ -172,7 +257,13 @@ function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDa
           </div>
         ) : (
           tokens.map((token) => (
-            <TokenRow key={token.address} token={token} showProgress={showProgress} isDark={isDark} />
+            <TokenRow
+              key={token.address}
+              token={token}
+              showProgress={showProgress}
+              isDark={isDark}
+              buyAmount={buyAmount}
+            />
           ))
         )}
       </div>
@@ -200,6 +291,7 @@ export default function PulsePage() {
   // Start empty and hydrate from localStorage after mount — reading storage during
   // render would mismatch the server-rendered markup.
   const [filters, setFilters] = useState<PulseFilters>(EMPTY_FILTERS);
+  const { amounts: buyAmounts, set: setBuyAmount } = useInstantBuyAmounts();
   useEffect(() => { setFilters(loadFilters()); }, []);
   const applyFilters = (f: PulseFilters) => { setFilters(f); saveFilters(f); };
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -419,6 +511,8 @@ export default function PulsePage() {
           tokens={shownNew}
           emptyMessage="Waiting for new tokens..."
           isDark={isDark}
+          buyAmount={buyAmounts.new}
+          onBuyAmountChange={(v) => setBuyAmount("new", v)}
         />
 
         {/* Column 2: Final Stretch */}
@@ -429,6 +523,8 @@ export default function PulsePage() {
           emptyMessage="No tokens graduating..."
           showProgress
           isDark={isDark}
+          buyAmount={buyAmounts.final}
+          onBuyAmountChange={(v) => setBuyAmount("final", v)}
         />
 
         {/* Column 3: Migrated */}
@@ -438,6 +534,8 @@ export default function PulsePage() {
           tokens={shownMigrated}
           emptyMessage="No migrated tokens yet..."
           isDark={isDark}
+          buyAmount={buyAmounts.migrated}
+          onBuyAmountChange={(v) => setBuyAmount("migrated", v)}
         />
       </div>
 

@@ -339,7 +339,7 @@ export default function TokenClient() {
   const [tradesLoading, setTradesLoading] = useState(false);
   const [chartType, setChartType] = useState<ChartType>("candle");
   const [chartPeriod, setChartPeriod] = useState<string | null>(null); // Loaded from localStorage
-  const [chartMode, setChartMode] = useState<"3d" | "2d">("3d"); // 3D or 2D chart rendering
+  const [chartMode, setChartMode] = useState<"3d" | "2d">("2d"); // 2D by default; 3D is opt-in
   const [supplyData, setSupplyData] = useState<{
     totalSupply: number | null;
     maxSupply: number | null;
@@ -1152,19 +1152,8 @@ export default function TokenClient() {
                 </button>
               </div>
 
-              {/* 3D/2D Toggle */}
+              {/* 2D/3D Toggle — 2D first, since it's the default. */}
               <div className={`flex items-center gap-0.5 border p-0.5 flex-shrink-0 ${isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}>
-                <button
-                  onClick={() => setChartMode("3d")}
-                  className={cn(
-                    "px-2 py-1 md:py-1.5 text-xs font-mono transition-colors",
-                    chartMode === "3d"
-                      ? "bg-[#FF6B4A] text-white"
-                      : isDark ? "text-white/60 hover:text-white" : "text-black/60 hover:text-black"
-                  )}
-                >
-                  3D
-                </button>
                 <button
                   onClick={() => setChartMode("2d")}
                   className={cn(
@@ -1175,6 +1164,17 @@ export default function TokenClient() {
                   )}
                 >
                   2D
+                </button>
+                <button
+                  onClick={() => setChartMode("3d")}
+                  className={cn(
+                    "px-2 py-1 md:py-1.5 text-xs font-mono transition-colors",
+                    chartMode === "3d"
+                      ? "bg-[#FF6B4A] text-white"
+                      : isDark ? "text-white/60 hover:text-white" : "text-black/60 hover:text-black"
+                  )}
+                >
+                  3D
                 </button>
               </div>
             </div>

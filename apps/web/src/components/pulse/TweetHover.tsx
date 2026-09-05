@@ -1,17 +1,22 @@
 "use client";
 
 /**
- * The bird under a pulse row's ticker. Hover it to read the coin's tweet without
- * leaving the list; click to open it.
+ * Social links under a pulse row's ticker. Hover the bird to read the coin's tweet
+ * without leaving the list; click any icon to open it.
  *
- * Two details that matter here:
- *  - The card is position:fixed, not absolute. Pulse columns scroll (overflow-y-auto),
- *    and an absolutely positioned card is clipped by that ancestor — it would be cut
- *    off for every row except the middle ones.
- *  - The row is a <Link>, so this cannot be an <a> (nested anchors are invalid and
- *    React strips them). It's a button that stops propagation and opens the tab.
+ * Three details that matter here:
+ *  - The card is rendered through a PORTAL onto document.body. position:fixed alone
+ *    was not enough: the pulse column is `backdrop-blur-md overflow-hidden`, and a
+ *    filtered element becomes the containing block for fixed descendants AND clips
+ *    them. So the card was positioned against the column instead of the viewport and
+ *    then cropped away — which is why hovering appeared to do nothing at all.
+ *  - The card must be measured and placed from the icon's viewport rect, resolved
+ *    once into a final top-left (see open()).
+ *  - The row is a <Link>, so these cannot be <a> (nested anchors are invalid and
+ *    React strips them). They're buttons that stop propagation and open the tab.
  */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 interface Tweet {
   text: string;
@@ -56,11 +61,71 @@ const BirdIcon = () => (
   </svg>
 );
 
+const TgIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden className="h-3 w-3 fill-current">
+    <path d="M11.99 0C5.37 0 0 5.37 0 12s5.37 12 11.99 12C18.62 24 24 18.63 24 12S18.62 0 11.99 0zm5.57 8.16-1.86 8.77c-.14.62-.51.77-1.03.48l-2.85-2.1-1.37 1.32c-.15.15-.28.28-.58.28l.21-2.93 5.34-4.82c.23-.21-.05-.32-.36-.12L8.46 12.6l-2.84-.89c-.62-.19-.63-.62.13-.92l11.1-4.28c.51-.19.96.12.71 1.65z" />
+  </svg>
+);
+
+const WebIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden className="h-3 w-3 fill-none stroke-current" strokeWidth="2">
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18" />
+  </svg>
+);
+
+/** Open in a new tab without triggering the row <Link> underneath. */
+function useOpenTab() {
+  return useCallback((url: string) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, []);
+}
+
+/** Bird + telegram + website, whichever the coin actually has. */
+export function SocialIcons({
+  twitter, telegram, website, isDark,
+}: { twitter?: string; telegram?: string; website?: string; isDark: boolean }) {
+  const openTab = useOpenTab();
+  if (!twitter && !telegram && !website) return null;
+  const dim = isDark ? "text-white/35" : "text-gray-400";
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {twitter && <TweetHover url={twitter} isDark={isDark} />}
+      {telegram && (
+        <button
+          type="button"
+          onClick={openTab(telegram)}
+          aria-label="Telegram"
+          className={`transition-colors hover:text-[#229ED9] ${dim}`}
+        >
+          <TgIcon />
+        </button>
+      )}
+      {website && (
+        <button
+          type="button"
+          onClick={openTab(website)}
+          aria-label="Website"
+          className={`transition-colors hover:text-[#FF6B4A] ${dim}`}
+        >
+          <WebIcon />
+        </button>
+      )}
+    </span>
+  );
+}
+
 export function TweetHover({ url, isDark }: { url: string; isDark: boolean }) {
   const [preview, setPreview] = useState<Preview | null>(() => cache.get(url) ?? null);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // document.body doesn't exist during SSR; the portal can only mount client-side.
+  useEffect(() => setMounted(true), []);
 
   const open = useCallback(() => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
@@ -110,7 +175,7 @@ export function TweetHover({ url, isDark }: { url: string; isDark: boolean }) {
         <BirdIcon />
       </button>
 
-      {pos && (
+      {pos && mounted && createPortal(
         <div
           onMouseEnter={() => closeTimer.current && clearTimeout(closeTimer.current)}
           onMouseLeave={close}
@@ -122,8 +187,9 @@ export function TweetHover({ url, isDark }: { url: string; isDark: boolean }) {
             width: CARD_W,
             maxHeight: CARD_MAX_H,
             overflowY: "auto",
+            zIndex: 2147483000, // above the pulse chrome, whatever it stacks at
           }}
-          className={`z-[100] border p-3 shadow-2xl cursor-pointer text-xs ${
+          className={`border p-3 shadow-2xl cursor-pointer text-xs ${
             isDark ? "bg-[#111] border-white/10 text-white/80" : "bg-white border-gray-200 text-gray-700"
           }`}
         >
@@ -171,7 +237,8 @@ export function TweetHover({ url, isDark }: { url: string; isDark: boolean }) {
           ) : (
             <div className="truncate">{preview.url}</div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );
