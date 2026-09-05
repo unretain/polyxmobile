@@ -280,6 +280,34 @@ export function readSocials(j: any): Socials {
   };
 }
 
+/**
+ * PumpSwap's creator fee, per pump.fun's published schedule (pump.fun/docs/fees).
+ *
+ * It is NOT a flat rate. On a canonical pool the creator's share is tiered by the
+ * coin's SOL-denominated market cap: 0.300% at the bottom, jumping to 0.950% once the
+ * coin clears 420 SOL, then declining step by step to 0.050% above 98,240 SOL.
+ *
+ * The chain confirms it per trade — pump.fun's fee program returns its own split as
+ * [lp, protocol, creator] bps inside the transaction. Observed: [0, 95, 30] on the
+ * bonding curve (matching the documented 0.95/0.300 exactly), [2, 93, 30] on an AMM
+ * swap of a sub-420-SOL coin, and [20, 5, 75] on a larger one — which is this table's
+ * 4,420-9,820 tier. Assuming any single rate is therefore wrong by up to 19x.
+ */
+const PUMPSWAP_CREATOR_TIERS: Array<[number, number]> = [
+  [420, 0.00300], [1470, 0.00950], [2460, 0.00900], [3440, 0.00850],
+  [4420, 0.00800], [9820, 0.00750], [14740, 0.00700], [19650, 0.00650],
+  [24560, 0.00600], [29470, 0.00550], [34380, 0.00500], [39300, 0.00450],
+  [44210, 0.00400], [49120, 0.00350], [54030, 0.00300], [58940, 0.00275],
+  [63860, 0.00250], [68770, 0.00225], [73681, 0.00200], [78590, 0.00175],
+  [83500, 0.00150], [88400, 0.00125], [93330, 0.00100], [98240, 0.00075],
+];
+const PUMPSWAP_CREATOR_TOP = 0.00050; // 98,240 SOL and above
+
+function pumpswapCreatorRate(mcapSol: number): number {
+  for (const [ceiling, rate] of PUMPSWAP_CREATOR_TIERS) if (mcapSol < ceiling) return rate;
+  return PUMPSWAP_CREATOR_TOP;
+}
+
 async function resolveImage(mint: string, uri: string) {
   if (!uri) return;
   const attach = (img: string) => {
@@ -382,6 +410,9 @@ function handleTransaction(update: any) {
   // Real slot, not 0. Every trade row was landing with slot=0, which threw away the
   // only on-chain ordering signal we had inside a second.
   const slot = Number(update.transaction?.slot ?? 0) || 0;
+  // Mints this transaction already accounted for via a bonding-curve TradeEvent, so
+  // the PumpSwap pass below cannot record the same swap a second time.
+  const curveMints = new Set<string>();
   // FULL account list, in runtime order: static keys, then the addresses resolved
   // from Address Lookup Tables (writable, then readonly). PumpSwap swaps put the
   // program + pool accounts in an ALT, so a static-only key list makes us miss every
@@ -515,6 +546,7 @@ function handleTransaction(update: any) {
         // resolution (block time is only 1s-precise). The stream is smooth end-to-end
         // (verified), so this no longer piles a burst into one wrong bucket.
         recordCandle(mint, priceSol, solLamports / 1e9);
+        curveMints.add(mint);
         recordTrade({ mint, signature, slot, ts: chDateTime(tsSec > 0 ? tsSec * 1000 : Date.now()), is_buy: isBuy ? 1 : 0, sol_amount: solLamports / 1e9, token_amount: tokenRaw / 1e6, price_sol: priceSol, mcap_sol: token.marketCapSol, real_token_reserves: realTok, real_sol: realSol / 1e9, fee_sol: feeSol, creator_fee_sol: creatorFeeSol, trader });
         // Per-trade event for the token page's live "recent trades" panel — built +
         // broadcast ONLY when someone actually has this coin's chart open (see hasViewer).
@@ -566,17 +598,26 @@ function handleTransaction(update: any) {
   }
 
   // PumpSwap (post-graduation AMM). A token we track trading here = it MIGRATED.
-  if (keys.some((k) => bytesEqual(k, PUMPSWAP_PROGRAM_BYTES))) handlePumpSwap(tx, signature, keys, slot);
+  //
+  // Skipped for a mint that already produced a bonding-curve TradeEvent above. A
+  // migration or a bundled buy touches BOTH programs in one transaction, and this used
+  // to record the same swap twice — once from the curve event and once from the pool
+  // deltas. Verified on 7WbM...SJDU, whose 35.26 SOL bundle buy appears in both sets
+  // under one signature. Every double count inflates that coin's volume and its fees.
+  if (keys.some((k) => bytesEqual(k, PUMPSWAP_PROGRAM_BYTES))) {
+    handlePumpSwap(tx, signature, keys, slot, curveMints);
+  }
 }
 
 // Price from pool reserves (uiAmount handles decimals) — IDL-independent, robust
 // to pump changing their event layout. quote=WSOL(9), base=token.
-function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot = 0) {
+function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot = 0, curveMints?: Set<string>) {
   const post = tx.meta.postTokenBalances || [];
   if (!post.length) return;
   const mints = [...new Set(post.map((b: any) => b.mint))].filter((m: any) => m && m !== WSOL) as string[];
   if (mints.length !== 1) return;
   const mint = mints[0];
+  if (curveMints?.has(mint)) return; // already recorded from this tx's curve event
   // Only tokens we already know (migrated out of our own feed). Ones created
   // before we started need the RPC backfill instead.
   const token = state.newTokens.get(mint) || state.graduatingTokens.get(mint) || state.graduatedTokens.get(mint);
@@ -620,6 +661,30 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
    * Taking "all gains but the largest" instead reported 12-14% of volume, because a
    * trader who wraps SOL owns a WSOL account too and their wrap dwarfs the pool leg.
    */
+  /**
+   * A pool being FILLED is not a trade.
+   *
+   * At migration the bonding curve hands the new pool both sides at once — for
+   * 7WbM...SJDU that was 206,900,000 tokens and 67.405853768 SOL to owner 5Liv6AQrg8,
+   * which this decoder read as a 67 SOL swap. It is the single largest "trade" that
+   * coin ever had, and the same 206.9M/67.4 pair shows up on every migration because
+   * it is the standard seeding amount. Counted as volume it invents fees that nobody
+   * paid, on top of distorting the chart.
+   *
+   * In a swap the pool gives one asset and takes the other. Only a liquidity event
+   * moves both the same way for the same account.
+   */
+  for (const b of post) {
+    if (b.mint !== mint || !b.owner) continue;
+    const coinD = Number(b.uiTokenAmount?.uiAmount || 0) - Number(preByIdx.get(b.accountIndex)?.uiTokenAmount?.uiAmount || 0);
+    if (coinD <= 0) continue;
+    for (const w of post) {
+      if (w.mint !== WSOL || w.owner !== b.owner) continue;
+      const solD = Number(w.uiTokenAmount?.uiAmount || 0) - Number(preByIdx.get(w.accountIndex)?.uiTokenAmount?.uiAmount || 0);
+      if (solD > 0) return; // gained both sides -> liquidity, not a swap
+    }
+  }
+
   const coinOwners = new Set<string>();
   for (const b of post) if (b.mint === mint && b.owner) coinOwners.add(b.owner);
   for (const b of (tx.meta.preTokenBalances || [])) if (b.mint === mint && b.owner) coinOwners.add(b.owner);
@@ -636,24 +701,13 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
   if (!(feeSol > 0) || feeSol > volSol * 0.05) feeSol = 0;
 
   /**
-   * The CREATOR share — the same quantity the bonding-curve event reports directly,
-   * so a coin's fee figure means one thing on both venues.
+   * The CREATOR share, at the rate this coin's market cap actually puts it on.
    *
-   * The rate is not assumed and not a ballpark: pump.fun's fee program publishes its
-   * bps split inside the transaction itself. It returns `0, 95, 30` on the curve and
-   * `2, 93, 30` on the AMM — the creator leg is 30 bps in both. Confirmed against the
-   * SOL that actually moved in a live AMM sell: legs of 0.004819830 / 0.003109568 /
-   * 0.004819830 against a 1.0363152 SOL pool leg, where the middle one is 30.006 bps
-   * (the 0.006 is rounding in the pool leg) and the outer pair is the 93+2 protocol
-   * share.
-   *
-   * Applied as the rate rather than by picking a leg out of the balance deltas.
-   * Leg-picking was tried and is not dependable here: many swaps route their fees in a
-   * way this decoder cannot separate, so it produced 0.2-10.9 bps across consecutive
-   * minutes instead of a flat 30. A published, chain-confirmed constant times the
-   * volume we measured is the exact figure; a leg we only sometimes see is not.
+   * A flat 30 bps was wrong: that is only the bottom tier. A coin between 420 and
+   * 1,470 SOL pays 0.950% — more than three times as much — and one above 98,240 SOL
+   * pays 0.050%. See PUMPSWAP_CREATOR_TIERS.
    */
-  const creatorFeeSol = volSol * 0.003;
+  const creatorFeeSol = volSol * pumpswapCreatorRate(priceSol * TOTAL_SUPPLY);
 
   // Safety net: drop an egregious outlier so one bad decode can't spike the chart.
   const ref = lastPrice.get(mint);
