@@ -17,17 +17,20 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { usePulsePauseStore } from "@/stores/pulsePauseStore";
 
 interface Tweet {
   text: string;
   author: string;
   handle: string;
   url: string;
+  avatar?: string;
+  media?: string[];
 }
 
 type Preview =
   | ({ kind: "tweet"; quoted?: Tweet } & Tweet)
-  | { kind: "profile"; handle: string; url: string }
+  | { kind: "profile"; handle: string; url: string; author?: string; avatar?: string; latest?: Tweet }
   | { kind: "link"; url: string };
 
 const CARD_W = 340;
@@ -73,6 +76,53 @@ const WebIcon = () => (
     <path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18" />
   </svg>
 );
+
+/** One tweet: author line, text, any attached images, and the tweet it quotes.
+ *  Plain img on purpose — these are pbs.twimg.com URLs the browser loads directly,
+ *  and next/image would route them through the optimizer for no benefit. */
+function TweetBody({ t, quoted, isDark }: { t: Tweet; quoted?: Tweet; isDark: boolean }) {
+  return (
+    <>
+      <div className="flex items-center gap-1.5 mb-1.5">
+        {t.avatar ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={t.avatar} alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
+        ) : (
+          <span className="text-[#1D9BF0]"><BirdIcon /></span>
+        )}
+        <span className="font-semibold truncate">{t.author}</span>
+        <span className={`truncate ${isDark ? "text-white/30" : "text-gray-400"}`}>@{t.handle}</span>
+      </div>
+      {/* Server-decoded plain text — never third-party markup. */}
+      {t.text && <p className="whitespace-pre-wrap break-words leading-snug line-clamp-6">{t.text}</p>}
+      {!!t.media?.length && (
+        <div className={`mt-2 grid gap-1 ${t.media.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
+          {t.media.slice(0, 4).map((m) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img key={m} src={m} alt="" loading="lazy" className="w-full max-h-40 object-cover border border-white/10" />
+          ))}
+        </div>
+      )}
+      {/* Quote tweets: the coin's pitch is often entirely in the tweet it quotes,
+          so the outer one alone tells you nothing. */}
+      {quoted && (
+        <div className={`mt-2 border-l-2 pl-2 ${isDark ? "border-white/15" : "border-gray-300"}`}>
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className={`font-semibold truncate ${isDark ? "text-white/70" : "text-gray-600"}`}>{quoted.author}</span>
+            <span className={`truncate ${isDark ? "text-white/25" : "text-gray-400"}`}>@{quoted.handle}</span>
+          </div>
+          <p className={`whitespace-pre-wrap break-words leading-snug line-clamp-6 ${isDark ? "text-white/60" : "text-gray-500"}`}>
+            {quoted.text}
+          </p>
+          {!!quoted.media?.length && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={quoted.media[0]} alt="" loading="lazy" className="mt-1 w-full max-h-28 object-cover border border-white/10" />
+          )}
+        </div>
+      )}
+    </>
+  );
+}
 
 /** Open in a new tab without triggering the row <Link> underneath. */
 function useOpenTab() {
@@ -123,6 +173,7 @@ export function TweetHover({ url, isDark }: { url: string; isDark: boolean }) {
   const [mounted, setMounted] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setCardOpen = usePulsePauseStore((s) => s.setCardOpen);
 
   // document.body doesn't exist during SSR; the portal can only mount client-side.
   useEffect(() => setMounted(true), []);
@@ -148,12 +199,22 @@ export function TweetHover({ url, isDark }: { url: string; isDark: boolean }) {
     let top = r.top - 8;
     if (top + CARD_MAX_H > window.innerHeight - M) top = window.innerHeight - CARD_MAX_H - M;
     setPos({ x: left, y: Math.max(M, top) });
+    setCardOpen(true);
     load(url).then((p) => p && setPreview(p));
-  }, [url]);
+  }, [url, setCardOpen]);
 
   const close = useCallback(() => {
-    closeTimer.current = setTimeout(() => setPos(null), 80);
-  }, []);
+    closeTimer.current = setTimeout(() => {
+      setPos(null);
+      setCardOpen(false);
+    }, 80);
+  }, [setCardOpen]);
+
+  // Releasing the pause on unmount matters: the list is frozen while the card is
+  // open, and a frozen list is exactly what stops this row from being unmounted —
+  // but a filter change or tab switch can still pull it, and the board would then
+  // stay stuck forever with no pointer anywhere near it.
+  useEffect(() => () => setCardOpen(false), [setCardOpen]);
 
   const openTab = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -196,44 +257,22 @@ export function TweetHover({ url, isDark }: { url: string; isDark: boolean }) {
           {!preview ? (
             <div className={isDark ? "text-white/30" : "text-gray-400"}>loading tweet…</div>
           ) : preview.kind === "tweet" ? (
-            <>
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <span className="text-[#1D9BF0]">
-                  <BirdIcon />
-                </span>
-                <span className="font-semibold truncate">{preview.author}</span>
-                <span className={`truncate ${isDark ? "text-white/30" : "text-gray-400"}`}>@{preview.handle}</span>
-              </div>
-              {/* Server-decoded plain text — never third-party markup. */}
-              <p className="whitespace-pre-wrap break-words leading-snug line-clamp-6">{preview.text}</p>
-              {/* Quote tweets: the coin's pitch is often entirely in the tweet it
-                  quotes, so the outer one alone tells you nothing. */}
-              {preview.quoted && (
-                <div className={`mt-2 border-l-2 pl-2 ${isDark ? "border-white/15" : "border-gray-300"}`}>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className={`font-semibold truncate ${isDark ? "text-white/70" : "text-gray-600"}`}>
-                      {preview.quoted.author}
-                    </span>
-                    <span className={`truncate ${isDark ? "text-white/25" : "text-gray-400"}`}>
-                      @{preview.quoted.handle}
-                    </span>
-                  </div>
-                  <p className={`whitespace-pre-wrap break-words leading-snug line-clamp-6 ${
-                    isDark ? "text-white/60" : "text-gray-500"
-                  }`}>
-                    {preview.quoted.text}
-                  </p>
-                </div>
-              )}
-            </>
+            <TweetBody t={preview} quoted={preview.quoted} isDark={isDark} />
           ) : preview.kind === "profile" ? (
-            <div className="flex items-center gap-1.5">
-              <span className="text-[#1D9BF0]">
-                <BirdIcon />
-              </span>
-              <span>@{preview.handle}</span>
-              <span className={isDark ? "text-white/30" : "text-gray-400"}>· profile, not a tweet</span>
-            </div>
+            preview.latest ? (
+              <>
+                <div className={`mb-1.5 text-[10px] uppercase tracking-wide ${isDark ? "text-white/30" : "text-gray-400"}`}>
+                  latest from @{preview.handle}
+                </div>
+                <TweetBody t={preview.latest} isDark={isDark} />
+              </>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <span className="text-[#1D9BF0]"><BirdIcon /></span>
+                <span>@{preview.handle}</span>
+                <span className={isDark ? "text-white/30" : "text-gray-400"}>· profile</span>
+              </div>
+            )
           ) : (
             <div className="truncate">{preview.url}</div>
           )}

@@ -9,7 +9,8 @@ import { instantBuy, useInstantBuyAmounts } from "@/lib/instantBuy";
 import { useToast } from "@/components/ui/Toast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Activity, RefreshCw, Copy, Search, SlidersHorizontal, Zap, Check, Loader2 } from "lucide-react";
+import { Activity, RefreshCw, Copy, Search, SlidersHorizontal, Zap, Check, Loader2, Pause } from "lucide-react";
+import { usePulsePauseStore, usePulsePaused } from "@/stores/pulsePauseStore";
 import { useThemeStore } from "@/stores/themeStore";
 import { formatNumber, formatPercent, shortenAddress, cn } from "@/lib/utils";
 import { usePulseStore, type PulseToken } from "@/stores/pulseStore";
@@ -158,11 +159,13 @@ function TokenRow({ token, showProgress = false, isDark, buyAmount = 0 }: TokenR
         {formatPercent(token.priceChange24h)}
       </div>
 
-      {/* Quick Actions */}
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      {/* Quick Actions. The buy button is ALWAYS visible — it's the primary action on
+          this page, and hiding it behind a row hover made it impossible to find.
+          Copy stays hover-only. */}
+      <div className="flex items-center gap-1">
         <button
           onClick={copyAddress}
-          className={`p-1.5 transition-colors ${isDark ? 'hover:bg-white/10 text-white/60' : 'hover:bg-black/10 text-gray-500'}`}
+          className={`p-1.5 transition-opacity opacity-0 group-hover:opacity-100 ${isDark ? 'hover:bg-white/10 text-white/60' : 'hover:bg-black/10 text-gray-500'}`}
           title="Copy address"
         >
           <Copy className="h-3.5 w-3.5" />
@@ -172,17 +175,17 @@ function TokenRow({ token, showProgress = false, isDark, buyAmount = 0 }: TokenR
           disabled={buying}
           title={buyAmount > 0 ? `Buy ${buyAmount} SOL of ${token.symbol}` : "Set an amount in the column header"}
           className={cn(
-            "p-1.5 transition-colors",
-            buyState === "ok" ? "text-up"
-              : buyState === "err" ? "text-down"
-              : isDark ? "hover:bg-[#00ffa3]/15 text-white/60 hover:text-[#00ffa3]"
-                       : "hover:bg-[#00ffa3]/15 text-gray-500 hover:text-[#00b877]"
+            "flex items-center gap-1 px-1.5 py-1 text-[10px] font-mono border transition-colors",
+            buyState === "ok" ? "border-up/40 text-up bg-up/10"
+              : buyState === "err" ? "border-down/40 text-down bg-down/10"
+              : "border-[#00ffa3]/30 text-[#00ffa3] hover:bg-[#00ffa3]/15"
           )}
         >
           {buying
-            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            : buyState === "ok" ? <Check className="h-3.5 w-3.5" />
-            : <Zap className="h-3.5 w-3.5" />}
+            ? <Loader2 className="h-3 w-3 animate-spin" />
+            : buyState === "ok" ? <Check className="h-3 w-3" />
+            : <Zap className="h-3 w-3" />}
+          {!buying && buyState === "idle" && buyAmount > 0 && <span>{buyAmount}</span>}
         </button>
       </div>
     </Link>
@@ -203,6 +206,8 @@ interface TokenColumnProps {
 }
 
 function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDark, buyAmount, onBuyAmountChange }: TokenColumnProps) {
+  const setHoveringList = usePulsePauseStore((s) => s.setHoveringList);
+  const paused = usePulsePaused();
   return (
     <div className={`flex flex-col h-[300px] md:h-full border backdrop-blur-md overflow-hidden ${
       isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-white'
@@ -221,6 +226,13 @@ function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDa
             }`}>
               {tokens.length}
             </span>
+            {/* A frozen list should never look like a dead feed. */}
+            {paused && (
+              <span className="flex items-center gap-1 text-[10px] text-[#FF6B4A]" title="Updates resume when you move away">
+                <Pause className="h-2.5 w-2.5 fill-current" />
+                paused
+              </span>
+            )}
           </div>
           <p className={`text-xs truncate ${isDark ? 'text-white/50' : 'text-gray-500'}`}>{subtitle}</p>
         </div>
@@ -248,8 +260,13 @@ function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDa
         </div>
       </div>
 
-      {/* Token List */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      {/* Token List. Hovering anywhere in here freezes all three columns — see
+          pulsePauseStore for why it's the whole board and not just this one. */}
+      <div
+        className="flex-1 overflow-y-auto p-2 space-y-1"
+        onMouseEnter={() => setHoveringList(true)}
+        onMouseLeave={() => setHoveringList(false)}
+      >
         {tokens.length === 0 ? (
           <div className={`flex flex-col items-center justify-center h-32 ${isDark ? 'text-white/40' : 'text-gray-400'}`}>
             <Activity className="h-8 w-8 mb-2 opacity-40" />
@@ -440,10 +457,23 @@ export default function PulsePage() {
 
   // The socket replaces these lists every second, so filtering has to happen here on
   // each render rather than once at fetch time.
-  const shownNew = applyFilter(newPairs, filters.new);
-  const shownFinal = applyFilter(graduatingPairs, filters.final);
-  const shownMigrated = applyFilter(graduatedPairs, filters.migrated);
+  const liveNew = applyFilter(newPairs, filters.new);
+  const liveFinal = applyFilter(graduatingPairs, filters.final);
+  const liveMigrated = applyFilter(graduatedPairs, filters.migrated);
   const filterCount = activeCount(filters.new) + activeCount(filters.final) + activeCount(filters.migrated);
+
+  // Hold the lists still while you're pointing at them. New coins insert at the TOP
+  // several times a second, so without this the row under your cursor changes while
+  // you read a tweet — and the lightning you were aiming at becomes another coin.
+  // Updates keep arriving in the store; only what is RENDERED is frozen.
+  const paused = usePulsePaused();
+  const frozenRef = useRef<{ n: PulseToken[]; f: PulseToken[]; m: PulseToken[] } | null>(null);
+  const { n: shownNew, f: shownFinal, m: shownMigrated } = useMemo(() => {
+    if (paused && frozenRef.current) return frozenRef.current;
+    const cur = { n: liveNew, f: liveFinal, m: liveMigrated };
+    frozenRef.current = cur;
+    return cur;
+  }, [paused, liveNew, liveFinal, liveMigrated]);
 
   const totalTokens = shownNew.length + shownFinal.length + shownMigrated.length;
 
