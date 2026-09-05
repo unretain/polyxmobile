@@ -433,6 +433,21 @@ export async function getTokensMissingImages(limit: number, hours = 6) {
  *  so this can't retry forever on the same rows. The caller remembers every uri it
  *  has fetched and skips it, which bounds the sweep to one fetch per coin per
  *  process, and the window keeps it to coins recent enough to still be on screen. */
+/** Socials we already hold durably, for a specific set of mints. Used to hydrate the
+ *  IN-MEMORY tokens: the durable row can be ahead of memory (a backfill from an
+ *  earlier process wrote it, or the coin was re-added to a list after a restart), and
+ *  memory is what /api/feed/token and the live lists answer from. */
+export async function getSocialsForMints(mints: string[]) {
+  if (!mints.length) return [] as any[];
+  return q<any>(
+    `SELECT mint, twitter, telegram, website
+     FROM tokens FINAL
+     WHERE mint IN {mints:Array(String)}
+       AND (twitter != '' OR telegram != '' OR website != '')`,
+    { mints }
+  );
+}
+
 export async function getTokensMissingSocials(limit: number, hours = 6) {
   return q<any>(
     `SELECT mint, name, symbol, uri, image, toUnixTimestamp64Milli(created_at) AS created_ms

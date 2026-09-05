@@ -14,7 +14,7 @@ import bs58 from "bs58";
 import { createHash } from "crypto";
 // Dual-write persistence: this single decoder feeds ClickHouse too (no 2nd gRPC).
 import { recordToken, recordTrade, recordGraduation, chDateTime } from "../clickhouse/writer";
-import { getGraduatingPairs as chGraduatingPairs, getGraduatedPairs as chGraduatedPairs, getNewPairs as chNewPairs, getTokensMissingImages, getTokensMissingSocials } from "../clickhouse/queries";
+import { getGraduatingPairs as chGraduatingPairs, getGraduatedPairs as chGraduatedPairs, getNewPairs as chNewPairs, getTokensMissingImages, getTokensMissingSocials, getSocialsForMints } from "../clickhouse/queries";
 import { clickhouseEnabled } from "../clickhouse/client";
 import { memo } from "../lib/memo";
 import { proxyImg } from "../lib/imgurl";
@@ -246,29 +246,66 @@ const NO_IMAGE = "\x00none"; // sentinel: metadata fetched OK but has no image (
 // hedgedFetch tries gateways in order and falls through on slowness, so an unreachable
 // or throttling gateway costs a second instead of the whole metadata pipeline.
 
+export type Socials = { twitter?: string; telegram?: string; website?: string };
+
+/** Socials keyed by metadata uri, so a cache HIT can restore them like the image.
+ *  Without this, the FIRST resolve of a uri set the socials and every later attach
+ *  set only the logo — leaving the coin with a Twitter in ClickHouse and none in
+ *  memory. Memory is what /api/feed/token and the live lists serve, so the bird
+ *  vanished for exactly the coins that were still on screen. */
+const socialsCache = new Map<string, Socials>();
+
+/** The in-memory token, whichever list it currently lives in. */
+export function anyToken(mint: string): PulseToken | undefined {
+  return state.newTokens.get(mint) || state.graduatingTokens.get(mint) || state.graduatedTokens.get(mint);
+}
+
+/** Fill in blanks only — never overwrite a link we already have. */
+function applySocials(t: PulseToken, s: Socials | undefined) {
+  if (!s) return;
+  if (!t.twitter && s.twitter) t.twitter = s.twitter;
+  if (!t.telegram && s.telegram) t.telegram = s.telegram;
+  if (!t.website && s.website) t.website = s.website;
+}
+
+/** Socials out of a metadata JSON (top level or under `extensions`). */
+export function readSocials(j: any): Socials {
+  const ext = j?.extensions || {};
+  const pick = (a: unknown, b: unknown) =>
+    (typeof a === "string" && a ? a : typeof b === "string" && b ? b : undefined);
+  return {
+    twitter: pick(j?.twitter, ext.twitter) || pick(j?.twitter_url, ext.twitter_url),
+    telegram: pick(j?.telegram, ext.telegram),
+    website: pick(j?.website, ext.website),
+  };
+}
+
 async function resolveImage(mint: string, uri: string) {
   if (!uri) return;
   const attach = (img: string) => {
-    const t = state.newTokens.get(mint) || state.graduatingTokens.get(mint) || state.graduatedTokens.get(mint);
-    if (t && !t.logoUri) t.logoUri = img;
+    const t = anyToken(mint);
+    if (!t) return;
+    if (img && !t.logoUri) t.logoUri = img;
+    // Socials ride along on EVERY attach, not just the cold fetch.
+    applySocials(t, socialsCache.get(uri));
   };
   const cached = state.imageCache.get(uri);
-  if (cached === "" || cached === NO_IMAGE) return; // in-flight, or metadata has no image — don't dup/retry
+  if (cached === "") return;                        // in-flight — don't duplicate the fetch
+  // Metadata fetched fine but carries no image. It can still carry a Twitter, so
+  // attach what we know instead of returning empty-handed.
+  if (cached === NO_IMAGE) { attach(""); return; }
   if (cached) { attach(cached); return; }           // already resolved — (re)attach
   state.imageCache.set(uri, "");                     // mark in-flight
   try {
     const j = await fetchMetadata(uri);
     if (!j) throw new Error("metadata unavailable");
     const img = typeof j?.image === "string" ? j.image : "";
-    // Socials live in the same metadata JSON (top-level or under extensions).
-    const t = state.newTokens.get(mint) || state.graduatingTokens.get(mint) || state.graduatedTokens.get(mint);
-    if (t) {
-      const ext = j?.extensions || {};
-      const pick = (a: unknown, b: unknown) => (typeof a === "string" && a ? a : typeof b === "string" && b ? b : undefined);
-      t.twitter = t.twitter || pick(j?.twitter, ext.twitter) || pick(j?.twitter_url, ext.twitter_url);
-      t.telegram = t.telegram || pick(j?.telegram, ext.telegram);
-      t.website = t.website || pick(j?.website, ext.website);
-    }
+    // Socials live in the same metadata JSON. Cache them by uri BEFORE the early
+    // return below, so a coin whose metadata has no image still gets its links.
+    const socials = readSocials(j);
+    socialsCache.set(uri, socials);
+    const t = anyToken(mint);
+    if (t) applySocials(t, socials);
     // Successful fetch but the metadata genuinely has no image -> cache a sentinel
     // so we STOP retrying it. A network/fetch error (catch) DELETES the marker so
     // the list-getter retry re-attempts it (transient blips like slow IPFS recover).
@@ -1023,16 +1060,16 @@ async function backfillMissingImages() {
           const j = await fetchMetadata(String(r.uri));
           const img = typeof j?.image === "string" ? j.image.trim() : "";
           if (!img) return;
-          // We already paid for the metadata fetch — take the socials too.
-          const ext = (j as any)?.extensions || {};
-          const pick = (a: unknown, b: unknown) =>
-            (typeof a === "string" && a ? a : typeof b === "string" && b ? b : "");
+          // We already paid for the metadata fetch — take the socials too, and put
+          // them in memory as well as ClickHouse (see backfillMissingSocials).
+          const s = readSocials(j);
+          socialsCache.set(String(r.uri), s);
+          const t = anyToken(r.mint);
+          if (t) { if (!t.logoUri) t.logoUri = img; applySocials(t, s); }
           recordToken({
             mint: r.mint, name: r.name || "", symbol: r.symbol || "",
             uri: String(r.uri), image: img, creator: "",
-            twitter: pick((j as any)?.twitter, ext.twitter) || pick((j as any)?.twitter_url, ext.twitter_url),
-            telegram: pick((j as any)?.telegram, ext.telegram),
-            website: pick((j as any)?.website, ext.website),
+            twitter: s.twitter || "", telegram: s.telegram || "", website: s.website || "",
             created_at: chDateTime(Number(r.created_ms) || Date.now()), created_slot: 0,
           });
           prefetch(img);
@@ -1059,6 +1096,44 @@ async function backfillMissingImages() {
  */
 const socialsChecked = new Set<string>();
 let socialSweepBusy = false;
+
+/**
+ * Copy socials we already hold in ClickHouse onto the in-memory tokens.
+ *
+ * The durable row is routinely AHEAD of memory — a backfill in an earlier process
+ * wrote it, or the coin was re-added to a list after a restart — and no sweep will
+ * repair that, because the sweeps look for rows MISSING socials and this row isn't
+ * one. Meanwhile /api/feed/token and the live lists answer from memory whenever the
+ * coin is still tracked, so the coin has a Twitter in the database and no bird on
+ * screen. One small query per tick, bounded by what is actually in memory.
+ */
+async function hydrateSocialsFromCH() {
+  if (!clickhouseEnabled()) return;
+  const need: string[] = [];
+  for (const m of [state.newTokens, state.graduatingTokens, state.graduatedTokens]) {
+    for (const [mint, t] of m) {
+      if (!t.twitter && !t.telegram && !t.website) need.push(mint);
+    }
+  }
+  if (!need.length) return;
+  try {
+    const rows = await getSocialsForMints([...new Set(need)].slice(0, 800));
+    let n = 0;
+    for (const r of rows) {
+      const t = anyToken(String(r.mint));
+      if (!t) continue;
+      applySocials(t, {
+        twitter: r.twitter || undefined,
+        telegram: r.telegram || undefined,
+        website: r.website || undefined,
+      });
+      n++;
+    }
+    if (n) console.log(`[pulse] socials hydrate: ${n} in-memory coins picked up links from CH`);
+  } catch (e) {
+    console.error("[pulse] socials hydrate failed:", (e as Error).message);
+  }
+}
 async function backfillMissingSocials() {
   if (!clickhouseEnabled() || socialSweepBusy) return;
   socialSweepBusy = true;
@@ -1073,17 +1148,19 @@ async function backfillMissingSocials() {
         try {
           const j = await fetchMetadata(uri);
           if (!j) return;
-          const ext = (j as any)?.extensions || {};
-          const pick = (a: unknown, b: unknown) =>
-            (typeof a === "string" && a ? a : typeof b === "string" && b ? b : "");
-          const twitter = pick((j as any)?.twitter, ext.twitter) || pick((j as any)?.twitter_url, ext.twitter_url);
-          const telegram = pick((j as any)?.telegram, ext.telegram);
-          const website = pick((j as any)?.website, ext.website);
-          if (!twitter && !telegram && !website) return; // genuinely has none
+          const s = readSocials(j);
+          if (!s.twitter && !s.telegram && !s.website) return; // genuinely has none
+          // Patch MEMORY as well as ClickHouse. Writing only the durable row is how a
+          // coin ended up with a Twitter in CH and none on screen: /api/feed/token and
+          // the live lists answer from memory whenever the coin is still tracked, so a
+          // CH-only write is invisible for exactly the coins a user is looking at.
+          socialsCache.set(uri, s);
+          const t = anyToken(r.mint);
+          if (t) applySocials(t, s);
           recordToken({
             mint: r.mint, name: r.name || "", symbol: r.symbol || "",
             uri, image: String(r.image || ""), creator: "",
-            twitter, telegram, website,
+            twitter: s.twitter || "", telegram: s.telegram || "", website: s.website || "",
             created_at: chDateTime(Number(r.created_ms) || Date.now()), created_slot: 0,
           });
           fixed++;
@@ -1115,6 +1192,9 @@ export function startPulseFeed() {
   // checked-set means it goes quiet on its own once it has seen everything.
   setInterval(() => { backfillMissingSocials().catch(() => {}); }, 20000);
   setTimeout(() => { backfillMissingSocials().catch(() => {}); }, 25000);
+  // Cheap and idempotent, so it runs more often than the metadata sweep.
+  setInterval(() => { hydrateSocialsFromCH().catch(() => {}); }, 8000);
+  setTimeout(() => { hydrateSocialsFromCH().catch(() => {}); }, 6000);
   setTimeout(() => { backfillMissingImages().catch(() => {}); }, 15000);
   // Keep the PumpSwap filter in sync with the set of migrated tokens.
   setInterval(() => { maybeResubscribe().catch(() => {}); }, 3000);
