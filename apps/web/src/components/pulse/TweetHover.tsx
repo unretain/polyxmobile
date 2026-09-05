@@ -17,7 +17,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { usePulsePauseStore } from "@/stores/pulsePauseStore";
+import { usePulsePauseStore, usePulseColumn } from "@/stores/pulsePauseStore";
 
 interface Tweet {
   text: string;
@@ -174,6 +174,8 @@ export function TweetHover({ url, isDark }: { url: string; isDark: boolean }) {
   const ref = useRef<HTMLButtonElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const setCardOpen = usePulsePauseStore((s) => s.setCardOpen);
+  // Which column this row lives in, so opening a card holds THAT column only.
+  const column = usePulseColumn();
 
   // document.body doesn't exist during SSR; the portal can only mount client-side.
   useEffect(() => setMounted(true), []);
@@ -199,14 +201,14 @@ export function TweetHover({ url, isDark }: { url: string; isDark: boolean }) {
     let top = r.top - 8;
     if (top + CARD_MAX_H > window.innerHeight - M) top = window.innerHeight - CARD_MAX_H - M;
     setPos({ x: left, y: Math.max(M, top) });
-    setCardOpen(true);
+    setCardOpen(column);
     load(url).then((p) => p && setPreview(p));
-  }, [url, setCardOpen]);
+  }, [url, setCardOpen, column]);
 
   const close = useCallback(() => {
     closeTimer.current = setTimeout(() => {
       setPos(null);
-      setCardOpen(false);
+      setCardOpen(null);
     }, 80);
   }, [setCardOpen]);
 
@@ -214,7 +216,7 @@ export function TweetHover({ url, isDark }: { url: string; isDark: boolean }) {
   // open, and a frozen list is exactly what stops this row from being unmounted —
   // but a filter change or tab switch can still pull it, and the board would then
   // stay stuck forever with no pointer anywhere near it.
-  useEffect(() => () => setCardOpen(false), [setCardOpen]);
+  useEffect(() => () => setCardOpen(null), [setCardOpen]);
 
   const openTab = (e: React.MouseEvent) => {
     e.preventDefault();

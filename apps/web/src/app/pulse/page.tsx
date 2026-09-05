@@ -11,7 +11,7 @@ import { useToast } from "@/components/ui/Toast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Activity, RefreshCw, Copy, Search, SlidersHorizontal, Zap, Check, Loader2, Pause } from "lucide-react";
-import { usePulsePauseStore, usePulsePaused } from "@/stores/pulsePauseStore";
+import { usePulsePauseStore, useColumnPaused, PulseColumnContext, type PulseColumnKey } from "@/stores/pulsePauseStore";
 import { useThemeStore } from "@/stores/themeStore";
 import { formatNumber, formatPercent, shortenAddress, cn } from "@/lib/utils";
 import { usePulseStore, type PulseToken } from "@/stores/pulseStore";
@@ -204,12 +204,24 @@ interface TokenColumnProps {
   isDark: boolean;
   buyAmount?: number;
   onBuyAmountChange?: (v: number) => void;
+  colKey: PulseColumnKey;
 }
 
-function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDark, buyAmount, onBuyAmountChange }: TokenColumnProps) {
-  const setHoveringList = usePulsePauseStore((s) => s.setHoveringList);
-  const paused = usePulsePaused();
+function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDark, buyAmount, onBuyAmountChange, colKey }: TokenColumnProps) {
+  const setHovered = usePulsePauseStore((s) => s.setHovered);
+  const paused = useColumnPaused(colKey);
+
+  // This column's rows hold still while it's paused. Updates keep arriving in the
+  // store — only what THIS column renders is frozen, and the other two keep running.
+  const frozenRef = useRef<PulseToken[] | null>(null);
+  const shown = useMemo(() => {
+    if (paused && frozenRef.current) return frozenRef.current;
+    frozenRef.current = tokens;
+    return tokens;
+  }, [paused, tokens]);
+
   return (
+    <PulseColumnContext.Provider value={colKey}>
     <div className={`flex flex-col h-[300px] md:h-full border backdrop-blur-md overflow-hidden ${
       isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-white'
     }`}>
@@ -225,7 +237,7 @@ function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDa
             <span className={`text-xs px-1.5 py-0.5 rounded-full ${
               isDark ? 'text-white/40 bg-white/5' : 'text-gray-500 bg-black/5'
             }`}>
-              {tokens.length}
+              {shown.length}
             </span>
             {/* A frozen list should never look like a dead feed. */}
             {paused && (
@@ -266,20 +278,20 @@ function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDa
         </label>
       </div>
 
-      {/* Token List. Hovering anywhere in here freezes all three columns — see
-          pulsePauseStore for why it's the whole board and not just this one. */}
+      {/* Token List. Hovering here freezes THIS column only — the other two keep
+          streaming. See pulsePauseStore. */}
       <div
         className="flex-1 overflow-y-auto p-2 space-y-1"
-        onMouseEnter={() => setHoveringList(true)}
-        onMouseLeave={() => setHoveringList(false)}
+        onMouseEnter={() => setHovered(colKey)}
+        onMouseLeave={() => setHovered(null)}
       >
-        {tokens.length === 0 ? (
+        {shown.length === 0 ? (
           <div className={`flex flex-col items-center justify-center h-32 ${isDark ? 'text-white/40' : 'text-gray-400'}`}>
             <Activity className="h-8 w-8 mb-2 opacity-40" />
             <span className="text-xs">{emptyMessage}</span>
           </div>
         ) : (
-          tokens.map((token) => (
+          shown.map((token) => (
             <TokenRow
               key={token.address}
               token={token}
@@ -291,6 +303,7 @@ function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDa
         )}
       </div>
     </div>
+    </PulseColumnContext.Provider>
   );
 }
 
@@ -468,19 +481,8 @@ export default function PulsePage() {
   const liveMigrated = applyFilter(graduatedPairs, filters.migrated);
   const filterCount = activeCount(filters.new) + activeCount(filters.final) + activeCount(filters.migrated);
 
-  // Hold the lists still while you're pointing at them. New coins insert at the TOP
-  // several times a second, so without this the row under your cursor changes while
-  // you read a tweet — and the lightning you were aiming at becomes another coin.
-  // Updates keep arriving in the store; only what is RENDERED is frozen.
-  const paused = usePulsePaused();
-  const frozenRef = useRef<{ n: PulseToken[]; f: PulseToken[]; m: PulseToken[] } | null>(null);
-  const { n: shownNew, f: shownFinal, m: shownMigrated } = useMemo(() => {
-    if (paused && frozenRef.current) return frozenRef.current;
-    const cur = { n: liveNew, f: liveFinal, m: liveMigrated };
-    frozenRef.current = cur;
-    return cur;
-  }, [paused, liveNew, liveFinal, liveMigrated]);
-
+  // Each column freezes itself while you point at it — see TokenColumn.
+  const shownNew = liveNew, shownFinal = liveFinal, shownMigrated = liveMigrated;
   const totalTokens = shownNew.length + shownFinal.length + shownMigrated.length;
 
   return (
@@ -549,6 +551,7 @@ export default function PulsePage() {
           isDark={isDark}
           buyAmount={buyAmounts.new}
           onBuyAmountChange={(v) => setBuyAmount("new", v)}
+          colKey="new"
         />
 
         {/* Column 2: Final Stretch */}
@@ -561,6 +564,7 @@ export default function PulsePage() {
           isDark={isDark}
           buyAmount={buyAmounts.final}
           onBuyAmountChange={(v) => setBuyAmount("final", v)}
+          colKey="final"
         />
 
         {/* Column 3: Migrated */}
@@ -572,6 +576,7 @@ export default function PulsePage() {
           isDark={isDark}
           buyAmount={buyAmounts.migrated}
           onBuyAmountChange={(v) => setBuyAmount("migrated", v)}
+          colKey="migrated"
         />
       </div>
 
