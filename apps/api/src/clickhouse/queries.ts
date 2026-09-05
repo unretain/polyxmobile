@@ -268,7 +268,7 @@ export async function getGraduatedPairs(limit: number, solPrice: number, f: Pair
      -- had essentially no real trading since. The value repeated verbatim across
      -- unrelated coins, which is what gave it away.
      LEFT JOIN (
-       SELECT tr.mint AS mint, sum(tr.fee_sol + tr.creator_fee_sol) AS fees_post
+       SELECT tr.mint AS mint, sum(tr.creator_fee_sol) AS fees_post
        FROM trades tr
        INNER JOIN (SELECT mint, max(ts) AS gts FROM graduations GROUP BY mint) gg
          ON tr.mint = gg.mint
