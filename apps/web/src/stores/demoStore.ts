@@ -7,6 +7,9 @@ import { persist } from "zustand/middleware";
  * paper accounting: a trade log drives balance, positions, and realized PnL, so
  * the portfolio reflects what was actually traded — no fabricated numbers.
  */
+/** Paper balance a demo session starts with. */
+export const DEMO_START_SOL = 1000;
+
 export interface DemoPosition {
   mint: string;
   symbol: string;
@@ -47,12 +50,12 @@ export const useDemoStore = create<DemoState>()(
       positions: {},
       trades: [],
 
-      // Clean start: a funded 5 SOL wallet, nothing else. Everything (positions,
+      // Clean start: a funded 1000 SOL wallet, nothing else. Everything (positions,
       // volume, PnL, history) populates from the reviewer's own paper trades.
       enterDemo: () =>
         set({
           isDemo: true,
-          solBalance: 5,
+          solBalance: DEMO_START_SOL,
           positions: {},
           trades: [],
         }),
@@ -101,6 +104,20 @@ export const useDemoStore = create<DemoState>()(
           };
         }),
     }),
-    { name: "polyx-demo" }
+    {
+      name: "polyx-demo",
+      // Sessions created before the starting balance changed are persisted in
+      // localStorage, so without this a demo already in progress would sit on the old
+      // 5 SOL until it was exited and re-entered. Only an UNTRADED wallet is topped
+      // up — once there are trades the balance is the result of them, and overwriting
+      // it would contradict the position and PnL history it belongs to.
+      version: 2,
+      migrate: (persisted: any, from: number) => {
+        if (from < 2 && persisted?.isDemo && !persisted?.trades?.length) {
+          return { ...persisted, solBalance: DEMO_START_SOL };
+        }
+        return persisted;
+      },
+    }
   )
 );
