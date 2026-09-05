@@ -24,6 +24,9 @@ export type ColumnKey = "new" | "final" | "migrated";
 const KEY = "polyx.pulse.instantBuy.v1";
 const DEFAULTS: Record<ColumnKey, number> = { new: 0.1, final: 0.1, migrated: 0.1 };
 const SLIPPAGE_BPS = 3000; // 30%, same as the swap panel — memecoins move mid-flight
+// Base fee + priority fee + rent for the token account a first buy has to create.
+// Spending right up to the balance leaves nothing for these and the tx never lands.
+export const FEE_HEADROOM_SOL = 0.003;
 
 export function loadAmounts(): Record<ColumnKey, number> {
   if (typeof window === "undefined") return { ...DEFAULTS };
@@ -79,23 +82,31 @@ export async function instantBuy(opts: {
   if (!(solAmount > 0)) return { ok: false, error: "Set an amount first" };
 
   const wallet = useMobileWalletStore.getState().wallet;
-  if (!wallet?.publicKey) return { ok: false, error: "No wallet" };
+  if (!wallet?.publicKey) return { ok: false, error: "No wallet on this device" };
 
   const mnemonic = await useMobileWalletStore.getState().getMnemonic();
   if (!mnemonic) {
-    return { ok: false, error: "Wallet locked — re-import your recovery phrase in Settings" };
+    // Say WHICH failure it is. The seed and the key that encrypts it both live in
+    // localStorage, which is per-origin — a wallet set up on polyx.trade simply is
+    // not present on a *.railway.app preview URL, and vice versa.
+    return {
+      ok: false,
+      error: wallet.encryptedMnemonic
+        ? "Saved key won't unlock in this browser — re-import your phrase in Settings"
+        : "No key saved on this domain — re-import your phrase in Settings",
+    };
   }
 
   const lamports = Math.floor(solAmount * 1e9).toString();
 
-  /** How many of `mint` this wallet holds right now, per the RPC. */
-  const heldNow = async (): Promise<number | null> => {
+  /** SOL + this coin's balance, as the RPC sees it. */
+  const snapshot = async (): Promise<{ sol: number; token: number } | null> => {
     try {
       const r = await fetch(`/api/trading/balance?address=${wallet.publicKey}`, { cache: "no-store" });
       if (!r.ok) return null;
       const j = await r.json();
       const t = (j.tokens || []).find((x: any) => x.mint === mint);
-      return t ? Number(t.uiBalance) || 0 : 0;
+      return { sol: Number(j?.sol?.uiBalance) || 0, token: t ? Number(t.uiBalance) || 0 : 0 };
     } catch {
       return null;
     }
@@ -129,9 +140,20 @@ export async function instantBuy(opts: {
     }
   })();
 
-  // Read the balance BEFORE the swap, in parallel with signing, so the delta below
-  // costs nothing extra.
-  const beforePromise = heldNow();
+  // Read balances BEFORE the swap. This is both the baseline for the fill delta and
+  // the affordability check — and the check has to happen HERE, not on chain.
+  //
+  // executeClientPumpSwap sends with skipPreflight, so an unaffordable buy is
+  // broadcast anyway, never lands, and confirmByPolling then waits its full 45s for a
+  // signature that will never confirm. That is the "it just loads forever" symptom:
+  // the trade was doomed before it was sent and we spent 45 seconds finding out.
+  const before = await snapshot();
+  if (before && before.sol < solAmount + FEE_HEADROOM_SOL) {
+    return {
+      ok: false,
+      error: `Not enough SOL — you have ${before.sol.toFixed(4)}, this needs ~${(solAmount + FEE_HEADROOM_SOL).toFixed(4)}`,
+    };
+  }
 
   try {
     const result = await executeClientPumpSwap(mnemonic, mint, lamports, SLIPPAGE_BPS, true);
@@ -144,9 +166,8 @@ export async function instantBuy(opts: {
     // entry/exit pass skips any fill with tokenAmount <= 0 outright, so no green line
     // ever appeared, and tokenPnl divides SOL spent by tokens bought, making the
     // average entry price Infinity. The buy had happened; it just left no trace.
-    const before = await beforePromise;
-    const after = before === null ? null : await heldNow();
-    const measured = before !== null && after !== null ? after - before : 0;
+    const after = before === null ? null : await snapshot();
+    const measured = before !== null && after !== null ? after.token - before.token : 0;
     const tokenAmount = measured > 0 ? measured : await estimate;
 
     useTradeLogStore.getState().addTrade({

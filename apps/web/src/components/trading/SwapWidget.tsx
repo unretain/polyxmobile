@@ -5,6 +5,7 @@ import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { useDemoStore } from "@/stores/demoStore";
 import { useTradeLogStore } from "@/stores/tradeLogStore";
 import { tokenPnl } from "@/lib/portfolio";
+import { FEE_HEADROOM_SOL } from "@/lib/instantBuy";
 import { Loader2, RefreshCw, RotateCcw, Pencil, X } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import { useToast } from "@/components/ui/Toast";
@@ -310,8 +311,41 @@ export function SwapWidget({
     return isBuy ? amountNum / currentPriceSol : amountNum * currentPriceSol;
   };
 
+  const getInputBalance = () => {
+    if (!balance) return 0;
+    if (inputMint === SOL_MINT) {
+      return balance.sol.uiBalance;
+    }
+    // For sell mode, find the token by mint address
+    const token = balance.tokens.find((t) => t.mint === inputMint);
+    return token?.uiBalance || 0;
+  };
+
+  /**
+   * Can this trade actually pay for itself?
+   *
+   * Checked BEFORE signing, because the swap paths send with skipPreflight — an
+   * unaffordable transaction gets broadcast anyway, never lands, and then confirmation
+   * polls for its full 45s timeout before admitting it. That is the "just loads
+   * forever" symptom, and the trade was doomed before it left the browser.
+   *
+   * Only reported once a balance has actually loaded; `balance === null` means we
+   * don't know yet, and blocking on "unknown" would be its own bug.
+   */
+  const needed = isBuy ? amountNum + FEE_HEADROOM_SOL : amountNum;
+  const insufficient =
+    !!balance && amountValid && needed > getInputBalance() + 1e-9;
+
   const handleSwap = async () => {
     if (!amountValid || !inputMint || !outputMint) return;
+    if (insufficient) {
+      const msg = isBuy
+        ? `Not enough SOL — you have ${getInputBalance().toFixed(4)}, this needs ~${needed.toFixed(4)}`
+        : `Not enough ${outputSymbol} to sell`;
+      setError(msg);
+      showToast(msg, "error");
+      return;
+    }
 
     // Demo mode: simulate the trade against the paper balance — never hits chain.
     const demo = useDemoStore.getState();
@@ -493,17 +527,6 @@ export function SwapWidget({
     }
   };
 
-  const getInputBalance = () => {
-    if (!balance) return 0;
-    if (inputMint === SOL_MINT) {
-      return balance.sol.uiBalance;
-    }
-    // For sell mode, find the token by mint address
-    const token = balance.tokens.find((t) => t.mint === inputMint);
-    console.log("[SwapWidget] getInputBalance - inputMint:", inputMint, "tokens:", balance.tokens.map(t => t.mint), "found:", token?.uiBalance);
-    return token?.uiBalance || 0;
-  };
-
   // Compact token count for labels/toasts (5,432,109 -> 5.43M).
   const fmtTok = (v: number) =>
     v >= 1e9 ? `${(v / 1e9).toFixed(2)}B`
@@ -526,6 +549,7 @@ export function SwapWidget({
 
   const actionLabel = () => {
     if (!amountValid) return "Enter Amount";
+    if (insufficient) return isBuy ? "Insufficient SOL" : `Insufficient ${outputSymbol}`;
     if (isBuy) return `Buy ${amountNum} SOL`;
     if (sellMode === "percent" && selectedPercent) return `Sell ${selectedPercent}% ${outputSymbol}`;
     return `Sell ${fmtTok(amountNum)} ${outputSymbol}`;
@@ -779,10 +803,10 @@ export function SwapWidget({
         {amountValid && (
           <button
             onClick={handleSwap}
-            disabled={swapping}
+            disabled={swapping || insufficient}
             className={cn(
               "w-full mt-3 py-2.5 text-xs font-medium transition-colors",
-              swapping
+              swapping || insufficient
                 ? isDark ? "bg-white/5 text-white/30" : "bg-gray-100 text-gray-400"
                 : isBuy
                 ? "bg-[#00ffa3] text-black hover:bg-[#00dd8a]"
@@ -1193,10 +1217,10 @@ export function SwapWidget({
         {/* Action Button */}
         <button
           onClick={handleSwap}
-          disabled={!amountValid || swapping}
+          disabled={!amountValid || swapping || insufficient}
           className={cn(
             "w-full py-3 text-sm font-medium transition-colors",
-            !amountValid || swapping
+            !amountValid || swapping || insufficient
               ? isDark ? "bg-white/5 text-white/30 cursor-not-allowed" : "bg-gray-100 text-gray-400 cursor-not-allowed"
               : isBuy
               ? "bg-[#00ffa3] text-black hover:bg-[#00dd8a]"
