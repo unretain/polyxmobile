@@ -504,7 +504,13 @@ function handleTransaction(update: any) {
         token.volume24h += (solLamports / 1e9) * state.solPrice;
         token.txCount++;
         if (isBuy) token.buys = (token.buys || 0) + 1; else token.sells = (token.sells || 0) + 1;
-        token.feesPaidSol = (token.feesPaidSol || 0) + feeSol + creatorFeeSol;
+        // CREATOR fee only. The event carries a protocol fee (0.95% of volume) and a
+        // creator fee (0.30%) — summing both reported a coin at ~1.25% of its volume,
+        // roughly 3.4x what the trackers show for the same coin. Measured across every
+        // active coin the creator share is exactly 0.30%, and it is the one that
+        // matches: Vortex read 0.2921 here against 0.36 quoted, the gap being the
+        // trades between the two readings.
+        token.feesPaidSol = (token.feesPaidSol || 0) + creatorFeeSol;
         // Record at RECEIVE time so the 250ms fine candles get real sub-second
         // resolution (block time is only 1s-precise). The stream is smooth end-to-end
         // (verified), so this no longer piles a burst into one wrong bucket.

@@ -50,6 +50,11 @@ function shapePair(r: any, solPrice: number) {
     marketCapSol: Number(r.marketCapSol) || 0,
     migrationMc: MIGRATION_MC_SOL * solPrice,
     txCount: Number(r.txCount) || 0,
+    // Present on EVERY column. It used to be added only for migrated coins, so the
+    // client-side filter saw `undefined` on new pairs and final stretch — and an
+    // unknown metric is deliberately kept, which is why a coin under the floor still
+    // showed. A number you filter on has to be a number you return.
+    feesPaidSol: Number(r.feesPaidSol) || 0,
     createdAt: Number(r.createdAt) || Date.now(),
     source: "clickhouse",
     complete: !!r.complete,
@@ -70,6 +75,10 @@ const TRADE_AGG = `
     sum(sol_amount)                                  AS total_sol,
     argMax(real_sol, ts)                             AS real_sol,
     sum(fee_sol) + sum(creator_fee_sol)              AS fees_sol,
+    -- The CREATOR share alone. The bonding-curve event carries a protocol fee (0.95%
+    -- of volume) and a creator fee (0.30%); the trackers quote the creator one, and
+    -- summing both overstated a coin by ~3.4x.
+    sum(creator_fee_sol)                             AS creator_fees_sol,
     countIf(is_buy = 1)                              AS buys,
     countIf(is_buy = 0)                              AS sells,
     max(ts) AS last_ts,
@@ -87,6 +96,7 @@ async function activePairs(limit: number, solPrice: number, f: PairFilters = {})
        coalesce(lt.mcap_sol, {initMcSol:Float64}) * {sol:Float64} AS marketCap,
        coalesce(lt.vol_sol, 0) * {sol:Float64} AS volume24h,
        coalesce(lt.tx, 0) AS txCount,
+       coalesce(lt.creator_fees_sol, 0) AS feesPaidSol,
        if(lt.first_price_sol > 0, (lt.last_price_sol - lt.first_price_sol) / lt.first_price_sol * 100, 0) AS priceChange24h,
        greatest(0, least(100, (1 - coalesce(lt.real_tok, {init:Float64}) / {init:Float64}) * 100)) AS progress
      FROM (SELECT * FROM tokens FINAL WHERE created_at > now() - INTERVAL {maxAge:UInt16} DAY ORDER BY created_at DESC LIMIT {scan:UInt32}) t
@@ -121,6 +131,7 @@ export async function getGraduatingPairs(limit: number, solPrice: number, f: Pai
        lt.mcap_sol * {sol:Float64} AS marketCap,
        lt.vol_sol * {sol:Float64} AS volume24h,
        lt.tx AS txCount,
+       coalesce(lt.creator_fees_sol, 0) AS feesPaidSol,
        if(lt.first_price_sol > 0, (lt.last_price_sol - lt.first_price_sol) / lt.first_price_sol * 100, 0) AS priceChange24h,
        greatest(0, least(100, (1 - lt.real_tok / {init:Float64}) * 100)) AS progress
      FROM (${TRADE_AGG}) lt
@@ -184,7 +195,7 @@ export function filterSql(f: PairFilters, sol: number, opts: { feesExpr?: string
   // Measured, not derived. Overridable because a migrated coin's fees mean the ones
   // charged on the AMM — its bonding-curve life is over and counting it lets a single
   // curve-completing bundle buy carry the coin past a fee floor forever.
-  const fees = opts.feesExpr ?? `coalesce(lt.fees_sol, 0)`;
+  const fees = opts.feesExpr ?? `coalesce(lt.creator_fees_sol, 0)`;
   // Age is measured from the token's creation, not from migration — "how old is this
   // coin" means the same thing in every column.
   const age = `dateDiff('second', t.created_at, now()) / 60.0`;
