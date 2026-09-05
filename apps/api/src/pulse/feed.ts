@@ -338,6 +338,31 @@ function pumpswapCreatorShare(mcapSol: number): number {
  * which the protocol took exactly 95.00 bps, while the creator took 7.50 bps — a
  * quarter of the 30 bps the fee program declared on those same trades.
  */
+/**
+ * Same idea for a fee that arrives SPLIT across legs. The protocol fee lands as two
+ * transfers of half each (observed: 0.333086420 + 0.333086420 against a declared
+ * 0.666173), so a single-leg match finds nothing and would wrongly report zero.
+ * Returns what actually moved, or 0 if the fee was declared but never transferred.
+ */
+function measuredFeeSplit(tx: any, expected: number): number {
+  if (!(expected > 0)) return 0;
+  const pre: number[] = tx?.meta?.preBalances || [];
+  const post: number[] = tx?.meta?.postBalances || [];
+  if (pre.length !== post.length || !pre.length) return 0;
+  const gains: number[] = [];
+  for (let i = 0; i < pre.length; i++) {
+    const d = (post[i] - pre[i]) / 1e9;
+    if (d > 0) gains.push(d);
+  }
+  const tol = 0.05;
+  for (const d of gains) if (Math.abs(d - expected) <= expected * tol) return d;
+  const half = expected / 2;
+  const halves = gains.filter((d) => Math.abs(d - half) <= half * tol);
+  if (halves.length >= 2) return halves[0] + halves[1];
+  if (halves.length === 1) return halves[0];
+  return 0;
+}
+
 function measuredFeeLeg(tx: any, expected: number): number {
   if (!(expected > 0)) return 0;
   const pre: number[] = tx?.meta?.preBalances || [];
@@ -554,6 +579,9 @@ function handleTransaction(update: any) {
           o += 32;                                                  // fee_recipient
           o += 8;                                                   // fee_basis_points
           feeSol = Number(data.readBigUInt64LE(o)) / 1e9; o += 8;    // fee (lamports)
+          // Declared, not necessarily charged — same as the creator fee. Keep only
+          // what actually moved.
+          feeSol = measuredFeeSplit(tx, feeSol);
           o += 32;                                                  // creator
           o += 8;                                                   // creator_fee_basis_points
           creatorFeeSol = Number(data.readBigUInt64LE(o)) / 1e9; o += 8;
@@ -796,7 +824,14 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
   // The creator's slice OF WHAT WAS ACTUALLY PAID. feeSol above is measured from the
   // SOL that moved, so a trade routed to dodge fees contributes nothing here instead
   // of being billed at a rate it never paid.
+  //
+  // feeSol is the TOTAL fee, so the protocol column has to be the remainder. Storing
+  // the total in fee_sol AND a share of it in creator_fee_sol counted the creator
+  // portion twice: every consumer sums the two columns, which put this venue at
+  // 177.32 bps when 125 is the documented ceiling. The bonding curve never had the
+  // problem because its event reports protocol and creator as separate amounts.
   const creatorFeeSol = feeSol * pumpswapCreatorShare(priceSol * TOTAL_SUPPLY);
+  const protocolFeeSol = Math.max(0, feeSol - creatorFeeSol);
 
   // Safety net: drop an egregious outlier so one bad decode can't spike the chart.
   const ref = lastPrice.get(mint);
@@ -845,7 +880,7 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
     mint, signature, slot, ts: chDateTime(Date.now()), is_buy: isBuy ? 1 : 0,
     sol_amount: volSol, token_amount: absTok, price_sol: priceSol,
     mcap_sol: priceSol * TOTAL_SUPPLY, real_token_reserves: 0, trader,
-    fee_sol: feeSol, creator_fee_sol: creatorFeeSol,
+    fee_sol: protocolFeeSol, creator_fee_sol: creatorFeeSol,
   });
   if (hasViewer(mint)) {
     feedEvents.emit("trade", {
