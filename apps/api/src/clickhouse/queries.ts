@@ -169,7 +169,7 @@ const kw = (v?: string) =>
 
 /** SQL predicate + params for a filter set. Bounds are only emitted when present, so
  *  an empty filter object costs nothing. */
-export function filterSql(f: PairFilters, sol: number) {
+export function filterSql(f: PairFilters, sol: number, opts: { feesExpr?: string } = {}) {
   const parts: string[] = [];
   const p: Record<string, any> = {};
   const num = (key: string, expr: string, val: number | undefined, op: string) => {
@@ -181,7 +181,10 @@ export function filterSql(f: PairFilters, sol: number) {
   const vol = `coalesce(lt.vol_sol, 0) * ${sol || 0}`;
   const mc  = `coalesce(lt.mcap_sol, 0) * ${sol || 0}`;
   const curve = `greatest(0, least(100, (1 - coalesce(lt.real_tok, 0) / ${INITIAL_REAL_TOKEN_RAW}) * 100))`;
-  const fees = `coalesce(lt.fees_sol, 0)`; // measured, not derived
+  // Measured, not derived. Overridable because a migrated coin's fees mean the ones
+  // charged on the AMM — its bonding-curve life is over and counting it lets a single
+  // curve-completing bundle buy carry the coin past a fee floor forever.
+  const fees = opts.feesExpr ?? `coalesce(lt.fees_sol, 0)`;
   // Age is measured from the token's creation, not from migration — "how old is this
   // coin" means the same thing in every column.
   const age = `dateDiff('second', t.created_at, now()) / 60.0`;
@@ -222,7 +225,7 @@ export interface GraduatedFilters {
  * is now wide (24h by default) and callers narrow it with filters instead.
  */
 export async function getGraduatedPairs(limit: number, solPrice: number, f: PairFilters = {}) {
-  const { where, params } = filterSql(f, solPrice);
+  const { where, params } = filterSql(f, solPrice, { feesExpr: "coalesce(gf.fees_post, 0)" });
   const rows = await q<any>(
     `SELECT
        g.mint AS address, t.name AS name, t.symbol AS symbol, t.image AS logoUri, t.twitter AS twitter, t.telegram AS telegram, t.website AS website,
@@ -234,7 +237,7 @@ export async function getGraduatedPairs(limit: number, solPrice: number, f: Pair
        coalesce(lt.real_sol, 0) * 2 * {sol:Float64} AS liquidity,
        coalesce(lt.vol_sol, 0) * {sol:Float64} AS volume24h,
        coalesce(lt.vol_1h, 0) * {sol:Float64} AS volume1h,
-       coalesce(lt.fees_sol, 0) AS feesPaidSol,
+       coalesce(gf.fees_post, 0) AS feesPaidSol,
        coalesce(lt.tx, 0) AS txCount,
        coalesce(lt.buys, 0) AS buys,
        coalesce(lt.sells, 0) AS sells,
@@ -247,6 +250,20 @@ export async function getGraduatedPairs(limit: number, solPrice: number, f: Pair
      ) g
      LEFT JOIN tokens t FINAL ON g.mint = t.mint
      LEFT JOIN (${TRADE_AGG}) lt ON g.mint = lt.mint
+     -- Fees a MIGRATED coin has actually charged its traders, i.e. only what happened
+     -- on the AMM. Counting its whole life instead put the bonding-curve fee in the
+     -- headline, and a coin whose curve was completed by one bundled ~85 SOL buy
+     -- carries ~1.06 SOL of it — enough to clear a 0.5 SOL filter while the coin has
+     -- had essentially no real trading since. The value repeated verbatim across
+     -- unrelated coins, which is what gave it away.
+     LEFT JOIN (
+       SELECT tr.mint AS mint, sum(tr.fee_sol + tr.creator_fee_sol) AS fees_post
+       FROM trades tr
+       INNER JOIN (SELECT mint, max(ts) AS gts FROM graduations GROUP BY mint) gg
+         ON tr.mint = gg.mint
+       WHERE tr.ts >= gg.gts
+       GROUP BY tr.mint
+     ) gf ON g.mint = gf.mint
      WHERE 1 ${where}
      ORDER BY g.ts DESC
      LIMIT {limit:UInt32}

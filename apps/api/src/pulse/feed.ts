@@ -595,6 +595,39 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
   const priceSol = absSol / absTok;
   const volSol = absSol;
 
+  /**
+   * PumpSwap fees, read off the SOL that actually moved — not a rate we assumed.
+   *
+   * This handler decodes balance deltas rather than the program's event, so there was
+   * no fee field and every AMM trade stored fee_sol = 0. Over 6h that summed to exactly
+   * zero across every migrated coin — tens of thousands of trades, thousands of SOL of
+   * volume — which left a graduated coin's headline "fees paid" being nothing but the
+   * one bundle buy that completed its bonding curve. That is how a coin with no real
+   * trading since migration cleared a 0.5 SOL fee filter.
+   *
+   * Both parties to a swap touch the COIN: the pool holds it, the trader receives or
+   * sends it. Fee recipients only ever touch WSOL. So the fee is every WSOL gain whose
+   * owner has no token account for this mint in the transaction.
+   *
+   * Verified against a live swap: 0.00952 + 0.000317 + 0.000317 = 0.010154 SOL against
+   * a 1.2718 SOL pool leg (~0.8%), matching the 20/5/75 bps the fee program returns.
+   * Taking "all gains but the largest" instead reported 12-14% of volume, because a
+   * trader who wraps SOL owns a WSOL account too and their wrap dwarfs the pool leg.
+   */
+  const coinOwners = new Set<string>();
+  for (const b of post) if (b.mint === mint && b.owner) coinOwners.add(b.owner);
+  for (const b of (tx.meta.preTokenBalances || [])) if (b.mint === mint && b.owner) coinOwners.add(b.owner);
+  let feeSol = 0;
+  for (const b of post) {
+    if (b.mint !== WSOL || !b.owner || coinOwners.has(b.owner)) continue;
+    const pb = preByIdx.get(b.accountIndex);
+    const d = Number(b.uiTokenAmount?.uiAmount || 0) - Number(pb?.uiTokenAmount?.uiAmount || 0);
+    if (d > 0) feeSol += d;
+  }
+  // A fee is a fraction of the trade. Anything near the trade size is a misread of a
+  // routing hop, and storing it would poison the column all over again.
+  if (!(feeSol > 0) || feeSol > volSol * 0.05) feeSol = 0;
+
   // Safety net: drop an egregious outlier so one bad decode can't spike the chart.
   const ref = lastPrice.get(mint);
   if (ref && ref > 0 && (priceSol > ref * 20 || priceSol < ref * 0.05)) return;
@@ -607,6 +640,11 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
       token.complete = true;
       token.progress = 100;
       token.destination = "pumpswap";
+      // Fees restart at migration. What a coin charged on its bonding curve is not
+      // what it charges on the AMM, and carrying it over means one curve-completing
+      // bundle buy (~1.06 SOL, and it recurs verbatim across coins) sits in the
+      // headline forever on a coin that has traded almost nothing since.
+      token.feesPaidSol = 0;
     token.graduatedAt = Date.now();
       state.graduatedTokens.set(mint, token);
       feedEvents.emit("graduated", usd(token));
@@ -616,6 +654,7 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
     if (!token.launchPriceSol) token.launchPriceSol = priceSol;
     token.priceChange24h = token.launchPriceSol > 0 ? ((priceSol - token.launchPriceSol) / token.launchPriceSol) * 100 : 0;
     token.volume24h += volSol * state.solPrice;
+    token.feesPaidSol = (token.feesPaidSol || 0) + feeSol;
     token.txCount++;
   }
   recordCandle(mint, priceSol, volSol); // keep charting under the same mint
@@ -636,6 +675,7 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
     mint, signature, slot, ts: chDateTime(Date.now()), is_buy: isBuy ? 1 : 0,
     sol_amount: volSol, token_amount: absTok, price_sol: priceSol,
     mcap_sol: priceSol * TOTAL_SUPPLY, real_token_reserves: 0, trader,
+    fee_sol: feeSol,
   });
   if (hasViewer(mint)) {
     feedEvents.emit("trade", {
