@@ -504,14 +504,6 @@ export function SwapWidget({
     return token?.uiBalance || 0;
   };
 
-  const formatOutputAmount = () => {
-    // estimateFill() prefers the quote when it has landed and falls back to the live
-    // price, so this has a real number to show from the first keystroke.
-    const amount = estimateFill();
-    if (!(amount > 0)) return "0.0";
-    return amount.toLocaleString(undefined, { maximumFractionDigits: 6 });
-  };
-
   // Compact token count for labels/toasts (5,432,109 -> 5.43M).
   const fmtTok = (v: number) =>
     v >= 1e9 ? `${(v / 1e9).toFixed(2)}B`
@@ -1147,22 +1139,12 @@ export function SwapWidget({
           )}
         </div>
 
-        {/* Output Display */}
-        <div className={cn(
-          "mb-4 p-3 border",
-          isDark ? "bg-black/20 border-white/5" : "bg-gray-50 border-gray-100"
-        )}>
-          <div className="flex items-center justify-between">
-            <span className={cn("text-xs uppercase tracking-wide", isDark ? "text-white/40" : "text-gray-400")}>You Receive</span>
-            <span className={cn("text-sm", isDark ? "text-white/60" : "text-gray-500")}>{isBuy ? outputSymbol : "SOL"}</span>
-          </div>
-          {/* No spinner. The estimate off the live price is available the instant you
-              type, and the quote only ever refines it — showing a loader instead meant
-              staring at nothing for a round trip to learn a number we already knew. */}
-          <div className={cn("mt-2 text-xl font-mono", isDark ? "text-white" : "text-gray-900")}>
-            {formatOutputAmount()}
-          </div>
-        </div>
+        {/* No "You Receive" panel.
+            It was the biggest thing on the widget and it showed an estimate that is
+            stale the moment it renders — a memecoin's price moves between the quote
+            and the signature, so the eight digits it printed were never the number
+            you got. What you control is the SOL you spend, which the button states.
+            Price impact below is the part worth knowing before committing. */}
 
         {/* Quote Details */}
         {quote && (
@@ -1231,8 +1213,11 @@ export function SwapWidget({
           )}
         </button>
 
-        {/* Stats Row */}
-        {balance && (
+        {/* Stats Row — ALWAYS rendered. It was gated on `balance`, so your own
+            bought/sold/holding/PnL vanished whenever the balance fetch hadn't landed
+            or had failed, which is exactly when you want to look at it. None of these
+            numbers come from that fetch; they're computed from the local trade log. */}
+        {(
           <div className={cn(
             "mt-4 pt-3 border-t grid grid-cols-4 gap-2 text-center",
             isDark ? "border-white/5" : "border-black/5"

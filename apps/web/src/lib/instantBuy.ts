@@ -88,26 +88,67 @@ export async function instantBuy(opts: {
 
   const lamports = Math.floor(solAmount * 1e9).toString();
 
-  // Started before the swap so it costs no extra wall clock.
-  const fillPromise: Promise<number> = (async () => {
+  /** How many of `mint` this wallet holds right now, per the RPC. */
+  const heldNow = async (): Promise<number | null> => {
+    try {
+      const r = await fetch(`/api/trading/balance?address=${wallet.publicKey}`, { cache: "no-store" });
+      if (!r.ok) return null;
+      const j = await r.json();
+      const t = (j.tokens || []).find((x: any) => x.mint === mint);
+      return t ? Number(t.uiBalance) || 0 : 0;
+    } catch {
+      return null;
+    }
+  };
+
+  // Estimate, used only if the measurement below can't be made.
+  const estimate: Promise<number> = (async () => {
     if (priceSol > 0) return solAmount / priceSol;
     try {
+      // Derive the SOL price from the coin's own USD figures — the same trick the
+      // portfolio uses, and it works when the caller's row had a zero in it (a
+      // migrated coin with no trades in the window reports marketCapSol = 0).
+      const r = await fetch(`/api/pulse/token/${mint}`, { cache: "no-store" });
+      if (r.ok) {
+        const j = await r.json();
+        const solUsd = j.marketCapSol > 0 ? j.marketCap / j.marketCapSol : 0;
+        const ps = j.priceSol > 0 ? j.priceSol : solUsd > 0 && j.price ? j.price / solUsd : 0;
+        if (ps > 0) return solAmount / ps;
+      }
+    } catch { /* fall through */ }
+    try {
       const path = isGraduated ? "quote" : "pump-quote";
-      const r = await fetch(
+      const q = await fetch(
         `/api/trading/${path}?inputMint=So11111111111111111111111111111111111111112&outputMint=${mint}&amount=${lamports}&slippage=${SLIPPAGE_BPS}`
       );
-      if (!r.ok) return 0;
-      const j = await r.json();
-      // pump.fun mints are 6dp; the quote is in base units.
-      return Number(j.outAmount) / 1e6 || 0;
+      if (!q.ok) return 0;
+      const j = await q.json();
+      return Number(j.outAmount) / 1e6 || 0; // pump.fun mints are 6dp
     } catch {
       return 0;
     }
   })();
 
+  // Read the balance BEFORE the swap, in parallel with signing, so the delta below
+  // costs nothing extra.
+  const beforePromise = heldNow();
+
   try {
     const result = await executeClientPumpSwap(mnemonic, mint, lamports, SLIPPAGE_BPS, true);
-    const tokenAmount = await fillPromise;
+
+    // MEASURE the fill rather than trusting an estimate.
+    //
+    // This used to record whatever the estimate produced, and when the estimate came
+    // back 0 — a row with marketCapSol = 0, or a quote endpoint that 404s — it wrote
+    // `tokenAmount: 0`. That is not a harmless approximation: the chart's average
+    // entry/exit pass skips any fill with tokenAmount <= 0 outright, so no green line
+    // ever appeared, and tokenPnl divides SOL spent by tokens bought, making the
+    // average entry price Infinity. The buy had happened; it just left no trace.
+    const before = await beforePromise;
+    const after = before === null ? null : await heldNow();
+    const measured = before !== null && after !== null ? after - before : 0;
+    const tokenAmount = measured > 0 ? measured : await estimate;
+
     useTradeLogStore.getState().addTrade({
       mint,
       symbol,

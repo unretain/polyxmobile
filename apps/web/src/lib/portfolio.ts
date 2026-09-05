@@ -24,6 +24,10 @@ export interface TokenPnl {
 // priceSol = current price per token in SOL (0 if unknown → unrealized treated as 0).
 export function tokenPnl(trades: PnlTrade[], priceSol: number): TokenPnl {
   let bought = 0, sold = 0, solSpent = 0, solReceived = 0, realizedPnl = 0;
+  // A fill whose token amount couldn't be determined is worse than a missing fill:
+  // its SOL still lands in solSpent, so `solSpent / bought` goes to Infinity and every
+  // number downstream is garbage. Drop those rather than poisoning the average.
+  trades = trades.filter((t) => t.tokenAmount > 0 && t.solAmount > 0);
   for (const t of [...trades].sort((a, b) => a.ts - b.ts)) {
     if (t.side === "buy") {
       bought += t.tokenAmount;
