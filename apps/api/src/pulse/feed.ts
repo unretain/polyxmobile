@@ -314,6 +314,62 @@ function pumpswapCreatorShare(mcapSol: number): number {
   return 5 / 30; // 98,240 SOL and above
 }
 
+/**
+ * The fee split pump.fun's fee program STATES for this transaction.
+ *
+ * It runs as an inner instruction and returns three little-endian u64s —
+ * [lp_bps, protocol_bps, creator_bps] — which show up in the logs as
+ * "Program return: pfeeUxB6... <base64>". Observed [0,95,30] on the bonding curve and
+ * [2,93,30] / [20,5,75] on the AMM: exactly the documented curve rate and two tiers of
+ * the published PumpSwap schedule.
+ *
+ * Needed because the TradeEvent's creator_fee field is NOT always populated even when
+ * the creator fee is genuinely charged. Verified on ydHbdpZk...pump: the event reports
+ * creator_fee = 0 on all 1503 of its trades, yet the chain moved 0.023703704 SOL to
+ * gUeCkAuC... on a 7.901235 SOL buy — exactly the 30 bps this return declares. Trusting
+ * the event field alone lost 0.30% of every one of that coin's trades.
+ */
+/**
+ * Find a native-SOL transfer in this transaction matching `expected`, and return what
+ * actually moved — or 0 if nothing did.
+ *
+ * This is the difference between a fee that was declared and a fee that was paid.
+ * Verified on ydHbdpZk...pump once it stopped trading: 561.1667 SOL of volume, of
+ * which the protocol took exactly 95.00 bps, while the creator took 7.50 bps — a
+ * quarter of the 30 bps the fee program declared on those same trades.
+ */
+function measuredFeeLeg(tx: any, expected: number): number {
+  if (!(expected > 0)) return 0;
+  const pre: number[] = tx?.meta?.preBalances || [];
+  const post: number[] = tx?.meta?.postBalances || [];
+  if (pre.length !== post.length || !pre.length) return 0;
+  const tol = expected * 0.02; // lamport rounding only; a missing fee is nowhere near
+  let best = 0, bestOff = Infinity;
+  for (let i = 0; i < pre.length; i++) {
+    const d = (post[i] - pre[i]) / 1e9;
+    if (d <= 0) continue;
+    const off = Math.abs(d - expected);
+    if (off < bestOff) { bestOff = off; best = d; }
+  }
+  return bestOff <= tol ? best : 0;
+}
+
+const FEE_PROGRAM_ID = "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ";
+const FEE_RETURN_PREFIX = `Program return: ${FEE_PROGRAM_ID} `;
+
+function feeBpsFromLogs(logs: string[] | undefined): { protocolBps: number; creatorBps: number } | null {
+  if (!logs?.length) return null;
+  for (const line of logs) {
+    if (!line.startsWith(FEE_RETURN_PREFIX)) continue;
+    try {
+      const b = Buffer.from(line.slice(FEE_RETURN_PREFIX.length).trim(), "base64");
+      if (b.length < 24) continue;
+      return { protocolBps: Number(b.readBigUInt64LE(8)), creatorBps: Number(b.readBigUInt64LE(16)) };
+    } catch { /* malformed return, try the next line */ }
+  }
+  return null;
+}
+
 async function resolveImage(mint: string, uri: string) {
   if (!uri) return;
   const attach = (img: string) => {
@@ -496,6 +552,22 @@ function handleTransaction(update: any) {
           o += 32;                                                  // creator
           o += 8;                                                   // creator_fee_basis_points
           creatorFeeSol = Number(data.readBigUInt64LE(o)) / 1e9; o += 8;
+        }
+        // The event's creator_fee is unreliable — some coins report 0 on every trade
+        // while the chain plainly moves the money — so MEASURE it from the lamports
+        // that changed hands.
+        //
+        // It cannot be taken from the declared rate. The fee program announces 30 bps
+        // on essentially every trade, but announcing is not charging: on
+        // ydHbdpZk...pump the creator fee actually paid came to 7.50 bps of volume,
+        // exactly a QUARTER of the declared 30 — three trades in four paid the creator
+        // nothing. Crediting the declared rate overstated that coin by 1.26 SOL.
+        // Protocol fees are not like this: they measured 95.00 bps, dead on.
+        if (creatorFeeSol === 0) {
+          const bps = feeBpsFromLogs(tx.meta?.logMessages);
+          if (bps && bps.creatorBps > 0) {
+            creatorFeeSol = measuredFeeLeg(tx, (solLamports / 1e9) * (bps.creatorBps / 10000));
+          }
         }
         if (vTok <= 0) continue;
         // Include graduatedTokens: a coin can get a (sometimes premature) complete
