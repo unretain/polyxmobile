@@ -1287,6 +1287,16 @@ async function backfillGraduatingFromCH() {
       t.volume24h = p.volume24h ?? 0;
       t.liquidity = p.liquidity ?? 0;
       t.txCount = p.txCount ?? 0;
+      // Carry the metrics the filters bound on. Rebuilding a token without them left
+      // the socket's copy at 0/undefined while the HTTP copy had real values, so the
+      // same coin passed or failed a bound depending on which one the client happened
+      // to be holding.
+      t.feesPaidSol = p.feesPaidSol ?? 0;
+      t.buys = p.buys ?? 0;
+      t.sells = p.sells ?? 0;
+      t.twitter = p.twitter ?? undefined;
+      t.telegram = p.telegram ?? undefined;
+      t.website = p.website ?? undefined;
       t.createdAt = p.createdAt ?? Date.now();
       t.graduatingSince = Date.now();
       t.lastTradeAt = Date.now(); // passed the 20m recency filter; drop if it goes quiet

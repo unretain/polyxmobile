@@ -37,6 +37,10 @@ export interface PulseToken {
   // Curve-based bonding progress (% of curve tokens sold, price-independent)
   progress?: number;
   marketCapSol?: number;
+  // Creator fees paid, in SOL — the metric the "Global Fees Paid" filter bounds on.
+  feesPaidSol?: number;
+  buys?: number;
+  sells?: number;
   // Live migration-target market cap in USD (fixed curve point × SOL price)
   migrationMc?: number;
 }
@@ -74,7 +78,18 @@ interface PulseStore {
 
 // API calls go through Next.js proxy routes which use RPC polling
 
+/**
+ * Normalise an API token for the store.
+ *
+ * SPREADS the payload first, deliberately. This used to list every field by hand and
+ * silently dropped the ones it did not know about — feesPaidSol, buys and sells among
+ * them. That is not a cosmetic loss: the pulse filters treat a missing metric as
+ * UNKNOWN and keep the row (an absent column must not silently empty a list), so a
+ * fee/buys/sells bound could never exclude anything, no matter how correct the API
+ * was. Spreading means a new server field arrives intact instead of vanishing here.
+ */
 const mapTokenData = (token: any): PulseToken => ({
+  ...token,
   address: token.address,
   symbol: token.symbol,
   name: token.name,
@@ -96,6 +111,11 @@ const mapTokenData = (token: any): PulseToken => ({
   progress: typeof token.progress === "number" ? token.progress : undefined,
   marketCapSol: token.marketCapSol,
   migrationMc: token.migrationMc,
+  // Metrics the filters bound on. Explicit so they are never undefined-by-omission
+  // again: undefined means "unknown" to the filter and is kept unconditionally.
+  feesPaidSol: Number(token.feesPaidSol) || 0,
+  buys: Number(token.buys) || 0,
+  sells: Number(token.sells) || 0,
   ohlcv: [],
 });
 
