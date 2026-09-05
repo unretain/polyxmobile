@@ -10,6 +10,7 @@ import type { Token } from "@/stores/tokenStore";
 import type { OHLCV } from "@/stores/chartStore";
 import { Mini3DChart } from "@/components/charts/Mini3DChart";
 import { useThemeStore } from "@/stores/themeStore";
+import { imgSrc } from "@/lib/imgSrc";
 
 // API calls go through Next.js proxy routes (protects internal API key)
 
@@ -29,7 +30,8 @@ function getReliableImageUrl(url: string | null | undefined, tokenAddress?: stri
   if (url.includes("ipfs.io/ipfs/")) {
     return url.replace("ipfs.io/ipfs/", "dweb.link/ipfs/");
   }
-  return url;
+  // Same-origin, so a logo never depends on a second host being reachable.
+  return imgSrc(url);
 }
 
 interface TokenCardProps {

@@ -550,6 +550,22 @@ body {
   }
 }
 
+/* No native number spinners, anywhere.
+   The up/down stepper is drawn by the browser in its own chrome — it ignores every
+   colour we set, so on a dark panel it renders as a bright grey wart, and at our
+   input sizes the two arrows are too small to hit anyway. Every numeric field here
+   (buy amounts, filter bounds, slippage) is typed or driven by preset buttons. */
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+}
+
 /* Slim scrollbar for the timeframe row. The row scrolls on phones now that there
    are sub-minute tiers, and a visible bar is the only hint that more exist. */
 .tf-scroll {

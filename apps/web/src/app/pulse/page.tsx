@@ -6,6 +6,7 @@ import { FiltersPanel } from "@/components/pulse/FiltersPanel";
 import { SocialIcons } from "@/components/pulse/TweetHover";
 import { PulseFilters, EMPTY_FILTERS, loadFilters, saveFilters, applyFilter, activeCount } from "@/lib/pulseFilters";
 import { instantBuy, useInstantBuyAmounts } from "@/lib/instantBuy";
+import { imgSrc } from "@/lib/imgSrc";
 import { useToast } from "@/components/ui/Toast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -116,7 +117,7 @@ function TokenRow({ token, showProgress = false, isDark, buyAmount = 0 }: TokenR
         isDark ? 'bg-white/5 ring-white/10' : 'bg-black/5 ring-black/10'
       }`}>
         {token.logoUri ? (
-          <Image src={token.logoUri} alt={token.symbol} fill className="object-cover" unoptimized />
+          <Image src={imgSrc(token.logoUri)!} alt={token.symbol} fill className="object-cover" unoptimized />
         ) : (
           <div className={`flex h-full w-full items-center justify-center text-sm font-bold bg-gradient-to-br ${
             isDark ? 'text-white/40 from-[#FF6B4A]/20 to-white/5' : 'text-black/40 from-[#FF6B4A]/20 to-black/5'
@@ -178,7 +179,7 @@ function TokenRow({ token, showProgress = false, isDark, buyAmount = 0 }: TokenR
             "flex items-center gap-1 px-1.5 py-1 text-[10px] font-mono border transition-colors",
             buyState === "ok" ? "border-up/40 text-up bg-up/10"
               : buyState === "err" ? "border-down/40 text-down bg-down/10"
-              : "border-[#00ffa3]/30 text-[#00ffa3] hover:bg-[#00ffa3]/15"
+              : "border-[#FF6B4A]/30 text-[#FF6B4A] hover:bg-[#FF6B4A]/15"
           )}
         >
           {buying
@@ -239,8 +240,15 @@ function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDa
 
         {/* Instant-buy amount for THIS column. Per column on purpose: what you throw
             at a 30-second-old launch isn't what you put into something migrated. */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
-          <Zap className="h-3 w-3 text-[#00ffa3]" />
+        {/* Square, #111, orange accent — the pulse page's own conventions. */}
+        <label
+          className={cn(
+            "flex items-center gap-1.5 flex-shrink-0 border px-2 py-1 transition-colors focus-within:border-[#FF6B4A]/50",
+            isDark ? "bg-[#111] border-white/10" : "bg-black/5 border-gray-200"
+          )}
+          title={`SOL spent per instant buy in ${title}`}
+        >
+          <Zap className="h-3 w-3 text-[#FF6B4A] flex-shrink-0" />
           <input
             type="number"
             inputMode="decimal"
@@ -250,14 +258,12 @@ function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDa
             onChange={(e) => onBuyAmountChange?.(e.target.value === "" ? 0 : Number(e.target.value))}
             aria-label={`Instant buy amount for ${title}`}
             className={cn(
-              "w-16 px-1.5 py-1 text-xs font-mono border outline-none transition-colors focus:border-[#00ffa3]/50",
-              isDark
-                ? "bg-black/40 border-white/10 text-white"
-                : "bg-black/5 border-gray-200 text-gray-900"
+              "w-12 bg-transparent text-xs font-mono outline-none border-0 p-0",
+              isDark ? "text-white" : "text-gray-900"
             )}
           />
           <span className={`text-[10px] ${isDark ? 'text-white/40' : 'text-gray-500'}`}>SOL</span>
-        </div>
+        </label>
       </div>
 
       {/* Token List. Hovering anywhere in here freezes all three columns — see
@@ -650,7 +656,7 @@ export default function PulsePage() {
                             isDark ? 'bg-white/5 ring-white/10' : 'bg-gray-100 ring-gray-200'
                           }`}>
                             {token.logoUri ? (
-                              <Image src={token.logoUri} alt={token.symbol} fill className="object-cover" unoptimized />
+                              <Image src={imgSrc(token.logoUri)!} alt={token.symbol} fill className="object-cover" unoptimized />
                             ) : (
                               <div className={`flex h-full w-full items-center justify-center text-sm font-bold bg-gradient-to-br from-[#FF6B4A]/20 ${
                                 isDark ? 'text-white/40 to-white/5' : 'text-gray-400 to-gray-100'
@@ -704,7 +710,7 @@ export default function PulsePage() {
                         isDark ? 'bg-white/5 ring-white/10' : 'bg-gray-100 ring-gray-200'
                       }`}>
                         {token.logoUri ? (
-                          <Image src={token.logoUri} alt={token.symbol} fill className="object-cover" unoptimized />
+                          <Image src={imgSrc(token.logoUri)!} alt={token.symbol} fill className="object-cover" unoptimized />
                         ) : (
                           <div className={`flex h-full w-full items-center justify-center text-sm font-bold bg-gradient-to-br from-[#FF6B4A]/20 ${
                             isDark ? 'text-white/40 to-white/5' : 'text-gray-400 to-gray-100'
@@ -762,7 +768,7 @@ export default function PulsePage() {
                               isDark ? 'bg-white/5 ring-white/10' : 'bg-gray-100 ring-gray-200'
                             }`}>
                               {caSearchResult.logoUri ? (
-                                <Image src={caSearchResult.logoUri} alt={caSearchResult.symbol} fill className="object-cover" unoptimized />
+                                <Image src={imgSrc(caSearchResult.logoUri)!} alt={caSearchResult.symbol} fill className="object-cover" unoptimized />
                               ) : (
                                 <div className={`flex h-full w-full items-center justify-center text-sm font-bold bg-gradient-to-br from-[#FF6B4A]/20 ${
                                   isDark ? 'text-white/40 to-white/5' : 'text-gray-400 to-gray-100'

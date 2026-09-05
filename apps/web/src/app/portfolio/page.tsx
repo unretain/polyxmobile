@@ -6,6 +6,7 @@ import { useThemeStore } from "@/stores/themeStore";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { useTradeLogStore, type LoggedTrade } from "@/stores/tradeLogStore";
 import { tokenPnl } from "@/lib/portfolio";
+import { imgSrc } from "@/lib/imgSrc";
 import { formatNumber, shortenAddress, cn } from "@/lib/utils";
 import {
   ChevronLeft,
@@ -1058,7 +1059,7 @@ function PositionCard({ position, isDark }: { position: Position; isDark: boolea
         <div className="w-10 h-10 rounded-full overflow-hidden bg-white/10 flex-shrink-0">
           {position.image && !imgFailed ? (
             <Image
-              src={position.image}
+              src={imgSrc(position.image)!}
               alt={position.symbol}
               width={40}
               height={40}

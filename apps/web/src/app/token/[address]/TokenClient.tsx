@@ -50,6 +50,7 @@ import { BarChart3, LineChart } from "lucide-react";
 import { SwapWidget } from "@/components/trading";
 import { Socket } from "socket.io-client";
 import { ensureRealtimeSocket } from "@/stores/pulseStore";
+import { imgSrc } from "@/lib/imgSrc";
 // API calls go through Next.js proxy routes (protects internal API key)
 const PUMP_FUN_SUPPLY = 1_000_000_000;
 
@@ -63,7 +64,8 @@ function getTokenLogoUrl(logoUri: string | undefined, tokenAddress: string): str
   if (TOKEN_LOGO_OVERRIDES[tokenAddress]) {
     return TOKEN_LOGO_OVERRIDES[tokenAddress];
   }
-  return logoUri || null;
+  // Same-origin, so a logo never depends on a second host being reachable.
+  return imgSrc(logoUri) || null;
 }
 
 // ============================================================================
