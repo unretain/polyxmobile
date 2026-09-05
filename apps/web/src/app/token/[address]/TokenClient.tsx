@@ -300,7 +300,14 @@ export default function TokenClient() {
   const searchParams = useSearchParams();
   const { isDark } = useThemeStore();
   const address = params.address as string;
+  // `?source=pulse` is a NAVIGATION hint, not a fact about the coin. It records how the
+  // user arrived and is lost on a refresh, a shared link, or a typed URL — at which
+  // point the chart fell through to the provider path, which returns [] for a pump.fun
+  // coin, and drew nothing. Our own feed holds every one of these coins, so it is tried
+  // first and this flag only seeds the initial guess.
   const fromPulse = searchParams.get("source") === "pulse";
+  // True once our feed has actually served candles for this coin.
+  const [servedByPulse, setServedByPulse] = useState(fromPulse);
   const [pulseToken, setPulseToken] = useState<PulseTokenData | null>(null);
   const [pulseTokenLoading, setPulseTokenLoading] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
@@ -487,7 +494,7 @@ export default function TokenClient() {
 
   // LIVE: WebSocket subscription for real-time trades and OHLCV (Pulse tokens only)
   useEffect(() => {
-    if (!address || !fromPulse) return;
+    if (!address || !servedByPulse) return;
 
     // Reuse the ONE shared realtime socket (the same connection the pulse feed uses)
     // instead of opening a second one. New connection handshakes to the box get reset;
@@ -685,7 +692,7 @@ export default function TokenClient() {
     // which would cause reconnection loop. We access it via closure in event handlers.
     // chartPeriod is intentionally NOT a dep — the handlers read it via chartPeriodRef
     // so switching timeframes never tears down the live connection.
-  }, [address, fromPulse]);
+  }, [address, servedByPulse]);
 
   // Load chart period from localStorage, with source-specific defaults
   useEffect(() => {
@@ -858,18 +865,21 @@ export default function TokenClient() {
         let response;
         let ohlcvData: OHLCV[] = [];
 
-        if (fromPulse) {
-          // PULSE TOKENS: Backend fetches ALL swaps from DB, no time filtering needed
+        // Our own feed FIRST, whatever the url says — it costs one request, and
+        // skipping it on the strength of a query parameter is what left charts blank.
+        try {
           response = await fetch(
             `/api/pulse/ohlcv/${address}?timeframe=${config.interval}`
           );
-
-          if (!response.ok) {
-            throw new Error(`Pulse API error: ${response.status}`);
+          if (response.ok) {
+            const result = await response.json();
+            ohlcvData = result.data || [];
           }
+        } catch { /* fall through to the provider below */ }
 
-          const result = await response.json();
-          ohlcvData = result.data || [];
+        if (ohlcvData.length > 0) {
+          // Our feed has this coin, so the live socket below is worth subscribing to.
+          setServedByPulse(true);
         } else {
           // DASHBOARD TOKENS: Use Birdeye API via /api/tokens/:address/ohlcv
           // Birdeye needs time range params
