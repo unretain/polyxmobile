@@ -96,7 +96,7 @@ async function activePairs(limit: number, solPrice: number, f: PairFilters = {})
        coalesce(lt.mcap_sol, {initMcSol:Float64}) * {sol:Float64} AS marketCap,
        coalesce(lt.vol_sol, 0) * {sol:Float64} AS volume24h,
        coalesce(lt.tx, 0) AS txCount,
-       coalesce(lt.creator_fees_sol, 0) AS feesPaidSol,
+       coalesce(lt.fees_sol, 0) AS feesPaidSol,
        if(lt.first_price_sol > 0, (lt.last_price_sol - lt.first_price_sol) / lt.first_price_sol * 100, 0) AS priceChange24h,
        greatest(0, least(100, (1 - coalesce(lt.real_tok, {init:Float64}) / {init:Float64}) * 100)) AS progress
      FROM (SELECT * FROM tokens FINAL WHERE created_at > now() - INTERVAL {maxAge:UInt16} DAY ORDER BY created_at DESC LIMIT {scan:UInt32}) t
@@ -131,7 +131,7 @@ export async function getGraduatingPairs(limit: number, solPrice: number, f: Pai
        lt.mcap_sol * {sol:Float64} AS marketCap,
        lt.vol_sol * {sol:Float64} AS volume24h,
        lt.tx AS txCount,
-       coalesce(lt.creator_fees_sol, 0) AS feesPaidSol,
+       coalesce(lt.fees_sol, 0) AS feesPaidSol,
        if(lt.first_price_sol > 0, (lt.last_price_sol - lt.first_price_sol) / lt.first_price_sol * 100, 0) AS priceChange24h,
        greatest(0, least(100, (1 - lt.real_tok / {init:Float64}) * 100)) AS progress
      FROM (${TRADE_AGG}) lt
@@ -195,7 +195,12 @@ export function filterSql(f: PairFilters, sol: number, opts: { feesExpr?: string
   // Measured, not derived. Overridable because a migrated coin's fees mean the ones
   // charged on the AMM — its bonding-curve life is over and counting it lets a single
   // curve-completing bundle buy carry the coin past a fee floor forever.
-  const fees = opts.feesExpr ?? `coalesce(lt.creator_fees_sol, 0)`;
+  // TOTAL fees — protocol + creator — because that is what "Global Fees Paid" means.
+  // Creator-only was tried against a reference reading of 3.033 on a coin whose events
+  // report creator_fee = 0 on every one of its 953 trades; creator-only gives 0 there,
+  // while protocol+creator gives 2.844. The remaining ~6% is trade coverage, not the
+  // choice of metric.
+  const fees = opts.feesExpr ?? `coalesce(lt.fees_sol, 0)`;
   // Age is measured from the token's creation, not from migration — "how old is this
   // coin" means the same thing in every column.
   const age = `dateDiff('second', t.created_at, now()) / 60.0`;
@@ -268,7 +273,7 @@ export async function getGraduatedPairs(limit: number, solPrice: number, f: Pair
      -- had essentially no real trading since. The value repeated verbatim across
      -- unrelated coins, which is what gave it away.
      LEFT JOIN (
-       SELECT tr.mint AS mint, sum(tr.creator_fee_sol) AS fees_post
+       SELECT tr.mint AS mint, sum(tr.fee_sol + tr.creator_fee_sol) AS fees_post
        FROM trades tr
        INNER JOIN (SELECT mint, max(ts) AS gts FROM graduations GROUP BY mint) gg
          ON tr.mint = gg.mint

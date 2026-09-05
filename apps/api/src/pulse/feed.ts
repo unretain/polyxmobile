@@ -547,7 +547,9 @@ function handleTransaction(update: any) {
         // active coin the creator share is exactly 0.30%, and it is the one that
         // matches: Vortex read 0.2921 here against 0.36 quoted, the gap being the
         // trades between the two readings.
-        token.feesPaidSol = (token.feesPaidSol || 0) + creatorFeeSol;
+        // Protocol + creator: "Global Fees Paid" is every fee the trade paid, and
+        // plenty of coins report creator_fee = 0 on every trade.
+        token.feesPaidSol = (token.feesPaidSol || 0) + feeSol + creatorFeeSol;
         // Record at RECEIVE time so the 250ms fine candles get real sub-second
         // resolution (block time is only 1s-precise). The stream is smooth end-to-end
         // (verified), so this no longer piles a burst into one wrong bucket.
@@ -745,7 +747,7 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
     if (!token.launchPriceSol) token.launchPriceSol = priceSol;
     token.priceChange24h = token.launchPriceSol > 0 ? ((priceSol - token.launchPriceSol) / token.launchPriceSol) * 100 : 0;
     token.volume24h += volSol * state.solPrice;
-    token.feesPaidSol = (token.feesPaidSol || 0) + creatorFeeSol;
+    token.feesPaidSol = (token.feesPaidSol || 0) + feeSol;
     token.txCount++;
   }
   recordCandle(mint, priceSol, volSol); // keep charting under the same mint
@@ -1504,6 +1506,15 @@ export async function getSnapshotDurable() {
       // Memoised at 1s: this runs on the broadcast tick, so it is one query per
       // second for every connected client, not one per client.
       if (!newPairs.length) newPairs = (await memo("ws:np", 1000, () => chNewPairs(60, sol))) as any;
+      // ALWAYS take final stretch from ClickHouse too, for the same reason migrated is
+      // taken from there: memory only holds what has traded since THIS process started,
+      // so an in-memory coin's feesPaidSol/buys/sells are a fraction of its real
+      // totals. The client filters the socket snapshot, so those short values made a
+      // fee floor wipe the whole column while the HTTP fetch — reading the durable
+      // numbers — still had 23 coins above it. Socket and HTTP have to agree or a
+      // filter's result depends on which arrived last.
+      const chGrad2 = (await memo("ws:gi", 1000, () => chGraduatingPairs(60, sol))) as any[];
+      if (chGrad2?.length) graduating = chGrad2;
       // ALWAYS take migrated from ClickHouse, not just when memory is empty. Memory
       // only holds what has migrated since this process started, so the socket was
       // overwriting the client's fuller HTTP list with a short one every second —
