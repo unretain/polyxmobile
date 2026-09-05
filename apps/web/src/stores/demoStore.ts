@@ -22,6 +22,10 @@ export interface DemoTrade {
   tokenAmount: number;
   realized?: number;   // realized PnL in SOL (sells only)
   ts: number;
+  // Market cap in USD at the fill, so the chart's average entry/exit lines can be
+  // pinned exactly the way real trades are — otherwise a demo line is recovered from
+  // the live candle and drifts until that candle closes.
+  capUsd?: number;
 }
 
 interface DemoState {
@@ -31,8 +35,8 @@ interface DemoState {
   trades: DemoTrade[];
   enterDemo: () => void;
   exitDemo: () => void;
-  paperBuy: (mint: string, symbol: string, solSpent: number, tokensReceived: number) => void;
-  paperSell: (mint: string, solReceived: number, tokensSold: number) => void;
+  paperBuy: (mint: string, symbol: string, solSpent: number, tokensReceived: number, capUsd?: number) => void;
+  paperSell: (mint: string, solReceived: number, tokensSold: number, capUsd?: number) => void;
 }
 
 export const useDemoStore = create<DemoState>()(
@@ -55,7 +59,7 @@ export const useDemoStore = create<DemoState>()(
 
       exitDemo: () => set({ isDemo: false, solBalance: 0, positions: {}, trades: [] }),
 
-      paperBuy: (mint, symbol, solSpent, tokensReceived) =>
+      paperBuy: (mint, symbol, solSpent, tokensReceived, capUsd) =>
         set((s) => {
           const prev = s.positions[mint] || { mint, symbol, uiAmount: 0, costSol: 0 };
           return {
@@ -71,12 +75,12 @@ export const useDemoStore = create<DemoState>()(
             },
             trades: [
               ...s.trades,
-              { mint, symbol, side: "buy", solAmount: solSpent, tokenAmount: tokensReceived, ts: Date.now() },
+              { mint, symbol, side: "buy", solAmount: solSpent, tokenAmount: tokensReceived, ts: Date.now(), capUsd },
             ],
           };
         }),
 
-      paperSell: (mint, solReceived, tokensSold) =>
+      paperSell: (mint, solReceived, tokensSold, capUsd) =>
         set((s) => {
           const prev = s.positions[mint];
           if (!prev || prev.uiAmount <= 0) return s;
@@ -92,7 +96,7 @@ export const useDemoStore = create<DemoState>()(
             positions,
             trades: [
               ...s.trades,
-              { mint, symbol: prev.symbol, side: "sell", solAmount: solReceived, tokenAmount: tokensSold, realized, ts: Date.now() },
+              { mint, symbol: prev.symbol, side: "sell", solAmount: solReceived, tokenAmount: tokensSold, realized, ts: Date.now(), capUsd },
             ],
           };
         }),

@@ -368,8 +368,10 @@ export function SwapWidget({
         setError("No price yet — try again in a moment");
         return;
       }
-      if (isBuy) demo.paperBuy(outputMint, outputSymbol, spend, outUi);
-      else demo.paperSell(inputMint, outUi, spend); // (mint, solReceived, tokensSold)
+      // capUsd pins the chart's average lines at this fill, same as a real trade.
+      const cap = currentMarketCapUsd > 0 ? currentMarketCapUsd : undefined;
+      if (isBuy) demo.paperBuy(outputMint, outputSymbol, spend, outUi, cap);
+      else demo.paperSell(inputMint, outUi, spend, cap); // (mint, solReceived, tokensSold)
       playTradeSound(isBuy);
       showToast(
         isBuy

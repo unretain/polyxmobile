@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
+import { useDemoStore } from "@/stores/demoStore";
 import { useTradeLogStore } from "@/stores/tradeLogStore";
 import { executeClientPumpSwap } from "@/lib/mobileSwap";
 
@@ -81,38 +82,10 @@ export async function instantBuy(opts: {
   const { mint, symbol, solAmount, image, priceSol = 0, capUsd = 0, isGraduated = false } = opts;
   if (!(solAmount > 0)) return { ok: false, error: "Set an amount first" };
 
-  const wallet = useMobileWalletStore.getState().wallet;
-  if (!wallet?.publicKey) return { ok: false, error: "No wallet on this device" };
-
-  const mnemonic = await useMobileWalletStore.getState().getMnemonic();
-  if (!mnemonic) {
-    // Say WHICH failure it is. The seed and the key that encrypts it both live in
-    // localStorage, which is per-origin — a wallet set up on polyx.trade simply is
-    // not present on a *.railway.app preview URL, and vice versa.
-    return {
-      ok: false,
-      error: wallet.encryptedMnemonic
-        ? "Saved key won't unlock in this browser — re-import your phrase in Settings"
-        : "No key saved on this domain — re-import your phrase in Settings",
-    };
-  }
-
   const lamports = Math.floor(solAmount * 1e9).toString();
 
-  /** SOL + this coin's balance, as the RPC sees it. */
-  const snapshot = async (): Promise<{ sol: number; token: number } | null> => {
-    try {
-      const r = await fetch(`/api/trading/balance?address=${wallet.publicKey}`, { cache: "no-store" });
-      if (!r.ok) return null;
-      const j = await r.json();
-      const t = (j.tokens || []).find((x: any) => x.mint === mint);
-      return { sol: Number(j?.sol?.uiBalance) || 0, token: t ? Number(t.uiBalance) || 0 : 0 };
-    } catch {
-      return null;
-    }
-  };
-
-  // Estimate, used only if the measurement below can't be made.
+  // How many tokens `solAmount` buys. Kicked off here so the real path can overlap it
+  // with signing; demo awaits it directly, since paper trading has no fill to measure.
   const estimate: Promise<number> = (async () => {
     if (priceSol > 0) return solAmount / priceSol;
     try {
@@ -139,6 +112,52 @@ export async function instantBuy(opts: {
       return 0;
     }
   })();
+
+  // DEMO: paper trade against the demo balance. No wallet, no key, no chain — the
+  // demo store IS the account, so every check below about seeds and RPC balances is
+  // meaningless here. Without this branch instant buy demanded a real wallet and
+  // failed on the seed check, which is why it did nothing in demo mode.
+  const demo = useDemoStore.getState();
+  if (demo.isDemo) {
+    if (solAmount > demo.solBalance + 1e-9) {
+      return { ok: false, error: `Not enough demo SOL — you have ${demo.solBalance.toFixed(3)}` };
+    }
+    const tokens = await estimate;
+    // Never book a zero: it is skipped by the chart's average-entry pass and makes
+    // the average cost Infinity. Same trap as the real path.
+    if (!(tokens > 0)) return { ok: false, error: "No price yet — try again in a moment" };
+    demo.paperBuy(mint, symbol, solAmount, tokens, capUsd > 0 ? capUsd : undefined);
+    return { ok: true };
+  }
+
+  const wallet = useMobileWalletStore.getState().wallet;
+  if (!wallet?.publicKey) return { ok: false, error: "No wallet on this device" };
+
+  const mnemonic = await useMobileWalletStore.getState().getMnemonic();
+  if (!mnemonic) {
+    // Say WHICH failure it is. The seed and the key that encrypts it both live in
+    // localStorage, which is per-origin — a wallet set up on polyx.trade simply is
+    // not present on a *.railway.app preview URL, and vice versa.
+    return {
+      ok: false,
+      error: wallet.encryptedMnemonic
+        ? "Saved key won't unlock in this browser — re-import your phrase in Settings"
+        : "No key saved on this domain — re-import your phrase in Settings",
+    };
+  }
+
+  /** SOL + this coin's balance, as the RPC sees it. */
+  const snapshot = async (): Promise<{ sol: number; token: number } | null> => {
+    try {
+      const r = await fetch(`/api/trading/balance?address=${wallet.publicKey}`, { cache: "no-store" });
+      if (!r.ok) return null;
+      const j = await r.json();
+      const t = (j.tokens || []).find((x: any) => x.mint === mint);
+      return { sol: Number(j?.sol?.uiBalance) || 0, token: t ? Number(t.uiBalance) || 0 : 0 };
+    } catch {
+      return null;
+    }
+  };
 
   // Read balances BEFORE the swap. This is both the baseline for the fill delta and
   // the affordability check — and the check has to happen HERE, not on chain.
