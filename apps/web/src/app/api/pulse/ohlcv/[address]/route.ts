@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { feedFetch } from "@/lib/feed";
+import { fallbackOHLCV } from "@/lib/fallback";
 
-// OHLCV comes ONLY from our own gRPC-built candles (live + on-demand RPC backfill).
-// No third-party chart data. For a coin we've never seen live, the feed kicks off
-// an RPC backfill and this returns [] until it lands (chart shows "no data yet").
 const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 export async function GET(
@@ -17,14 +15,27 @@ export async function GET(
     return NextResponse.json({ error: "Invalid token address", data: [] }, { status: 400 });
   }
 
+  // Try internal feed first
   const feed = await feedFetch(`/api/feed/ohlcv/${address}?timeframe=${timeframe}`);
-  if (feed && Array.isArray(feed.data)) {
+  if (feed && Array.isArray(feed.data) && feed.data.length > 0) {
     return NextResponse.json(
       { address, timeframe, data: feed.data, source: "grpc", backfilling: !!feed.backfilling },
       { headers: { "Cache-Control": "public, max-age=1" } }
     );
   }
 
-  // Feed unreachable — return empty rather than falling back to a third party.
-  return NextResponse.json({ address, timeframe, data: [], source: "grpc" });
+  // Fallback: GeckoTerminal OHLCV
+  try {
+    const candles = await fallbackOHLCV(address, timeframe, 100);
+    if (candles.length > 0) {
+      return NextResponse.json(
+        { address, timeframe, data: candles, source: "geckoterminal-fallback" },
+        { headers: { "Cache-Control": "public, max-age=15" } }
+      );
+    }
+  } catch (error) {
+    console.warn(`[pulse/ohlcv/${address}] Fallback failed:`, error);
+  }
+
+  return NextResponse.json({ address, timeframe, data: [], source: "none" });
 }

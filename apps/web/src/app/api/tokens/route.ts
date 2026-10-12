@@ -1,32 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchInternalApi } from "@/lib/config";
+import { fallbackTrendingTokens } from "@/lib/fallback";
 
 // Proxy to internal API - protects Birdeye API key
+// Falls back to DexScreener when internal API is down
 export async function GET(req: NextRequest) {
   try {
     const limit = req.nextUrl.searchParams.get("limit") || "100";
 
     const response = await fetchInternalApi(`/api/tokens?limit=${limit}`);
 
-    if (!response.ok) {
-      return NextResponse.json(
-        { error: "Failed to fetch tokens" },
-        { status: response.status }
-      );
+    if (response.ok) {
+      const data = await response.json();
+      return NextResponse.json(data, {
+        headers: { "Cache-Control": "public, max-age=30" },
+      });
     }
-
-    const data = await response.json();
-
-    return NextResponse.json(data, {
-      headers: {
-        "Cache-Control": "public, max-age=30", // Cache for 30 seconds
-      },
-    });
   } catch (error) {
-    console.error("[tokens] Error:", error);
+    console.warn("[tokens] Internal API unavailable, using fallback");
+  }
+
+  // Fallback: DexScreener trending tokens
+  try {
+    const tokens = await fallbackTrendingTokens(parseInt(req.nextUrl.searchParams.get("limit") || "100"));
     return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
+      { data: tokens, source: "dexscreener-fallback" },
+      { headers: { "Cache-Control": "public, max-age=30" } }
+    );
+  } catch (error) {
+    console.error("[tokens] Fallback also failed:", error);
+    return NextResponse.json(
+      { error: "All data sources unavailable", data: [] },
+      { status: 503 }
     );
   }
 }
