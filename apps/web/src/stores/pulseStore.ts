@@ -37,7 +37,7 @@ export interface PulseToken {
   // Curve-based bonding progress (% of curve tokens sold, price-independent)
   progress?: number;
   marketCapSol?: number;
-  // Creator fees paid, in SOL — the metric the "Global Fees Paid" filter bounds on.
+  // Gas fees (network + priority + tips) summed across every txn on the coin.
   feesPaidSol?: number;
   buys?: number;
   sells?: number;

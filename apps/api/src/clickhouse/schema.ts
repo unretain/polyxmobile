@@ -81,6 +81,7 @@ export const SCHEMA_STATEMENTS: string[] = [
   `ALTER TABLE trades ADD COLUMN IF NOT EXISTS fee_sol Float64 DEFAULT 0`,
   `ALTER TABLE trades ADD COLUMN IF NOT EXISTS creator_fee_sol Float64 DEFAULT 0`,
   `ALTER TABLE trades ADD COLUMN IF NOT EXISTS recv_ts DateTime64(3) DEFAULT now64(3)`,
+  `ALTER TABLE trades ADD COLUMN IF NOT EXISTS gas_fee_sol Float64 DEFAULT 0`,
 
   // Socials from the token metadata JSON. Empty-string default (not now64-style
   // computed) so backfilling one on an existing row is just a re-insert — the

@@ -67,10 +67,10 @@ export interface PulseToken {
   txCount: number;
   buys?: number;
   sells?: number;
-  // Fees ACTUALLY paid on this coin (protocol + creator), summed from the trade
-  // events. Without it, memory-served rows had no value for the filter to test and
-  // a min-fees bound let every one of them through — a coin with no fees showed up
-  // under "min 0.5 SOL".
+  // Gas fees (network + priority + tips) summed across every transaction on this
+  // coin. Goes up with tx count and how hard people bid on priority, not with
+  // volume — coins with snipers/bots paying big tips rack it up fast. Low gas on
+  // a big mcap is the sign of a bundled fake chart.
   feesPaidSol?: number;
   createdAt: number;
   source: string;
@@ -627,6 +627,7 @@ function handleTransaction(update: any) {
               real_sol: realSol / 1e9,
               fee_sol: feeSol,
               creator_fee_sol: creatorFeeSol,
+              gas_fee_sol: Number(tx.meta?.fee ?? 0) / 1e9,
               trader,
             });
             state.stats.trades++;
@@ -646,21 +647,15 @@ function handleTransaction(update: any) {
         token.volume24h += (solLamports / 1e9) * state.solPrice;
         token.txCount++;
         if (isBuy) token.buys = (token.buys || 0) + 1; else token.sells = (token.sells || 0) + 1;
-        // CREATOR fee only. The event carries a protocol fee (0.95% of volume) and a
-        // creator fee (0.30%) — summing both reported a coin at ~1.25% of its volume,
-        // roughly 3.4x what the trackers show for the same coin. Measured across every
-        // active coin the creator share is exactly 0.30%, and it is the one that
-        // matches: Vortex read 0.2921 here against 0.36 quoted, the gap being the
-        // trades between the two readings.
-        // Protocol + creator: "Global Fees Paid" is every fee the trade paid, and
-        // plenty of coins report creator_fee = 0 on every trade.
-        token.feesPaidSol = (token.feesPaidSol || 0) + feeSol + creatorFeeSol;
+        // Gas fees: network + priority + tips the signer paid to land this txn.
+        const gasFeeSol = Number(tx.meta?.fee ?? 0) / 1e9;
+        token.feesPaidSol = (token.feesPaidSol || 0) + gasFeeSol;
         // Record at RECEIVE time so the 250ms fine candles get real sub-second
         // resolution (block time is only 1s-precise). The stream is smooth end-to-end
         // (verified), so this no longer piles a burst into one wrong bucket.
         recordCandle(mint, priceSol, solLamports / 1e9);
         curveMints.add(mint);
-        recordTrade({ mint, signature, slot, ts: chDateTime(tsSec > 0 ? tsSec * 1000 : Date.now()), is_buy: isBuy ? 1 : 0, sol_amount: solLamports / 1e9, token_amount: tokenRaw / 1e6, price_sol: priceSol, mcap_sol: token.marketCapSol, real_token_reserves: realTok, real_sol: realSol / 1e9, fee_sol: feeSol, creator_fee_sol: creatorFeeSol, trader });
+        recordTrade({ mint, signature, slot, ts: chDateTime(tsSec > 0 ? tsSec * 1000 : Date.now()), is_buy: isBuy ? 1 : 0, sol_amount: solLamports / 1e9, token_amount: tokenRaw / 1e6, price_sol: priceSol, mcap_sol: token.marketCapSol, real_token_reserves: realTok, real_sol: realSol / 1e9, fee_sol: feeSol, creator_fee_sol: creatorFeeSol, gas_fee_sol: gasFeeSol, trader });
         // Per-trade event for the token page's live "recent trades" panel — built +
         // broadcast ONLY when someone actually has this coin's chart open (see hasViewer).
         // Every trade goes out; the client batches them per animation frame so the
@@ -859,7 +854,8 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
     if (!token.launchPriceSol) token.launchPriceSol = priceSol;
     token.priceChange24h = token.launchPriceSol > 0 ? ((priceSol - token.launchPriceSol) / token.launchPriceSol) * 100 : 0;
     token.volume24h += volSol * state.solPrice;
-    token.feesPaidSol = (token.feesPaidSol || 0) + feeSol;
+    const gasFeeSolAmm = Number(tx.meta?.fee ?? 0) / 1e9;
+    token.feesPaidSol = (token.feesPaidSol || 0) + gasFeeSolAmm;
     token.txCount++;
   }
   recordCandle(mint, priceSol, volSol); // keep charting under the same mint
@@ -876,11 +872,13 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
   // Persist post-migration trades too, so ClickHouse holds a graduated coin's full
   // history (not just its bonding-curve life) and the chart's durable fallback works
   // after migration. real_token_reserves isn't tracked on PumpSwap (pool AMM) -> 0.
+  const gasFeeSolTrade = Number(tx.meta?.fee ?? 0) / 1e9;
   recordTrade({
     mint, signature, slot, ts: chDateTime(Date.now()), is_buy: isBuy ? 1 : 0,
     sol_amount: volSol, token_amount: absTok, price_sol: priceSol,
     mcap_sol: priceSol * TOTAL_SUPPLY, real_token_reserves: 0, trader,
     fee_sol: protocolFeeSol, creator_fee_sol: creatorFeeSol,
+    gas_fee_sol: gasFeeSolTrade,
   });
   if (hasViewer(mint)) {
     feedEvents.emit("trade", {
@@ -1353,13 +1351,10 @@ let socialSweepBusy = false;
  * screen. One small query per tick, bounded by what is actually in memory.
  */
 /**
- * Copy DURABLE fee and buy/sell totals onto the in-memory tokens.
+ * Copy DURABLE gas-fee and buy/sell totals onto the in-memory tokens.
  *
  * Memory only counts what has traded since this process started, so after any restart
- * a coin's feesPaidSol is a fraction of its real total — and /api/feed/token plus any
- * memory-served list row answer from memory. That is how a coin ClickHouse had at
- * 5.7591 SOL of fees was served as 0.00, and why a fee filter behaved differently
- * depending on which copy the client happened to be holding.
+ * a coin's feesPaidSol (gas fees) is a fraction of its real total.
  */
 async function hydrateFeesFromCH() {
   if (!clickhouseEnabled()) return;

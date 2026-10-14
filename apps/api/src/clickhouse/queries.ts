@@ -74,11 +74,7 @@ const TRADE_AGG = `
     sumIf(sol_amount, ts > now() - INTERVAL 1 HOUR)  AS vol_1h,
     sum(sol_amount)                                  AS total_sol,
     argMax(real_sol, ts)                             AS real_sol,
-    sum(fee_sol) + sum(creator_fee_sol)              AS fees_sol,
-    -- The CREATOR share alone. The bonding-curve event carries a protocol fee (0.95%
-    -- of volume) and a creator fee (0.30%); the trackers quote the creator one, and
-    -- summing both overstated a coin by ~3.4x.
-    sum(creator_fee_sol)                             AS creator_fees_sol,
+    sum(gas_fee_sol)                                 AS fees_sol,
     countIf(is_buy = 1)                              AS buys,
     countIf(is_buy = 0)                              AS sells,
     max(ts) AS last_ts,
@@ -147,10 +143,7 @@ export async function getGraduatingPairs(limit: number, solPrice: number, f: Pai
   return rows.map((r) => shapePair(r, solPrice));
 }
 
-// pump.fun takes 1% of the SOL side of every trade. We don't store a fee column, so
-// fees are DERIVED from volume — exact for bonding-curve trades, approximate once a
-// coin is on PumpSwap (different fee split). Good enough to filter "has this earned
-// real fees", not an accounting figure.
+// Legacy rate constant, kept for backwards-compat env var.
 const FEE_RATE = Number(process.env.PUMP_FEE_RATE || 0.01);
 
 
@@ -192,14 +185,8 @@ export function filterSql(f: PairFilters, sol: number, opts: { feesExpr?: string
   const vol = `coalesce(lt.vol_sol, 0) * ${sol || 0}`;
   const mc  = `coalesce(lt.mcap_sol, 0) * ${sol || 0}`;
   const curve = `greatest(0, least(100, (1 - coalesce(lt.real_tok, 0) / ${INITIAL_REAL_TOKEN_RAW}) * 100))`;
-  // Measured, not derived. Overridable because a migrated coin's fees mean the ones
-  // charged on the AMM — its bonding-curve life is over and counting it lets a single
-  // curve-completing bundle buy carry the coin past a fee floor forever.
-  // TOTAL fees — protocol + creator — because that is what "Global Fees Paid" means.
-  // Creator-only was tried against a reference reading of 3.033 on a coin whose events
-  // report creator_fee = 0 on every one of its 953 trades; creator-only gives 0 there,
-  // while protocol+creator gives 2.844. The remaining ~6% is trade coverage, not the
-  // choice of metric.
+  // Gas fees (network + priority + tips) summed across every txn on the coin.
+  // Overridable for migrated coins where only post-migration gas matters.
   const fees = opts.feesExpr ?? `coalesce(lt.fees_sol, 0)`;
   // Age is measured from the token's creation, not from migration — "how old is this
   // coin" means the same thing in every column.
@@ -266,14 +253,10 @@ export async function getGraduatedPairs(limit: number, solPrice: number, f: Pair
      ) g
      LEFT JOIN tokens t FINAL ON g.mint = t.mint
      LEFT JOIN (${TRADE_AGG}) lt ON g.mint = lt.mint
-     -- Fees a MIGRATED coin has actually charged its traders, i.e. only what happened
-     -- on the AMM. Counting its whole life instead put the bonding-curve fee in the
-     -- headline, and a coin whose curve was completed by one bundled ~85 SOL buy
-     -- carries ~1.06 SOL of it — enough to clear a 0.5 SOL filter while the coin has
-     -- had essentially no real trading since. The value repeated verbatim across
-     -- unrelated coins, which is what gave it away.
+     -- Gas fees a MIGRATED coin has accumulated post-migration only. Counting its
+     -- whole life lets a bundled curve-completing buy carry gas past a filter forever.
      LEFT JOIN (
-       SELECT tr.mint AS mint, sum(tr.fee_sol + tr.creator_fee_sol) AS fees_post
+       SELECT tr.mint AS mint, sum(tr.gas_fee_sol) AS fees_post
        FROM trades tr
        INNER JOIN (SELECT mint, max(ts) AS gts FROM graduations GROUP BY mint) gg
          ON tr.mint = gg.mint
@@ -471,16 +454,14 @@ export async function getTokensMissingImages(limit: number, hours = 6) {
  *  so this can't retry forever on the same rows. The caller remembers every uri it
  *  has fetched and skips it, which bounds the sweep to one fetch per coin per
  *  process, and the window keeps it to coins recent enough to still be on screen. */
-/** Fees (and buy/sell counts) we hold DURABLY for a set of mints.
+/** Gas fees (and buy/sell counts) we hold DURABLY for a set of mints.
  *  In-memory tokens only accumulate from the moment a process starts, so their
- *  feesPaidSol is a fraction of the real total — and /api/feed/token answers from
- *  memory whenever a coin is still tracked. That served 0 for a coin ClickHouse had
- *  at 5.7591. */
+ *  feesPaidSol is a fraction of the real total. */
 export async function getFeesForMints(mints: string[]) {
   if (!mints.length) return [] as any[];
   return q<any>(
     `SELECT mint,
-       sum(fee_sol) + sum(creator_fee_sol) AS fees_sol,
+       sum(gas_fee_sol) AS fees_sol,
        countIf(is_buy = 1) AS buys,
        countIf(is_buy = 0) AS sells
      FROM trades WHERE mint IN {mints:Array(String)}
