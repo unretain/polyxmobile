@@ -71,7 +71,11 @@ export function OnrampModal({ isOpen, onClose }: OnrampModalProps) {
         receiptEmail: email,
         amount: effectiveAmount,
       });
-      setOrder(result);
+      if (!result.ok) {
+        setError(result.error);
+      } else {
+        setOrder({ orderId: result.orderId, clientSecret: result.clientSecret });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create order");
     } finally {
