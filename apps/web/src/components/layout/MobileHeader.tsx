@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Sun, Moon, Menu, X, Wallet } from "lucide-react";
+import { Sun, Moon, Menu, X, Wallet, CreditCard } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { useState } from "react";
 import { shortenAddress } from "@/lib/wallet";
+import { OnrampModal } from "@/components/onramp/OnrampModal";
 
 export function MobileHeader() {
   const pathname = usePathname();
@@ -14,6 +15,7 @@ export function MobileHeader() {
   const { isDark, toggleTheme } = useThemeStore();
   const { wallet } = useMobileWalletStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [onrampOpen, setOnrampOpen] = useState(false);
 
   const isActive = (path: string) => pathname === path;
 
@@ -129,7 +131,7 @@ export function MobileHeader() {
 
           {/* Wallet Info (if user has wallet) - clickable to go to wallet page */}
           {wallet && (
-            <div className="p-3">
+            <div className="p-3 space-y-2">
               <Link
                 href="/wallet"
                 onClick={() => setMobileMenuOpen(false)}
@@ -145,10 +147,21 @@ export function MobileHeader() {
                   Deposit / Withdraw →
                 </span>
               </Link>
+              <button
+                onClick={() => { setMobileMenuOpen(false); setOnrampOpen(true); }}
+                className="flex items-center gap-3 w-full px-4 py-3 rounded-xl transition-colors bg-[#FF6B4A]/10 hover:bg-[#FF6B4A]/20 text-[#FF6B4A]"
+              >
+                <CreditCard className="h-4 w-4" />
+                <span className="text-sm font-medium">Buy Crypto</span>
+                <span className={`ml-auto text-xs opacity-60`}>Card / Apple Pay</span>
+              </button>
             </div>
           )}
         </div>
       )}
+
+      {/* Onramp Modal */}
+      <OnrampModal isOpen={onrampOpen} onClose={() => setOnrampOpen(false)} />
     </>
   );
 }
