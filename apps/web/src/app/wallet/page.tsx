@@ -10,18 +10,11 @@ import {
   RefreshCw,
   ExternalLink,
   Wallet,
-  CreditCard
 } from "lucide-react";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { useThemeStore } from "@/stores/themeStore";
 import { shortenAddress } from "@/lib/wallet";
 import { executeClientWithdraw } from "@/lib/mobileSwap";
-import dynamic from "next/dynamic";
-
-const OnrampModal = dynamic(
-  () => import("@/components/onramp/OnrampModal").then((m) => ({ default: m.OnrampModal })),
-  { ssr: false }
-);
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -49,8 +42,7 @@ export default function WalletPage() {
   const { wallet } = useMobileWalletStore();
   const { isDark } = useThemeStore();
 
-  const [activeTab, setActiveTab] = useState<"deposit" | "withdraw" | "buy">("deposit");
-  const [onrampOpen, setOnrampOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"deposit" | "withdraw">("deposit");
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -256,19 +248,8 @@ export default function WalletPage() {
             <ArrowUpRight className="h-4 w-4" />
             Withdraw
           </button>
-          <button
-            onClick={() => setOnrampOpen(true)}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-medium transition-colors ${
-              isDark ? "text-[#FF6B4A] hover:bg-white/5" : "text-[#FF6B4A] hover:bg-black/5"
-            }`}
-          >
-            <CreditCard className="h-4 w-4" />
-            Buy
-          </button>
         </div>
 
-        {/* Onramp Modal */}
-        <OnrampModal isOpen={onrampOpen} onClose={() => setOnrampOpen(false)} />
 
         {/* Deposit Tab */}
         {activeTab === "deposit" && (

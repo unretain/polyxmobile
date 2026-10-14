@@ -176,8 +176,15 @@ export async function fetchInternalApi(
   headers.set("x-internal-api-key", config.internalApiKey);
   headers.set("accept", "application/json");
 
-  return fetch(url, {
-    ...options,
-    headers,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4000);
+  try {
+    return await fetch(url, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 }

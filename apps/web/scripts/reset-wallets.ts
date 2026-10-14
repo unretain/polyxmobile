@@ -60,7 +60,7 @@ async function resetWalletsAndAuth() {
 
   console.log(`✅ Reset ${result.count} users.\n`);
   console.log("Next steps:");
-  console.log("1. Set AUTH_SECRET on Railway: M/HqRNAhLUiUmA3FYLKhUtxXv4viaZ/cw4XjfbCwphM=");
+  console.log("1. Set AUTH_SECRET on Railway (generate a new one with: openssl rand -base64 32)");
   console.log("2. Redeploy the app");
   console.log("3. Users will get new wallets when they next access the trading page");
 }
