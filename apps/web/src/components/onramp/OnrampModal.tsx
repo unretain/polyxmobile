@@ -1,14 +1,28 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { X, CreditCard, DollarSign, Loader2 } from "lucide-react";
-import { CrossmintProvider, CrossmintEmbeddedCheckout } from "@crossmint/client-sdk-react-ui";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { useThemeStore } from "@/stores/themeStore";
 import { createOnrampOrder } from "@/app/actions/createOnrampOrder";
 import { cn } from "@/lib/utils";
 
 const CLIENT_API_KEY = process.env.NEXT_PUBLIC_CROSSMINT_CLIENT_API_KEY || "";
+
+// Dynamically import Crossmint components — they depend on browser APIs
+// and break SSR if imported at the top level.
+const CrossmintCheckout = dynamic(
+  () => import("./CrossmintCheckoutWrapper"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-[#FF6B4A]" />
+      </div>
+    ),
+  }
+);
 
 // Preset amounts
 const PRESETS = ["10", "25", "50", "100"];
@@ -115,20 +129,14 @@ export function OnrampModal({ isOpen, onClose }: OnrampModalProps) {
         {/* Content */}
         <div className="p-4">
           {order ? (
-            /* Crossmint Checkout */
+            /* Crossmint Checkout — loaded client-side only */
             <div className="min-h-[400px]">
-              <CrossmintProvider apiKey={CLIENT_API_KEY}>
-                <CrossmintEmbeddedCheckout
-                  orderId={order.orderId}
-                  clientSecret={order.clientSecret}
-                  payment={{
-                    receiptEmail: email,
-                    crypto: { enabled: false },
-                    fiat: { enabled: true },
-                    defaultMethod: "fiat",
-                  }}
-                />
-              </CrossmintProvider>
+              <CrossmintCheckout
+                apiKey={CLIENT_API_KEY}
+                orderId={order.orderId}
+                clientSecret={order.clientSecret}
+                receiptEmail={email}
+              />
             </div>
           ) : (
             /* Order Form */

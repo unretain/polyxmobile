@@ -16,7 +16,12 @@ import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { useThemeStore } from "@/stores/themeStore";
 import { shortenAddress } from "@/lib/wallet";
 import { executeClientWithdraw } from "@/lib/mobileSwap";
-import { OnrampModal } from "@/components/onramp/OnrampModal";
+import dynamic from "next/dynamic";
+
+const OnrampModal = dynamic(
+  () => import("@/components/onramp/OnrampModal").then((m) => ({ default: m.OnrampModal })),
+  { ssr: false }
+);
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 

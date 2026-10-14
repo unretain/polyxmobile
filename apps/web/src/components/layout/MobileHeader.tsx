@@ -1,13 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { Sun, Moon, Menu, X, Wallet, CreditCard } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { useState } from "react";
 import { shortenAddress } from "@/lib/wallet";
-import { OnrampModal } from "@/components/onramp/OnrampModal";
+
+const OnrampModal = dynamic(
+  () => import("@/components/onramp/OnrampModal").then((m) => ({ default: m.OnrampModal })),
+  { ssr: false }
+);
 
 export function MobileHeader() {
   const pathname = usePathname();
