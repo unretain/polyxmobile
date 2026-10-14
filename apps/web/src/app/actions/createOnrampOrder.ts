@@ -51,7 +51,7 @@ export async function createOnrampOrder({ walletAddress, receiptEmail, amount }:
         executionParameters: { mode: "exact-in", amount },
       },
       payment: { method: "card", receiptEmail },
-      recipient: { email: receiptEmail },
+      recipient: { email: receiptEmail, walletAddress },
     };
 
     console.log("[crossmint] Creating order:", JSON.stringify(body));
