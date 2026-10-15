@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchInternalApi } from "@/lib/config";
 import { feedFetch } from "@/lib/feed";
 
 // Solana address validation
@@ -47,14 +46,7 @@ export async function GET(
       );
     }
 
-    // Fallback: internal API (Postgres) if still available.
-    const response = await fetchInternalApi(`/api/pulse/trades/${encodeURIComponent(address)}?limit=${limit}`);
-    if (response.ok) {
-      const data = await response.json();
-      return NextResponse.json(data, { headers: { "Cache-Control": "public, max-age=2" } });
-    }
-
-    // Last resort: DexScreener (no raw trade list, returns empty set gracefully).
+    // Fallback: DexScreener (no raw trade list, returns empty set gracefully).
     const dex = await dexTrades(address, limit);
     if (dex) return NextResponse.json(dex, { headers: { "Cache-Control": "public, max-age=5" } });
 

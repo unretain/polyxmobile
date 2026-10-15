@@ -4,15 +4,14 @@
  * up and fall back to the in-memory / provider paths when it isn't (e.g. before
  * the ClickHouse service is deployed).
  */
-import { fetchInternalApi } from "./config";
+import { config, fetchInternalApi } from "./config";
 
 let _avail: { ok: boolean; at: number } | null = null;
-// Cache "available" for a while (low overhead), but re-check "unavailable" quickly
-// so a brief API/ClickHouse blip doesn't strand the site on the fallback feed.
 const AVAIL_TTL_OK = 60000;
-const AVAIL_TTL_BAD = 8000;
+const AVAIL_TTL_BAD = 30000;
 
 async function feedAvailable(): Promise<boolean> {
+  if (!config.internalApiKey || !config.apiUrl) return false;
   if (_avail) {
     const ttl = _avail.ok ? AVAIL_TTL_OK : AVAIL_TTL_BAD;
     if (Date.now() - _avail.at < ttl) return _avail.ok;
