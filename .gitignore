@@ -66,3 +66,15 @@ setup-stripe.js
 # local logo disk cache (apps/api/.imgcache)
 .imgcache/
 *.tsbuildinfo
+
+# Rust / Anchor build output
+launchpad/target/
+target/
+
+# Capacitor generated web assets (rebuilt by `npx cap sync`)
+apps/web/ios/App/App/public/
+apps/web/android/app/src/main/assets/public/
+
+# Screen recordings / exported media
+*.webm
+*.zip
