@@ -51,21 +51,6 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
     }
   };
 
-  // Save the generated seed phrase to the encrypted server vault. The server
-  // AES-256-GCM encrypts it (with VAULT_ENCRYPTION_KEY) before it touches the DB.
-  // Best-effort: the device copy still works if this fails.
-  const storeSeedInVault = async (pk: string, mnemonic: string) => {
-    try {
-      await fetch("/api/wallet/vault", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ publicKey: pk, mnemonic }),
-      });
-    } catch {
-      /* vault is a backup; the wallet still works from the device */
-    }
-  };
-
   // Generate wallet when creating new
   const handleCreateNew = async () => {
     const { mnemonic, publicKey: pk } = generateWalletWithMnemonic();
@@ -82,11 +67,8 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
     // Persist the encrypted key NOW so signing works even if backup is skipped.
     storeMnemonic(mnemonic);
 
-    // Register with backend (encrypted)
+    // Register with backend (public key only — the seed phrase never leaves the device)
     registerWallet(pk);
-
-    // Save the seed phrase to the encrypted vault.
-    storeSeedInVault(pk, mnemonic);
 
     setStep("create-intro");
   };
@@ -245,11 +227,8 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
       // Call confirmBackup to encrypt and store the mnemonic
       confirmBackup();
 
-      // Register with backend (encrypted)
+      // Register with backend (public key only — the seed phrase never leaves the device)
       registerWallet(pk);
-
-      // Back up the imported phrase to the vault too (best-effort, same as create).
-      storeSeedInVault(pk, phrase);
 
       // Clear sensitive data from state immediately after use
       setImportPhrase("");
