@@ -1,27 +1,25 @@
 {
-	"appId": "com.polyx.app",
+	"appId": "trade.polyx.app",
 	"appName": "Polyx",
 	"webDir": "out",
+	"server": {
+		"url": "https://web-production-0d2ec.up.railway.app",
+		"cleartext": false
+	},
 	"ios": {
 		"contentInset": "automatic",
-		"allowsLinkPreview": false,
-		"backgroundColor": "#000000",
-		"preferredContentMode": "mobile"
+		"preferredContentMode": "mobile",
+		"scheme": "Polyx"
 	},
 	"plugins": {
 		"SplashScreen": {
 			"launchShowDuration": 2000,
 			"backgroundColor": "#000000",
 			"showSpinner": false
-		},
-		"Keyboard": {
-			"resize": "body",
-			"resizeOnFullScreen": true
 		}
 	},
 	"packageClassList": [
-		"AppPlugin",
-		"HapticsPlugin",
-		"NativeBiometric"
+		"SplashScreenPlugin",
+		"NfcPlugin"
 	]
 }
