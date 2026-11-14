@@ -128,35 +128,11 @@ export default function WalletPage() {
         return;
       }
 
-      // A mobile wallet with no local seed can't sign, and the server can't sign
-      // for it either — tell the user to re-import instead of a doomed 401.
-      if (wallet) {
-        throw new Error(
-          "Wallet locked — re-import your recovery phrase in Settings to withdraw."
-        );
-      }
-
-      // Custodial (session) fallback.
-      const res = await fetch("/api/trading/withdraw", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          destinationAddress,
-          amount,
-          tokenMint: selectedToken === SOL_MINT ? null : selectedToken,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Withdrawal failed");
-      }
-
-      setSuccess("Withdrawal successful!");
-      setAmount("");
-      setDestinationAddress("");
-      fetchBalance();
+      // No local seed means nothing can sign: the server holds no keys, so there
+      // is no server-side fallback.
+      throw new Error(
+        "Wallet locked — re-import your recovery phrase in Settings to withdraw."
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Withdrawal failed");
     } finally {

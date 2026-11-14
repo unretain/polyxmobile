@@ -157,10 +157,6 @@ if (typeof window !== "undefined") {
         });
       }
 
-      if (url.includes("/api/trading/withdraw") || url.includes("/api/trading/swap") || url.includes("/api/trading/pump-swap")) {
-        return json({ success: true, demo: true, txSignature: "DEMO" });
-      }
-
     return original(input, init);
   };
 }

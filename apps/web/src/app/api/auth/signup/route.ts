@@ -2,16 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
-import { generateWalletForUser } from "@/lib/wallet";
-
-// SECURITY: Lazy evaluation to avoid build-time errors
-function getWalletSecret(): string {
-  const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
-  if (!secret && process.env.NODE_ENV === "production") {
-    throw new Error("AUTH_SECRET or NEXTAUTH_SECRET must be set in production");
-  }
-  return secret || "dev-only-secret-do-not-use-in-production";
-}
 
 // Password complexity regex: min 8 chars, 1 uppercase, 1 lowercase, 1 number
 const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
@@ -65,9 +55,6 @@ export async function POST(request: NextRequest) {
 
     // Hash password
     const passwordHash = await bcrypt.hash(password, 12);
-
-    // Generate wallet
-    const { publicKey, encryptedPrivateKey } = generateWalletForUser(getWalletSecret());
 
     // Send verification email FIRST before creating user
     const apiKey = process.env.RESEND_API_KEY;
@@ -135,12 +122,11 @@ export async function POST(request: NextRequest) {
         emailVerified: null, // Not verified yet
         verificationCode,
         verificationExpiry,
-        walletAddress: publicKey,
-        walletEncrypted: encryptedPrivateKey,
+        // No wallet: accounts are non-custodial, the server never generates keys.
       },
     });
 
-    console.log(`Created new user ${normalizedEmail} with wallet ${publicKey}`);
+    console.log(`Created new user ${normalizedEmail}`);
 
     return NextResponse.json({
       success: true,

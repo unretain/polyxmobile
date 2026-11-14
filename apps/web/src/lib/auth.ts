@@ -4,45 +4,9 @@ import Credentials from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
-import { generateWalletForUser } from "./wallet";
 
-// SECURITY: Lazy evaluation to avoid build-time errors
-function getWalletSecret(): string {
-  const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
-  if (!secret && process.env.NODE_ENV === "production") {
-    throw new Error("AUTH_SECRET or NEXTAUTH_SECRET must be set in production");
-  }
-  return secret || "dev-only-secret-do-not-use-in-production";
-}
-
-/**
- * Generate a Solana wallet for a user if they don't have one
- */
-async function ensureUserHasWallet(userId: string): Promise<string | null> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { walletAddress: true },
-  });
-
-  if (user?.walletAddress) {
-    return user.walletAddress;
-  }
-
-  // Generate new wallet
-  const { publicKey, encryptedPrivateKey } = generateWalletForUser(getWalletSecret());
-
-  // Store in database
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      walletAddress: publicKey,
-      walletEncrypted: encryptedPrivateKey,
-    },
-  });
-
-  console.log(`Generated Solana wallet ${publicKey} for user ${userId}`);
-  return publicKey;
-}
+// Accounts are non-custodial: the server never generates, stores or decrypts a
+// wallet key. Wallets live on the user's device (or in Phantom).
 
 // Custom adapter that doesn't overwrite name/image on OAuth sign-in
 const basePrismaAdapter = PrismaAdapter(prisma);
@@ -95,37 +59,22 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           // Hash password
           const passwordHash = await bcrypt.hash(password, 12);
 
-          // For Phantom users, use their connected wallet address directly
-          // For regular users, generate a new wallet
-          let walletAddress: string;
-          let walletEncrypted: string | null = null;
+          // Phantom users bring their own wallet: the password IS the public key.
+          // Everyone else gets no server-side wallet at all.
+          const walletAddress: string | null = isPhantomLogin ? password : null;
 
-          if (isPhantomLogin) {
-            // For Phantom users, the password IS the public key
-            // They bring their own wallet, we don't generate one
-            walletAddress = password;
-            console.log(`Creating Phantom user with connected wallet ${walletAddress}`);
-          } else {
-            // Generate wallet for regular users
-            const wallet = generateWalletForUser(getWalletSecret());
-            walletAddress = wallet.publicKey;
-            walletEncrypted = wallet.encryptedPrivateKey;
-          }
-
-          // Create new user with wallet
           const newUser = await prisma.user.create({
             data: {
               email,
               passwordHash,
               name: isPhantomLogin ? `Phantom_${email.split("@")[0]}` : email.split("@")[0],
               walletAddress,
-              walletEncrypted,
               // Phantom users are auto-verified (no email to verify)
               emailVerified: isPhantomLogin ? new Date() : null,
             },
           });
 
-          console.log(`Created new user ${email} with wallet ${walletAddress}`);
+          console.log(`Created new user ${email}`);
 
           return {
             id: newUser.id,
@@ -159,15 +108,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   ],
   pages: {
     signIn: "/",
-  },
-  events: {
-    // Generate wallet after OAuth sign-in (Google, etc.)
-    async signIn({ user, account }) {
-      if (user.id && account?.provider !== "credentials") {
-        // For OAuth providers, ensure user has a wallet
-        await ensureUserHasWallet(user.id);
-      }
-    },
   },
   callbacks: {
     async jwt({ token, user, account, trigger }) {

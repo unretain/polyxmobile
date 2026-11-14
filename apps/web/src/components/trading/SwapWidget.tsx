@@ -472,54 +472,13 @@ export function SwapWidget({
         return;
       }
 
-      // A mobile wallet with no local seed can't sign, and the server route can't
-      // sign for it either (non-custodial — we never hold the key). Tell the user
-      // to re-import instead of firing a doomed 401 at the custodial endpoint.
-      if (wallet) {
-        throw new Error(
-          "Wallet locked — re-import your recovery phrase in Settings to enable trading on this device."
-        );
-      }
-
-      // Fallback to server-side swap (custodial NextAuth-session users only)
-      const endpoint = venue === "pumpfun"
-        ? "/api/trading/pump-swap"
-        : "/api/trading/swap";
-
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          inputMint,
-          outputMint,
-          amount: rawAmount,
-          slippageBps: slippage,
-          inputSymbol: isBuy ? "SOL" : outputSymbol,
-          outputSymbol: isBuy ? outputSymbol : "SOL",
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Swap failed");
-      }
-
-      // Success! Play sound and show toast
-      const serverFilled = await fillPromise;
-      playTradeSound(isBuy);
-      showToast(
-        isBuy
-          ? `Bought ${amountNum} SOL of ${outputSymbol}`
-          : `Sold ${fmtTok(amountNum)} ${outputSymbol}${serverFilled > 0 ? ` for ${fmtSol(serverFilled)} SOL` : ""}`,
-        "success"
+      // No local seed means nothing can sign: wallets are non-custodial and the
+      // server holds no keys, so there is no server-side fallback.
+      throw new Error(
+        wallet
+          ? "Wallet locked — re-import your recovery phrase in Settings to enable trading on this device."
+          : "No wallet on this device — create or import one to trade."
       );
-
-      setSuccess("Transaction successful!");
-      setInputAmount("");
-      setQuote(null);
-      setTradingSource(null);
-      fetchBalance();
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Swap failed";
       setError(errorMsg);
