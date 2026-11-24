@@ -9,14 +9,18 @@ import {
   ArrowUpRight,
   RefreshCw,
   ExternalLink,
-  Wallet,
+  CreditCard,
+  Repeat,
 } from "lucide-react";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { useThemeStore } from "@/stores/themeStore";
 import { shortenAddress } from "@/lib/wallet";
 import { executeClientWithdraw } from "@/lib/mobileSwap";
+import { SwapWidget } from "@/components/trading";
+import { OnrampModal } from "@/components/onramp/OnrampModal";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
+const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
 interface BalanceResponse {
   walletAddress: string;
@@ -25,6 +29,8 @@ interface BalanceResponse {
     balance: string;
     uiBalance: number;
     decimals: number;
+    priceUsd?: number | null;
+    valueUsd?: number | null;
   };
   tokens: Array<{
     mint: string;
@@ -34,15 +40,27 @@ interface BalanceResponse {
     symbol?: string;
     name?: string;
     logoUri?: string;
+    valueUsd?: number | null;
   }>;
+  totalValueUsd?: number | null;
 }
+
+type Panel = "buy" | "swap" | "deposit" | "withdraw";
+
+const ACTIONS: Array<{ id: Panel; label: string; icon: typeof CreditCard }> = [
+  { id: "buy", label: "Buy", icon: CreditCard },
+  { id: "swap", label: "Swap", icon: Repeat },
+  { id: "deposit", label: "Deposit", icon: ArrowDownLeft },
+  { id: "withdraw", label: "Withdraw", icon: ArrowUpRight },
+];
 
 export default function WalletPage() {
   const router = useRouter();
   const { wallet } = useMobileWalletStore();
   const { isDark } = useThemeStore();
 
-  const [activeTab, setActiveTab] = useState<"deposit" | "withdraw">("deposit");
+  const [panel, setPanel] = useState<Panel>("deposit");
+  const [buyOpen, setBuyOpen] = useState(false);
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -56,23 +74,15 @@ export default function WalletPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Redirect if no wallet
   useEffect(() => {
-    if (!wallet) {
-      router.push("/");
-    }
+    if (!wallet) router.push("/");
   }, [wallet, router]);
 
-  // Fetch balance
   const fetchBalance = useCallback(async () => {
     if (!wallet) return;
-
     try {
       const res = await fetch(`/api/trading/balance?address=${wallet.publicKey}`);
-      if (res.ok) {
-        const data = await res.json();
-        setBalance(data);
-      }
+      if (res.ok) setBalance(await res.json());
     } catch (err) {
       console.error("Failed to fetch balance:", err);
     } finally {
@@ -100,14 +110,11 @@ export default function WalletPage() {
 
   const handleWithdraw = async () => {
     if (!destinationAddress || !amount) return;
-
     setWithdrawing(true);
     setError(null);
     setSuccess(null);
-
     try {
-      // Client-side (mobile) wallet: sign the transfer locally. Non-custodial, so
-      // the server never holds the key — the custodial route can't do this.
+      // Non-custodial: sign the transfer on this device. The server never holds keys.
       const mnemonic = await useMobileWalletStore.getState().getMnemonic();
       if (mnemonic) {
         const isSol = selectedToken === SOL_MINT;
@@ -127,12 +134,7 @@ export default function WalletPage() {
         fetchBalance();
         return;
       }
-
-      // No local seed means nothing can sign: the server holds no keys, so there
-      // is no server-side fallback.
-      throw new Error(
-        "Wallet locked — re-import your recovery phrase in Settings to withdraw."
-      );
+      throw new Error("Wallet locked — re-import your recovery phrase in Settings to withdraw.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Withdrawal failed");
     } finally {
@@ -142,250 +144,211 @@ export default function WalletPage() {
 
   const getSelectedBalance = () => {
     if (!balance) return 0;
-    if (selectedToken === SOL_MINT) {
-      return balance.sol.uiBalance;
-    }
-    const token = balance.tokens.find((t) => t.mint === selectedToken);
-    return token?.uiBalance || 0;
+    if (selectedToken === SOL_MINT) return balance.sol.uiBalance;
+    return balance.tokens.find((t) => t.mint === selectedToken)?.uiBalance || 0;
   };
 
   if (!wallet) return null;
 
+  const card = `rounded-2xl border ${isDark ? "bg-white/5 border-white/10" : "bg-white border-black/10"}`;
+  const input = `w-full px-4 py-3 rounded-xl border outline-none ${
+    isDark
+      ? "bg-black/30 text-white border-white/10 focus:border-[#FF6B4A]/50"
+      : "bg-gray-100 text-black border-black/10 focus:border-[#FF6B4A]/50"
+  }`;
+  const totalUsd = balance?.totalValueUsd;
+
   return (
-    <div className={`space-y-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold">Wallet</h1>
-        <button
-          onClick={handleRefresh}
-          className={`p-2 rounded-full ${isDark ? 'hover:bg-white/10' : 'hover:bg-black/10'}`}
-        >
-          <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
-        </button>
-      </div>
-        {/* Balance Card */}
-        <div className={`rounded-2xl p-6 ${isDark ? 'bg-white/5 border border-white/10' : 'bg-white border border-black/10'}`}>
-          <div className="text-center mb-4">
-            <p className={`text-sm mb-1 ${isDark ? 'text-white/50' : 'text-black/50'}`}>Total Balance</p>
-            {loading ? (
-              <div className="h-10 w-32 mx-auto rounded-lg bg-white/10 animate-pulse" />
-            ) : (
-              <p className={`text-3xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                {balance?.sol.uiBalance.toFixed(4) || "0"} SOL
+    <div className={`mx-auto max-w-md space-y-4 ${isDark ? "text-white" : "text-gray-900"}`}>
+      {/* Balance hero */}
+      <div className={`${card} p-6`}>
+        <div className="flex items-start justify-between">
+          <p className={`text-sm ${isDark ? "text-white/50" : "text-black/50"}`}>Total Balance</p>
+          <button
+            onClick={handleRefresh}
+            className={`p-1.5 -m-1 rounded-full ${isDark ? "hover:bg-white/10" : "hover:bg-black/10"}`}
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""} ${isDark ? "text-white/40" : "text-black/40"}`} />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="mt-2 h-10 w-40 rounded-lg bg-white/10 animate-pulse" />
+        ) : (
+          <>
+            <p className="text-4xl font-bold tracking-tight">
+              {totalUsd != null
+                ? `$${totalUsd.toLocaleString(undefined, { maximumFractionDigits: 2 })}`
+                : `${balance?.sol.uiBalance.toFixed(4) || "0"} SOL`}
+            </p>
+            {totalUsd != null && (
+              <p className={`mt-1 text-sm ${isDark ? "text-white/40" : "text-black/40"}`}>
+                {balance?.sol.uiBalance.toFixed(4)} SOL
+                {balance && balance.tokens.length > 0 && ` · ${balance.tokens.length} token${balance.tokens.length > 1 ? "s" : ""}`}
               </p>
             )}
-          </div>
-
-          {/* Wallet Address */}
-          <div className={`flex items-center justify-center gap-2 p-3 rounded-xl ${isDark ? 'bg-black/30' : 'bg-gray-100'}`}>
-            <Wallet className={`h-4 w-4 ${isDark ? 'text-white/40' : 'text-black/40'}`} />
-            <code className={`text-sm font-mono ${isDark ? 'text-white/60' : 'text-black/60'}`}>
-              {shortenAddress(wallet.publicKey, 6)}
-            </code>
-            <button onClick={copyAddress} className="p-1">
-              {copied ? (
-                <Check className="h-4 w-4 text-green-400" />
-              ) : (
-                <Copy className={`h-4 w-4 ${isDark ? 'text-white/40' : 'text-black/40'}`} />
-              )}
-            </button>
-            <a
-              href={`https://solscan.io/account/${wallet.publicKey}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="p-1"
-            >
-              <ExternalLink className={`h-4 w-4 ${isDark ? 'text-white/40' : 'text-black/40'}`} />
-            </a>
-          </div>
-        </div>
-
-        {/* Tab Buttons */}
-        <div className={`flex gap-2 p-1 rounded-xl ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
-          <button
-            onClick={() => setActiveTab("deposit")}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-medium transition-colors ${
-              activeTab === "deposit"
-                ? "bg-[#FF6B4A] text-white"
-                : isDark ? "text-white/60" : "text-black/60"
-            }`}
-          >
-            <ArrowDownLeft className="h-4 w-4" />
-            Deposit
-          </button>
-          <button
-            onClick={() => setActiveTab("withdraw")}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-medium transition-colors ${
-              activeTab === "withdraw"
-                ? "bg-[#FF6B4A] text-white"
-                : isDark ? "text-white/60" : "text-black/60"
-            }`}
-          >
-            <ArrowUpRight className="h-4 w-4" />
-            Withdraw
-          </button>
-        </div>
-
-
-        {/* Deposit Tab */}
-        {activeTab === "deposit" && (
-          <div className={`rounded-2xl p-6 ${isDark ? 'bg-white/5 border border-white/10' : 'bg-white border border-black/10'}`}>
-            <div className="text-center space-y-4">
-              <div>
-                <p className={`text-sm mb-2 ${isDark ? 'text-white/50' : 'text-black/50'}`}>
-                  Send SOL or SPL tokens to this address
-                </p>
-                <div className={`p-4 rounded-xl ${isDark ? 'bg-black/30' : 'bg-gray-100'}`}>
-                  <code className={`text-sm font-mono break-all ${isDark ? 'text-[#FF6B4A]' : 'text-[#FF6B4A]'}`}>
-                    {wallet.publicKey}
-                  </code>
-                </div>
-              </div>
-
-              <button
-                onClick={copyAddress}
-                className={`w-full py-3 rounded-xl font-medium flex items-center justify-center gap-2 ${
-                  copied
-                    ? 'bg-green-500/20 text-green-400'
-                    : 'bg-[#FF6B4A] text-white hover:bg-[#FF8F6B]'
-                } transition-colors`}
-              >
-                {copied ? (
-                  <>
-                    <Check className="h-5 w-5" />
-                    Copied!
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-5 w-5" />
-                    Copy Address
-                  </>
-                )}
-              </button>
-
-              <p className={`text-xs ${isDark ? 'text-white/30' : 'text-black/30'}`}>
-                Only send Solana (SOL) or SPL tokens to this address. Sending other assets may result in permanent loss.
-              </p>
-            </div>
-          </div>
+          </>
         )}
 
-        {/* Withdraw Tab */}
-        {activeTab === "withdraw" && (
-          <div className={`rounded-2xl p-6 space-y-4 ${isDark ? 'bg-white/5 border border-white/10' : 'bg-white border border-black/10'}`}>
-            {/* Token Selection */}
-            <div>
-              <label className={`text-sm mb-2 block ${isDark ? 'text-white/50' : 'text-black/50'}`}>
-                Token
-              </label>
-              <select
-                value={selectedToken}
-                onChange={(e) => setSelectedToken(e.target.value)}
-                className={`w-full px-4 py-3 rounded-xl border outline-none ${
-                  isDark
-                    ? 'bg-black/30 text-white border-white/10 focus:border-[#FF6B4A]/50'
-                    : 'bg-gray-100 text-black border-black/10 focus:border-[#FF6B4A]/50'
-                }`}
-              >
-                <option value={SOL_MINT}>SOL ({balance?.sol.uiBalance.toFixed(4) || 0})</option>
-                {balance?.tokens.map((token) => (
-                  <option key={token.mint} value={token.mint}>
-                    {token.symbol || token.mint.slice(0, 8)}... ({token.uiBalance.toFixed(4)})
-                  </option>
-                ))}
-              </select>
-            </div>
+        {/* Address */}
+        <div className={`mt-4 flex items-center gap-2 p-2.5 rounded-xl ${isDark ? "bg-black/30" : "bg-gray-100"}`}>
+          <code className={`flex-1 text-sm font-mono truncate ${isDark ? "text-white/60" : "text-black/60"}`}>
+            {shortenAddress(wallet.publicKey, 8)}
+          </code>
+          <button onClick={copyAddress} className="p-1">
+            {copied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className={`h-4 w-4 ${isDark ? "text-white/40" : "text-black/40"}`} />}
+          </button>
+          <a href={`https://solscan.io/account/${wallet.publicKey}`} target="_blank" rel="noopener noreferrer" className="p-1">
+            <ExternalLink className={`h-4 w-4 ${isDark ? "text-white/40" : "text-black/40"}`} />
+          </a>
+        </div>
+      </div>
 
-            {/* Amount */}
-            <div>
-              <div className={`flex justify-between text-sm mb-2 ${isDark ? 'text-white/50' : 'text-black/50'}`}>
-                <label>Amount</label>
-                <span>Balance: {getSelectedBalance().toFixed(4)}</span>
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0.0"
-                  className={`flex-1 px-4 py-3 rounded-xl border outline-none ${
-                    isDark
-                      ? 'bg-black/30 text-white border-white/10 focus:border-[#FF6B4A]/50'
-                      : 'bg-gray-100 text-black border-black/10 focus:border-[#FF6B4A]/50'
-                  }`}
-                />
-                <button
-                  onClick={() => {
-                    const bal = getSelectedBalance();
-                    // For SOL, leave ~0.00001 SOL for the network fee so the transfer
-                    // can pay for itself (otherwise it fails "insufficient lamports").
-                    const max = selectedToken === SOL_MINT ? Math.max(0, bal - 0.00001) : bal;
-                    setAmount(max.toString());
-                  }}
-                  className={`px-4 py-3 rounded-xl font-medium ${
-                    isDark ? 'bg-white/10 text-white/60 hover:bg-white/15' : 'bg-black/10 text-black/60 hover:bg-black/15'
-                  }`}
-                >
-                  MAX
-                </button>
-              </div>
-            </div>
-
-            {/* Destination Address */}
-            <div>
-              <label className={`text-sm mb-2 block ${isDark ? 'text-white/50' : 'text-black/50'}`}>
-                Destination Address
-              </label>
-              <input
-                type="text"
-                value={destinationAddress}
-                onChange={(e) => setDestinationAddress(e.target.value)}
-                placeholder="Solana wallet address..."
-                className={`w-full px-4 py-3 rounded-xl border outline-none font-mono text-sm ${
-                  isDark
-                    ? 'bg-black/30 text-white border-white/10 focus:border-[#FF6B4A]/50'
-                    : 'bg-gray-100 text-black border-black/10 focus:border-[#FF6B4A]/50'
-                }`}
-              />
-            </div>
-
-            {/* Error/Success */}
-            {error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">
-                {error}
-              </div>
-            )}
-            {success && (
-              <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-sm">
-                {success}
-              </div>
-            )}
-
-            {/* Withdraw Button */}
+      {/* Quick actions */}
+      <div className="grid grid-cols-4 gap-2">
+        {ACTIONS.map(({ id, label, icon: Icon }) => {
+          const active = id === "buy" ? buyOpen : panel === id && !buyOpen;
+          return (
             <button
-              onClick={handleWithdraw}
-              disabled={!destinationAddress || !amount || withdrawing}
-              className={`w-full py-3 rounded-xl font-medium transition-colors ${
-                !destinationAddress || !amount || withdrawing
-                  ? isDark ? 'bg-white/10 text-white/40 cursor-not-allowed' : 'bg-black/10 text-black/40 cursor-not-allowed'
-                  : 'bg-[#FF6B4A] text-white hover:bg-[#FF8F6B]'
+              key={id}
+              onClick={() => (id === "buy" ? setBuyOpen(true) : setPanel(id))}
+              className={`flex flex-col items-center gap-1.5 py-3 rounded-2xl border transition-colors ${
+                active
+                  ? "border-[#FF6B4A] bg-[#FF6B4A]/10"
+                  : isDark
+                  ? "border-white/10 bg-white/5 hover:bg-white/10"
+                  : "border-black/10 bg-white hover:bg-black/5"
               }`}
             >
-              {withdrawing ? (
-                <span className="flex items-center justify-center gap-2">
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  Withdrawing...
-                </span>
-              ) : (
-                "Withdraw"
-              )}
+              <Icon className={`h-5 w-5 ${active ? "text-[#FF6B4A]" : isDark ? "text-white/70" : "text-black/70"}`} />
+              <span className={`text-xs font-medium ${active ? "text-[#FF6B4A]" : isDark ? "text-white/60" : "text-black/60"}`}>
+                {label}
+              </span>
             </button>
-          </div>
-        )}
+          );
+        })}
+      </div>
 
-        {/* Token holdings intentionally live in the Portfolio (Positions), not here.
-            The wallet widget is just SOL balance + deposit/withdraw, so on-chain
-            token accounts and portfolio positions don't show conflicting lists. */}
+      {/* Swap panel — SOL ⇄ USDC on Jupiter, signed on-device */}
+      {panel === "swap" && (
+        <SwapWidget
+          defaultOutputMint={USDC_MINT}
+          outputSymbol="USDC"
+          outputDecimals={6}
+          isGraduated
+          compactMobile
+        />
+      )}
+
+      {/* Deposit panel */}
+      {panel === "deposit" && (
+        <div className={`${card} p-6`}>
+          <div className="text-center space-y-4">
+            <div>
+              <p className={`text-sm mb-2 ${isDark ? "text-white/50" : "text-black/50"}`}>
+                Send SOL or SPL tokens to this address
+              </p>
+              <div className={`p-4 rounded-xl ${isDark ? "bg-black/30" : "bg-gray-100"}`}>
+                <code className="text-sm font-mono break-all text-[#FF6B4A]">{wallet.publicKey}</code>
+              </div>
+            </div>
+            <button
+              onClick={copyAddress}
+              className={`w-full py-3 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors ${
+                copied ? "bg-green-500/20 text-green-400" : "bg-[#FF6B4A] text-white hover:bg-[#FF8F6B]"
+              }`}
+            >
+              {copied ? (<><Check className="h-5 w-5" />Copied!</>) : (<><Copy className="h-5 w-5" />Copy Address</>)}
+            </button>
+            <p className={`text-xs ${isDark ? "text-white/30" : "text-black/30"}`}>
+              Only send Solana (SOL) or SPL tokens to this address. Sending other assets may result in permanent loss.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Withdraw panel */}
+      {panel === "withdraw" && (
+        <div className={`${card} p-6 space-y-4`}>
+          <div>
+            <label className={`text-sm mb-2 block ${isDark ? "text-white/50" : "text-black/50"}`}>Token</label>
+            <select value={selectedToken} onChange={(e) => setSelectedToken(e.target.value)} className={input}>
+              <option value={SOL_MINT}>SOL ({balance?.sol.uiBalance.toFixed(4) || 0})</option>
+              {balance?.tokens.map((token) => (
+                <option key={token.mint} value={token.mint}>
+                  {token.symbol || token.mint.slice(0, 8)}... ({token.uiBalance.toFixed(4)})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <div className={`flex justify-between text-sm mb-2 ${isDark ? "text-white/50" : "text-black/50"}`}>
+              <label>Amount</label>
+              <span>Balance: {getSelectedBalance().toFixed(4)}</span>
+            </div>
+            <div className="flex gap-2">
+              <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.0" className={input} />
+              <button
+                onClick={() => {
+                  const bal = getSelectedBalance();
+                  // Leave ~0.00001 SOL so the transfer can pay its own network fee.
+                  const max = selectedToken === SOL_MINT ? Math.max(0, bal - 0.00001) : bal;
+                  setAmount(max.toString());
+                }}
+                className={`px-4 py-3 rounded-xl font-medium ${
+                  isDark ? "bg-white/10 text-white/60 hover:bg-white/15" : "bg-black/10 text-black/60 hover:bg-black/15"
+                }`}
+              >
+                MAX
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className={`text-sm mb-2 block ${isDark ? "text-white/50" : "text-black/50"}`}>Destination Address</label>
+            <input
+              type="text"
+              value={destinationAddress}
+              onChange={(e) => setDestinationAddress(e.target.value)}
+              placeholder="Solana wallet address..."
+              className={`${input} font-mono text-sm`}
+            />
+          </div>
+
+          {error && <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</div>}
+          {success && <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-sm">{success}</div>}
+
+          <button
+            onClick={handleWithdraw}
+            disabled={!destinationAddress || !amount || withdrawing}
+            className={`w-full py-3 rounded-xl font-medium transition-colors ${
+              !destinationAddress || !amount || withdrawing
+                ? isDark ? "bg-white/10 text-white/40 cursor-not-allowed" : "bg-black/10 text-black/40 cursor-not-allowed"
+                : "bg-[#FF6B4A] text-white hover:bg-[#FF8F6B]"
+            }`}
+          >
+            {withdrawing ? (
+              <span className="flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Withdrawing...
+              </span>
+            ) : (
+              "Withdraw"
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Token holdings intentionally live in the Portfolio (Positions), not here. */}
+
+      <OnrampModal
+        isOpen={buyOpen}
+        onClose={() => {
+          setBuyOpen(false);
+          fetchBalance();
+        }}
+      />
     </div>
   );
 }

@@ -1,22 +1,7 @@
 "use client";
 
-import { MobileHeader } from "@/components/layout/MobileHeader";
-import { useThemeStore } from "@/stores/themeStore";
+import { AppShell } from "@/components/layout/AppShell";
 
-export default function MarketsLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const { isDark } = useThemeStore();
-
-  return (
-    <div className={`flex h-screen flex-col ${isDark ? 'bg-[#0a0a0a]' : 'bg-gray-50'}`}>
-      {/* Star grid background - only show in dark mode */}
-      {isDark && <div className="fixed inset-0 star-grid opacity-20 pointer-events-none" />}
-
-      <MobileHeader />
-      <main className="relative z-10 flex-1 overflow-auto pt-24 px-6 pb-6">{children}</main>
-    </div>
-  );
+export default function MarketsLayout({ children }: { children: React.ReactNode }) {
+  return <AppShell guard={false}>{children}</AppShell>;
 }

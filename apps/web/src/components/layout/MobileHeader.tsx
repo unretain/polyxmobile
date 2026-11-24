@@ -71,46 +71,20 @@ export function MobileHeader() {
         <div className={`fixed top-14 left-4 right-4 z-[100] rounded-2xl border backdrop-blur-md shadow-xl overflow-hidden ${
           isDark ? 'bg-[#1a1a1a]/95 border-white/10' : 'bg-white/95 border-black/10'
         }`}>
-          {/* Navigation Links */}
+          {/* Long-tail navigation — the main sections live in the bottom tab bar */}
           <div className={`p-2 ${wallet ? `border-b ${isDark ? 'border-white/10' : 'border-black/10'}` : ''}`}>
             <Link
-              href="/pulse"
-              onClick={(e) => handleNavClick(e, "/pulse")}
+              href="/markets"
+              onClick={(e) => handleNavClick(e, "/markets")}
               className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                isActive('/pulse')
+                isActive('/markets')
                   ? 'bg-[#FF6B4A] text-white'
                   : isDark
                     ? 'text-white/70 hover:bg-white/5'
                     : 'text-black/70 hover:bg-black/5'
               }`}
             >
-              Pulse
-            </Link>
-            <Link
-              href="/dashboard"
-              onClick={(e) => handleNavClick(e, "/dashboard")}
-              className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                isActive('/dashboard')
-                  ? 'bg-[#FF6B4A] text-white'
-                  : isDark
-                    ? 'text-white/70 hover:bg-white/5'
-                    : 'text-black/70 hover:bg-black/5'
-              }`}
-            >
-              Dashboard
-            </Link>
-            <Link
-              href="/portfolio"
-              onClick={(e) => handleNavClick(e, "/portfolio")}
-              className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                isActive('/portfolio')
-                  ? 'bg-[#FF6B4A] text-white'
-                  : isDark
-                    ? 'text-white/70 hover:bg-white/5'
-                    : 'text-black/70 hover:bg-black/5'
-              }`}
-            >
-              Portfolio
+              Markets
             </Link>
             <Link
               href="/coldstick"
