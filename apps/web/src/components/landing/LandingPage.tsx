@@ -88,20 +88,10 @@ function Sparkline({ data, positive, width = 120, height = 40 }: { data: number[
 
   return (
     <svg width={width} height={height} className="overflow-visible">
-      <defs>
-        <linearGradient id={`spark-gradient-${positive ? "up" : "down"}`} x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor={positive ? "#22c55e" : "#ef4444"} stopOpacity="0.3" />
-          <stop offset="100%" stopColor={positive ? "#22c55e" : "#ef4444"} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <polygon
-        points={`${padding},${height - padding} ${points} ${width - padding},${height - padding}`}
-        fill={`url(#spark-gradient-${positive ? "up" : "down"})`}
-      />
       <polyline
         points={points}
         fill="none"
-        stroke={positive ? "#22c55e" : "#ef4444"}
+        stroke={positive ? "#7FD39B" : "#EF8A80"}
         strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -331,8 +321,8 @@ export function LandingPage() {
             {/* Left Column - Cards (hidden on mobile, shown on desktop) */}
             <div className="hidden lg:block space-y-5">
               {/* Token Preview Card */}
-              <div className={`rounded-2xl border p-5 card-shine ${
-                isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
+              <div className={`rounded-2xl border p-5 ${
+                isDark ? 'bg-white/[0.04] border-white/10' : 'bg-white border-black/10'
               }`}>
                 <div className="flex items-center gap-4">
                   <TokenLogo token={currentToken} size={52} />
@@ -345,8 +335,8 @@ export function LandingPage() {
               </div>
 
               {/* 3D Immersive Trading Card */}
-              <div className={`rounded-2xl border p-5 card-shine ${
-                isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
+              <div className={`rounded-2xl border p-5 ${
+                isDark ? 'bg-white/[0.04] border-white/10' : 'bg-white border-black/10'
               }`}>
                 <div className="flex items-center gap-4">
                   <div className={`text-center px-4 py-3 rounded-xl ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
@@ -367,8 +357,8 @@ export function LandingPage() {
               </div>
 
               {/* Launch App Card */}
-              <div className={`rounded-2xl border p-5 card-shine ${
-                isDark ? 'bg-[#1a1a1a] border-transparent' : 'bg-white border-transparent'
+              <div className={`rounded-2xl border p-5 ${
+                isDark ? 'bg-white/[0.04] border-white/10' : 'bg-white border-black/10'
               }`}>
                 <button
                   onClick={handleLaunchApp}
@@ -464,7 +454,7 @@ export function LandingPage() {
                       </div>
                       <div>
                         <div className={`text-[10px] md:text-xs uppercase ${isDark ? 'text-white/40' : 'text-black/40'}`}>24h</div>
-                        <div className={`font-mono ${isPositive ? "text-green-500" : "text-red-500"}`}>
+                        <div className={`font-mono ${isPositive ? "text-up" : "text-down"}`}>
                           {isPositive ? "+" : ""}{change24h.toFixed(2)}%
                         </div>
                       </div>
@@ -494,13 +484,6 @@ export function LandingPage() {
                       <ChevronRight className="w-4 h-4 md:w-5 md:h-5" />
                     </button>
                   </div>
-                </div>
-              </div>
-
-              {/* Coral/Orange glow overlay - on top of chart, pointer-events-none */}
-              <div className="absolute inset-0 overflow-hidden pointer-events-none z-10">
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px]">
-                  <div className="absolute inset-0 bg-gradient-radial from-[#FF6B4A]/30 via-[#FF6B4A]/10 to-transparent blur-[60px]" />
                 </div>
               </div>
 
@@ -538,8 +521,8 @@ export function LandingPage() {
             {/* Left: View Pulse Card */}
             <Link
               href="/pulse"
-              className={`group rounded-2xl border py-6 px-5 card-shine hover:scale-[1.02] transition-all flex items-center gap-4 ${
-                isDark ? 'bg-[#1a1a1a] hover:bg-[#252525] border-transparent' : 'bg-white hover:bg-gray-100 border-transparent'
+              className={`group rounded-2xl border py-6 px-5 transition-colors flex items-center gap-4 ${
+                isDark ? 'bg-white/[0.04] hover:bg-white/[0.07] border-white/10' : 'bg-white hover:bg-gray-50 border-black/10'
               }`}
             >
               <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
@@ -566,26 +549,25 @@ export function LandingPage() {
             <div className="grid grid-cols-3 gap-4">
               <button
                 onClick={handleLaunchApp}
-                className="group rounded-2xl bg-[#FF6B4A] py-6 px-5 hover:scale-[1.02] transition-all relative overflow-hidden text-left"
+                className="group rounded-2xl bg-[#FF6B4A] py-6 px-5 hover:bg-[#FF8F6B] transition-colors relative overflow-hidden text-left"
               >
                 <div className="relative flex flex-col justify-between h-full">
                   <div className="text-lg font-bold text-white">Ready to trade?</div>
                   <div className="flex items-center justify-end mt-3">
-                    <span className="text-lg font-bold text-black whitespace-nowrap transition-transform duration-500 ease-out group-hover:-translate-x-6">
+                    <span className="text-lg font-bold text-white whitespace-nowrap transition-transform duration-500 ease-out group-hover:-translate-x-6">
                       Launch the app
                     </span>
-                    <div className="h-[2px] w-0 group-hover:w-20 bg-black transition-all duration-500 ease-out ml-2" />
+                    <div className="h-[2px] w-0 group-hover:w-20 bg-white transition-all duration-500 ease-out ml-2" />
                   </div>
                 </div>
               </button>
 
               <Link
                 href="/docs"
-                className={`group rounded-2xl border py-6 px-5 card-shine hover:scale-[1.02] transition-all flex items-center justify-center relative overflow-hidden ${
-                  isDark ? 'bg-[#1a1a1a] hover:bg-[#252525] border-transparent' : 'bg-white hover:bg-gray-100 border-transparent'
+                className={`group rounded-2xl border py-6 px-5 transition-colors flex items-center justify-center relative overflow-hidden ${
+                  isDark ? 'bg-white/[0.04] hover:bg-white/[0.07] border-white/10' : 'bg-white hover:bg-gray-50 border-black/10'
                 }`}
               >
-                <div className="absolute top-0 left-0 right-0 h-px animated-line" />
                 <div className="flex items-center gap-3">
                   <svg className={`w-5 h-5 flex-shrink-0 ${isDark ? 'text-white/60' : 'text-black/60'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -608,22 +590,23 @@ export function LandingPage() {
               </Link>
 
               <Link
-                href="/markets"
-                className={`group rounded-2xl border py-6 px-5 card-shine hover:scale-[1.02] transition-all flex items-center justify-center relative overflow-hidden ${
-                  isDark ? 'bg-[#1a1a1a] hover:bg-[#252525] border-transparent' : 'bg-white hover:bg-gray-100 border-transparent'
+                href="/launch"
+                className={`group rounded-2xl border py-6 px-5 transition-colors flex items-center justify-center relative overflow-hidden ${
+                  isDark ? 'bg-white/[0.04] hover:bg-white/[0.07] border-white/10' : 'bg-white hover:bg-gray-50 border-black/10'
                 }`}
               >
                 <div className="flex items-center gap-3">
                   <svg className={`w-5 h-5 flex-shrink-0 ${isDark ? 'text-white/60' : 'text-black/60'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                    <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
+                    <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
                   </svg>
                   <div className="ios-cylinder" style={{ width: "130px" }}>
                     <div className="ios-cylinder-inner">
                       <div className="ios-cylinder-face ios-cylinder-front">
-                        <span className="text-lg font-bold whitespace-nowrap">Trade markets</span>
+                        <span className="text-lg font-bold whitespace-nowrap">Launch a coin</span>
                       </div>
                       <div className="ios-cylinder-face ios-cylinder-bottom">
-                        <span className="text-lg font-bold text-[#FF6B4A] whitespace-nowrap">Explore</span>
+                        <span className="text-lg font-bold text-[#FF6B4A] whitespace-nowrap">Create</span>
                       </div>
                     </div>
                   </div>

@@ -10,10 +10,9 @@ import { shortenAddress } from "@/lib/wallet";
 
 const NAV = [
   { href: "/pulse", label: "Pulse" },
-  { href: "/dashboard", label: "Charts" },
+  { href: "/dashboard", label: "Trending" },
+  { href: "/launch", label: "Launch" },
   { href: "/portfolio", label: "Portfolio" },
-  { href: "/wallet", label: "Wallet" },
-  { href: "/markets", label: "Markets" },
   { href: "/coldstick", label: "3x Wallet" },
 ];
 
@@ -115,7 +114,7 @@ export function MobileHeader() {
                     {shortenAddress(wallet.publicKey)}
                   </span>
                   <span className={`ml-auto text-xs ${isDark ? 'text-white/40' : 'text-black/40'}`}>
-                    Buy / Withdraw →
+                    Buy / Swap / Withdraw →
                   </span>
                 </Link>
               </div>

@@ -7,9 +7,35 @@ import { TradeStatus } from "@prisma/client";
 // GET /api/trading/balance?address=<pubkey>
 // A wallet balance is public on-chain data. Session-based (custodial) users get
 // their wallet from the DB; client-side wallets (mobile / demo) pass ?address=.
+// SOL/USD with graceful degradation: live gRPC feed -> DB cache -> Binance.
+// The wallet widget must never die just because one price source is down
+// (locally there is no DB at all, and that 500'd the whole endpoint).
+async function getSolPriceUsd(): Promise<number | null> {
+  try {
+    const { feedFetch } = await import("@/lib/feed");
+    const s = await feedFetch("/api/feed/status");
+    if (s?.solPrice > 0) return s.solPrice;
+  } catch {}
+  try {
+    const priceCache = await prisma.priceCache.findUnique({ where: { symbol: "SOL" } });
+    if (priceCache?.priceUsd) return priceCache.priceUsd;
+  } catch {}
+  try {
+    const r = await fetch("https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT", {
+      signal: AbortSignal.timeout(4000),
+      next: { revalidate: 30 },
+    });
+    const j = await r.json();
+    const p = parseFloat(j?.price);
+    if (p > 0) return p;
+  } catch {}
+  return null;
+}
+
 export async function GET(req: Request) {
   try {
-    const session = await auth();
+    // auth() needs the DB adapter; a client-side wallet request must survive without it.
+    const session = await auth().catch(() => null);
     const addressParam = new URL(req.url).searchParams.get("address");
 
     let walletAddress: string | null = addressParam;
@@ -74,9 +100,7 @@ export async function GET(req: Request) {
         }));
     }
 
-    // Get SOL price from database cache
-    const priceCache = await prisma.priceCache.findUnique({ where: { symbol: "SOL" } });
-    const solPriceUsd = priceCache?.priceUsd ?? null;
+    const solPriceUsd = await getSolPriceUsd();
 
     // Get token prices from Jupiter
     let prices = new Map<string, number>();

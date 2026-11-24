@@ -206,6 +206,59 @@ export async function executeClientPumpSwap(
 }
 
 /**
+ * Launch a new pump.fun token, signed entirely on this device (non-custodial).
+ * Metadata must already be on IPFS (see /api/launch/ipfs). PumpPortal's
+ * local-trade API returns the create transaction; we sign with BOTH the fresh
+ * mint keypair and the user's wallet, then send it ourselves.
+ */
+export async function executeClientPumpCreate(
+  mnemonic: string,
+  meta: { name: string; symbol: string; metadataUri: string },
+  devBuySol: number,
+  slippagePct: number = 10
+): Promise<{ signature: string; explorerUrl: string; mint: string }> {
+  const { publicKey, secretKey } = deriveKeypairFromMnemonic(mnemonic);
+  const keypair = Keypair.fromSecretKey(secretKey);
+  const mintKeypair = Keypair.generate();
+
+  const res = await fetch("https://pumpportal.fun/api/trade-local", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      publicKey,
+      action: "create",
+      tokenMetadata: { name: meta.name, symbol: meta.symbol, uri: meta.metadataUri },
+      mint: mintKeypair.publicKey.toBase58(),
+      denominatedInSol: "true",
+      amount: devBuySol,
+      slippage: Math.max(1, Math.round(slippagePct)),
+      priorityFee: 0.0005,
+      pool: "pump",
+    }),
+  });
+  if (!res.ok) {
+    secretKey.fill(0);
+    const t = await res.text().catch(() => "");
+    throw new Error(`Launch failed: ${t.slice(0, 160) || res.status}`);
+  }
+
+  const data = new Uint8Array(await res.arrayBuffer());
+  const transaction = VersionedTransaction.deserialize(data);
+  transaction.sign([mintKeypair, keypair]);
+
+  const connection = getConnection();
+  const signature = await connection.sendTransaction(transaction, { skipPreflight: true, maxRetries: 3 });
+  await confirmByPolling(connection, signature);
+
+  secretKey.fill(0);
+  return {
+    signature,
+    explorerUrl: `https://solscan.io/tx/${signature}`,
+    mint: mintKeypair.publicKey.toBase58(),
+  };
+}
+
+/**
  * Get wallet balance using RPC
  */
 export async function getWalletBalance(publicKey: string): Promise<number> {
