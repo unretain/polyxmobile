@@ -1103,7 +1103,7 @@ async function checkGraduations() {
       }
     }
     if (state.graduatingTokens.size === 0) return;
-    const rpc = process.env.SOLANA_RPC_URL || "http://tyo.corvus-labs.io:8899";
+    const rpc = process.env.SOLANA_RPC_URL || "https://solana-rpc.publicnode.com";
     const conn = new Connection(rpc, "confirmed");
     const entries = [...state.graduatingTokens];
     const CONC = 12; // bounded concurrency instead of one-at-a-time
@@ -1176,7 +1176,7 @@ export async function backfillToken(mint: string): Promise<void> {
   if (backfilling.has(mint) || backfilled.has(mint) || hasCandles(mint)) return;
   backfilling.add(mint);
   try {
-    const rpc = process.env.SOLANA_RPC_URL || "http://tyo.corvus-labs.io:8899";
+    const rpc = process.env.SOLANA_RPC_URL || "https://solana-rpc.publicnode.com";
     const conn = new Connection(rpc, "confirmed");
     const sigs = (await conn.getSignaturesForAddress(bondingCurvePda(mint), { limit: 1000 }))
       .slice(0, 200)  // recent 200 txns is plenty for a chart, bounds RPC cost
@@ -1237,7 +1237,7 @@ async function backfillPumpSwapGap(mint: string, sinceMs: number): Promise<void>
   if (pumpBackfilling.has(mint)) return;
   pumpBackfilling.add(mint);
   try {
-    const rpc = process.env.SOLANA_RPC_URL || "http://tyo.corvus-labs.io:8899";
+    const rpc = process.env.SOLANA_RPC_URL || "https://solana-rpc.publicnode.com";
     const conn = new Connection(rpc, "confirmed");
     // Most-recent trades touching the mint; keep only those newer than our data
     // (the gap) and replay oldest-first so candle eviction keeps the newest.

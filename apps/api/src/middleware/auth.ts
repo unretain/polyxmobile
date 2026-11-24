@@ -66,6 +66,12 @@ const requestCounts = new Map<string, { count: number; resetAt: number }>();
 
 export function rateLimit(maxRequests: number = 100, windowMs: number = 60000) {
   return (req: Request, res: Response, next: NextFunction) => {
+    // Internal (server-to-server) traffic is exempt. requireInternalApiKey runs
+    // BEFORE this middleware, so a request that still carries the header here has
+    // already been validated — and the Next.js server funnels every visitor
+    // through one IP, so counting it per-IP throttled the whole site to 100 req/min.
+    if (req.headers["x-internal-api-key"]) return next();
+
     const key = req.ip || "unknown";
     const now = Date.now();
 
