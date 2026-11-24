@@ -196,7 +196,7 @@ export default function WalletPage() {
             {shortenAddress(wallet.publicKey, 8)}
           </code>
           <button onClick={copyAddress} className="p-1">
-            {copied ? <Check className="h-4 w-4 text-green-400" /> : <Copy className={`h-4 w-4 ${isDark ? "text-white/40" : "text-black/40"}`} />}
+            {copied ? <Check className="h-4 w-4 text-up" /> : <Copy className={`h-4 w-4 ${isDark ? "text-white/40" : "text-black/40"}`} />}
           </button>
           <a href={`https://solscan.io/account/${wallet.publicKey}`} target="_blank" rel="noopener noreferrer" className="p-1">
             <ExternalLink className={`h-4 w-4 ${isDark ? "text-white/40" : "text-black/40"}`} />
@@ -255,7 +255,7 @@ export default function WalletPage() {
             <button
               onClick={copyAddress}
               className={`w-full py-3 rounded-xl font-medium flex items-center justify-center gap-2 transition-colors ${
-                copied ? "bg-green-500/20 text-green-400" : "bg-[#FF6B4A] text-white hover:bg-[#FF8F6B]"
+                copied ? "bg-up/15 text-up" : "bg-[#FF6B4A] text-white hover:bg-[#FF8F6B]"
               }`}
             >
               {copied ? (<><Check className="h-5 w-5" />Copied!</>) : (<><Copy className="h-5 w-5" />Copy Address</>)}
@@ -316,8 +316,8 @@ export default function WalletPage() {
             />
           </div>
 
-          {error && <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm">{error}</div>}
-          {success && <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-sm">{success}</div>}
+          {error && <div className="p-3 bg-down/10 border border-down/20 rounded-xl text-down text-sm">{error}</div>}
+          {success && <div className="p-3 bg-up/10 border border-up/20 rounded-xl text-up text-sm">{success}</div>}
 
           <button
             onClick={handleWithdraw}

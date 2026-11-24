@@ -1,7 +1,6 @@
 "use client";
 
 import { MobileHeader } from "@/components/layout/MobileHeader";
-import { BottomNav } from "@/components/layout/BottomNav";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import { useThemeStore } from "@/stores/themeStore";
 
@@ -12,9 +11,10 @@ interface AppShellProps {
 }
 
 /**
- * The one app frame: background, floating header, scrollable content, bottom
- * tab bar. Every section layout renders this instead of hand-rolling the same
- * boilerplate (which is how the six copies drifted apart).
+ * The one app frame: background, floating header, scrollable content.
+ * Navigation lives in MobileHeader's menu. Every section layout renders this
+ * instead of hand-rolling the same boilerplate (which is how the six copies
+ * drifted apart).
  */
 export function AppShell({ children, guard = true }: AppShellProps) {
   const { isDark } = useThemeStore();
@@ -25,11 +25,10 @@ export function AppShell({ children, guard = true }: AppShellProps) {
       <MobileHeader />
       <main
         className="relative z-10 flex-1 overflow-auto pt-20 px-4 sm:px-6"
-        style={{ paddingBottom: "calc(max(env(safe-area-inset-bottom), 12px) + 84px)" }}
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 24px)" }}
       >
         {children}
       </main>
-      <BottomNav />
     </div>
   );
 

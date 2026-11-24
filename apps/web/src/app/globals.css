@@ -94,19 +94,19 @@
 
 /* Custom utilities */
 .text-up {
-  color: #22c55e;
+  color: #7FD39B;
 }
 
 .text-down {
-  color: #ef4444;
+  color: #EF8A80;
 }
 
 .bg-up {
-  background-color: #22c55e;
+  background-color: #7FD39B;
 }
 
 .bg-down {
-  background-color: #ef4444;
+  background-color: #EF8A80;
 }
 
 /* iOS-style 3D cylinder/slot machine text rotation */
@@ -179,81 +179,8 @@
   }
 }
 
-/* Glow pulse animation */
-.glow-pulse {
-  animation: glow-pulse 2s ease-in-out infinite;
-}
 
-@keyframes glow-pulse {
-  0%, 100% {
-    box-shadow: 0 0 20px rgba(34, 197, 94, 0.3);
-  }
-  50% {
-    box-shadow: 0 0 40px rgba(34, 197, 94, 0.6);
-  }
-}
 
-/* Border glow animation */
-.border-glow {
-  position: relative;
-}
-
-.border-glow::before {
-  content: '';
-  position: absolute;
-  inset: -2px;
-  border-radius: inherit;
-  background: linear-gradient(45deg, transparent, rgba(34, 197, 94, 0.5), transparent);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  z-index: -1;
-}
-
-.border-glow:hover::before {
-  opacity: 1;
-  animation: border-rotate 2s linear infinite;
-}
-
-@keyframes border-rotate {
-  0% {
-    background: linear-gradient(0deg, transparent, rgba(34, 197, 94, 0.5), transparent);
-  }
-  25% {
-    background: linear-gradient(90deg, transparent, rgba(34, 197, 94, 0.5), transparent);
-  }
-  50% {
-    background: linear-gradient(180deg, transparent, rgba(34, 197, 94, 0.5), transparent);
-  }
-  75% {
-    background: linear-gradient(270deg, transparent, rgba(34, 197, 94, 0.5), transparent);
-  }
-  100% {
-    background: linear-gradient(360deg, transparent, rgba(34, 197, 94, 0.5), transparent);
-  }
-}
-
-/* Shimmer effect for skeleton loading */
-.shimmer {
-  position: relative;
-  overflow: hidden;
-}
-
-.shimmer::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
-  animation: shimmer 1.5s infinite ease-out;
-}
-
-@keyframes shimmer {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
 
 /* Float animation */
 .float {
@@ -290,24 +217,7 @@
 
 /* Boost.gg style animations */
 
-/* Neon glow effect */
-.neon-glow {
-  box-shadow: 0 0 5px rgba(0, 255, 30, 0.3),
-              0 0 10px rgba(0, 255, 30, 0.2),
-              0 0 20px rgba(0, 255, 30, 0.1);
-}
 
-.neon-glow-hover:hover {
-  box-shadow: 0 0 10px rgba(0, 255, 30, 0.5),
-              0 0 20px rgba(0, 255, 30, 0.3),
-              0 0 40px rgba(0, 255, 30, 0.2);
-}
-
-/* Boost.gg text glow */
-.text-glow {
-  text-shadow: 0 0 10px rgba(0, 255, 30, 0.5),
-               0 0 20px rgba(0, 255, 30, 0.3);
-}
 
 /* Boost.gg card shine effect on hover */
 .card-shine {

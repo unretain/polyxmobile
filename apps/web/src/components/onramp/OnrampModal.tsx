@@ -179,7 +179,7 @@ export function OnrampModal({ isOpen, onClose }: OnrampModalProps) {
           {step === "success" && order ? (
             /* ---------------- Confirmation ---------------- */
             <div className="py-8 text-center space-y-4">
-              <CheckCircle2 className="h-14 w-14 mx-auto text-green-400" />
+              <CheckCircle2 className="h-14 w-14 mx-auto text-up" />
               <div>
                 <p className={`text-lg font-semibold ${isDark ? "text-white" : "text-gray-900"}`}>
                   Purchase complete
@@ -244,14 +244,14 @@ export function OnrampModal({ isOpen, onClose }: OnrampModalProps) {
 
               {/* Live order status */}
               <div className={`flex items-center gap-2 text-xs ${isDark ? "text-white/40" : "text-gray-500"}`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${phase === "delivery" ? "bg-amber-400 animate-pulse" : "bg-green-400"}`} />
+                <span className={`h-1.5 w-1.5 rounded-full ${phase === "delivery" ? "bg-amber-300 animate-pulse" : "bg-up"}`} />
                 {phase === "delivery"
                   ? "Payment received — delivering USDC to your wallet…"
                   : "Awaiting payment — complete the form below"}
               </div>
 
               {error && (
-                <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
+                <div className="text-sm text-down bg-down/10 border border-down/20 rounded-xl px-3 py-2">
                   {error}
                 </div>
               )}
@@ -374,7 +374,7 @@ export function OnrampModal({ isOpen, onClose }: OnrampModalProps) {
               </div>
 
               {error && (
-                <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2">
+                <div className="text-sm text-down bg-down/10 border border-down/20 rounded-xl px-3 py-2">
                   {error}
                 </div>
               )}

@@ -107,20 +107,19 @@ function TokenRow({ token, showProgress = false, isDark, buyAmount = 0 }: TokenR
     <Link
       href={`/token/${token.address}?source=pulse`}
       className={cn(
-        "group flex items-center gap-2 px-3 py-2.5 transition-all",
-        "hover:bg-[#FF6B4A]/10 border border-transparent hover:border-[#FF6B4A]/30",
-        "cursor-pointer"
+        "group flex items-center gap-2 rounded-xl px-3 py-2.5 transition-colors cursor-pointer",
+        isDark ? "hover:bg-white/5" : "hover:bg-black/[0.04]"
       )}
     >
       {/* Token Logo */}
-      <div className={`relative h-9 w-9 flex-shrink-0 overflow-hidden rounded-full ring-2 ${
+      <div className={`relative h-9 w-9 flex-shrink-0 overflow-hidden rounded-full ring-1 ${
         isDark ? 'bg-white/5 ring-white/10' : 'bg-black/5 ring-black/10'
       }`}>
         {token.logoUri ? (
           <Image src={imgSrc(token.logoUri)!} alt={token.symbol} fill className="object-cover" unoptimized />
         ) : (
-          <div className={`flex h-full w-full items-center justify-center text-sm font-bold bg-gradient-to-br ${
-            isDark ? 'text-white/40 from-[#FF6B4A]/20 to-white/5' : 'text-black/40 from-[#FF6B4A]/20 to-black/5'
+          <div className={`flex h-full w-full items-center justify-center text-sm font-bold ${
+            isDark ? 'text-white/40 bg-white/10' : 'text-black/40 bg-black/10'
           }`}>
             {token.symbol?.charAt(0) ?? "?"}
           </div>
@@ -154,8 +153,8 @@ function TokenRow({ token, showProgress = false, isDark, buyAmount = 0 }: TokenR
 
       {/* Price Change - shows % gain from pump.fun starting MC (~$4K) */}
       <div className={cn(
-        "text-xs font-semibold px-2 py-1",
-        isPositive ? "text-up bg-up/15" : "text-down bg-down/15"
+        "text-xs font-mono font-medium tabular-nums",
+        isPositive ? "text-up" : "text-down"
       )}>
         {formatPercent(token.priceChange24h)}
       </div>
@@ -166,7 +165,7 @@ function TokenRow({ token, showProgress = false, isDark, buyAmount = 0 }: TokenR
       <div className="flex items-center gap-1">
         <button
           onClick={copyAddress}
-          className={`p-1.5 transition-opacity opacity-0 group-hover:opacity-100 ${isDark ? 'hover:bg-white/10 text-white/60' : 'hover:bg-black/10 text-gray-500'}`}
+          className={`p-1.5 rounded-lg transition-opacity opacity-0 group-hover:opacity-100 ${isDark ? 'hover:bg-white/10 text-white/60' : 'hover:bg-black/10 text-gray-500'}`}
           title="Copy address"
         >
           <Copy className="h-3.5 w-3.5" />
@@ -176,10 +175,10 @@ function TokenRow({ token, showProgress = false, isDark, buyAmount = 0 }: TokenR
           disabled={buying}
           title={buyAmount > 0 ? `Buy ${buyAmount} SOL of ${token.symbol}` : "Set an amount in the column header"}
           className={cn(
-            "flex items-center gap-1 px-1.5 py-1 text-[10px] font-mono border transition-colors",
-            buyState === "ok" ? "border-up/40 text-up bg-up/10"
-              : buyState === "err" ? "border-down/40 text-down bg-down/10"
-              : "border-[#FF6B4A]/30 text-[#FF6B4A] hover:bg-[#FF6B4A]/15"
+            "flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-mono border transition-colors",
+            buyState === "ok" ? "border-up/40 text-up"
+              : buyState === "err" ? "border-down/40 text-down"
+              : "border-[#FF6B4A]/25 text-[#FF6B4A] hover:bg-[#FF6B4A]/10"
           )}
         >
           {buying
@@ -222,21 +221,18 @@ function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDa
 
   return (
     <PulseColumnContext.Provider value={colKey}>
-    <div className={`flex flex-col h-[300px] md:h-full border backdrop-blur-md overflow-hidden ${
-      isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-white'
+    <div className={`flex flex-col h-[300px] md:h-full rounded-2xl border overflow-hidden ${
+      isDark ? 'border-white/10 bg-white/[0.04]' : 'border-black/10 bg-white'
     }`}>
       {/* Column Header */}
       <div className={cn(
         "flex items-center gap-3 px-4 py-3 border-b",
-        "bg-gradient-to-r to-transparent",
-        isDark ? 'border-white/10 from-white/10' : 'border-black/10 from-black/5'
+        isDark ? 'border-white/10' : 'border-black/10'
       )}>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h3 className="font-medium text-sm text-[#FF6B4A]">[{title.toLowerCase()}]</h3>
-            <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-              isDark ? 'text-white/40 bg-white/5' : 'text-gray-500 bg-black/5'
-            }`}>
+            <h3 className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${isDark ? 'text-white/70' : 'text-black/60'}`}>{title}</h3>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-mono text-[#FF6B4A] bg-[#FF6B4A]/10">
               {shown.length}
             </span>
             {/* A frozen list should never look like a dead feed. */}
@@ -255,8 +251,8 @@ function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDa
         {/* Square, #111, orange accent — the pulse page's own conventions. */}
         <label
           className={cn(
-            "flex items-center gap-1.5 flex-shrink-0 border px-2 py-1 transition-colors focus-within:border-[#FF6B4A]/50",
-            isDark ? "bg-[#111] border-white/10" : "bg-black/5 border-gray-200"
+            "flex items-center gap-1.5 flex-shrink-0 rounded-lg border px-2 py-1 transition-colors focus-within:border-[#FF6B4A]/50",
+            isDark ? "bg-white/5 border-white/10" : "bg-black/5 border-gray-200"
           )}
           title={`SOL spent per instant buy in ${title}`}
         >
@@ -488,9 +484,7 @@ export default function PulsePage() {
   return (
     <div className="h-full flex flex-col gap-4">
       {/* Header */}
-      <div className={`flex flex-col md:flex-row md:items-center justify-between gap-3 flex-shrink-0 px-4 py-3 backdrop-blur-md border ${
-        isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
-      }`}>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 flex-shrink-0 px-1 pt-1">
         <div className="flex items-center gap-3">
           <div>
             <h1 className={`text-lg md:text-2xl font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>Pulse</h1>
@@ -504,7 +498,7 @@ export default function PulsePage() {
         {/* Filters */}
         <button
           onClick={() => setIsFiltersOpen(true)}
-          className={`flex items-center gap-2 border px-2 md:px-3 py-2 text-sm transition-all hover:border-[#FF6B4A]/30 ${
+          className={`flex items-center gap-2 rounded-xl border px-2 md:px-3 py-2 text-sm transition-colors ${
             isDark
               ? 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
               : 'bg-black/5 border-black/10 text-gray-500 hover:bg-black/10'
@@ -513,14 +507,14 @@ export default function PulsePage() {
           <SlidersHorizontal className="h-4 w-4" />
           <span className="hidden md:inline">Filters</span>
           {filterCount > 0 && (
-            <span className="px-1.5 text-[10px] border border-[#FF6B4A]/40 text-[#FF6B4A]">{filterCount}</span>
+            <span className="px-1.5 rounded-full text-[10px] font-mono bg-[#FF6B4A]/10 text-[#FF6B4A]">{filterCount}</span>
           )}
         </button>
 
         {/* Search Button - icon only on mobile */}
         <button
           onClick={openSearch}
-          className={`flex items-center gap-2 border px-2 md:px-3 py-2 text-sm transition-all hover:border-[#FF6B4A]/30 ${
+          className={`flex items-center gap-2 rounded-xl border px-2 md:px-3 py-2 text-sm transition-colors ${
             isDark
               ? 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10'
               : 'bg-black/5 border-black/10 text-gray-500 hover:bg-black/10'
@@ -528,14 +522,14 @@ export default function PulsePage() {
         >
           <Search className="h-4 w-4" />
           <span className="hidden md:inline">Search by name, ticker, or CA...</span>
-          <kbd className={`hidden md:inline ml-2 px-1.5 py-0.5 text-xs ${isDark ? 'bg-white/10 text-white/40' : 'bg-black/10 text-gray-400'}`}>Esc</kbd>
+          <kbd className={`hidden md:inline ml-2 px-1.5 py-0.5 rounded text-xs ${isDark ? 'bg-white/10 text-white/40' : 'bg-black/10 text-gray-400'}`}>Esc</kbd>
         </button>
         </div>
       </div>
 
       {/* Error */}
       {error && (
-        <div className="rounded-xl bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-400 flex-shrink-0">
+        <div className="rounded-xl bg-down/10 border border-down/20 p-3 text-sm text-down flex-shrink-0">
           {error}
         </div>
       )}
@@ -600,7 +594,7 @@ export default function PulsePage() {
           />
 
           {/* Modal */}
-          <div className={`relative w-full max-w-2xl mx-4 border shadow-2xl ${
+          <div className={`relative w-full max-w-2xl mx-4 rounded-2xl overflow-hidden border shadow-2xl ${
             isDark ? 'bg-[#111] border-white/10' : 'bg-white border-gray-200'
           }`}>
             {/* Search Header */}
@@ -628,7 +622,7 @@ export default function PulsePage() {
                 }`}
                 autoFocus
               />
-              <kbd className={`px-2 py-1 text-xs border ${
+              <kbd className={`px-2 py-1 rounded text-xs border ${
                 isDark ? 'bg-white/10 text-white/50 border-white/10' : 'bg-gray-100 text-gray-500 border-gray-200'
               }`}>
                 Esc
@@ -655,16 +649,16 @@ export default function PulsePage() {
                         <button
                           key={token.address}
                           onClick={() => goToToken(token.address, token)}
-                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#FF6B4A]/10 transition-colors text-left"
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#FF6B4A]/5 transition-colors text-left"
                         >
-                          <div className={`relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full ring-2 ${
+                          <div className={`relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full ring-1 ${
                             isDark ? 'bg-white/5 ring-white/10' : 'bg-gray-100 ring-gray-200'
                           }`}>
                             {token.logoUri ? (
                               <Image src={imgSrc(token.logoUri)!} alt={token.symbol} fill className="object-cover" unoptimized />
                             ) : (
-                              <div className={`flex h-full w-full items-center justify-center text-sm font-bold bg-gradient-to-br from-[#FF6B4A]/20 ${
-                                isDark ? 'text-white/40 to-white/5' : 'text-gray-400 to-gray-100'
+                              <div className={`flex h-full w-full items-center justify-center text-sm font-bold ${
+                                isDark ? 'text-white/40 bg-white/10' : 'text-gray-400 bg-gray-100'
                               }`}>
                                 {token.symbol?.charAt(0) ?? "?"}
                               </div>
@@ -682,8 +676,8 @@ export default function PulsePage() {
                             <div className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{formatMC(token.marketCap)}</div>
                           </div>
                           <div className={cn(
-                            "px-2 py-1 text-xs font-semibold",
-                            token.priceChange24h >= 0 ? "text-up bg-up/15" : "text-down bg-down/15"
+                            "text-xs font-mono font-medium tabular-nums",
+                            token.priceChange24h >= 0 ? "text-up" : "text-down"
                           )}>
                             {formatPercent(token.priceChange24h)}
                           </div>
@@ -709,16 +703,16 @@ export default function PulsePage() {
                     <button
                       key={token.address}
                       onClick={() => goToToken(token.address, token)}
-                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#FF6B4A]/10 transition-colors text-left"
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#FF6B4A]/5 transition-colors text-left"
                     >
-                      <div className={`relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full ring-2 ${
+                      <div className={`relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full ring-1 ${
                         isDark ? 'bg-white/5 ring-white/10' : 'bg-gray-100 ring-gray-200'
                       }`}>
                         {token.logoUri ? (
                           <Image src={imgSrc(token.logoUri)!} alt={token.symbol} fill className="object-cover" unoptimized />
                         ) : (
-                          <div className={`flex h-full w-full items-center justify-center text-sm font-bold bg-gradient-to-br from-[#FF6B4A]/20 ${
-                            isDark ? 'text-white/40 to-white/5' : 'text-gray-400 to-gray-100'
+                          <div className={`flex h-full w-full items-center justify-center text-sm font-bold ${
+                            isDark ? 'text-white/40 bg-white/10' : 'text-gray-400 bg-gray-100'
                           }`}>
                             {token.symbol?.charAt(0) ?? "?"}
                           </div>
@@ -736,8 +730,8 @@ export default function PulsePage() {
                         <div className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{formatMC(token.marketCap)}</div>
                       </div>
                       <div className={cn(
-                        "px-2 py-1 text-xs font-semibold",
-                        token.priceChange24h >= 0 ? "text-up bg-up/15" : "text-down bg-down/15"
+                        "text-xs font-mono font-medium tabular-nums",
+                        token.priceChange24h >= 0 ? "text-up" : "text-down"
                       )}>
                         {formatPercent(token.priceChange24h)}
                       </div>
@@ -767,16 +761,16 @@ export default function PulsePage() {
                           </div>
                           <button
                             onClick={() => goToToken(caSearchResult.address, caSearchResult)}
-                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#FF6B4A]/10 transition-colors text-left"
+                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#FF6B4A]/5 transition-colors text-left"
                           >
-                            <div className={`relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full ring-2 ${
+                            <div className={`relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full ring-1 ${
                               isDark ? 'bg-white/5 ring-white/10' : 'bg-gray-100 ring-gray-200'
                             }`}>
                               {caSearchResult.logoUri ? (
                                 <Image src={imgSrc(caSearchResult.logoUri)!} alt={caSearchResult.symbol} fill className="object-cover" unoptimized />
                               ) : (
-                                <div className={`flex h-full w-full items-center justify-center text-sm font-bold bg-gradient-to-br from-[#FF6B4A]/20 ${
-                                  isDark ? 'text-white/40 to-white/5' : 'text-gray-400 to-gray-100'
+                                <div className={`flex h-full w-full items-center justify-center text-sm font-bold ${
+                                  isDark ? 'text-white/40 bg-white/10' : 'text-gray-400 bg-gray-100'
                                 }`}>
                                   {caSearchResult.symbol?.charAt(0) ?? "?"}
                                 </div>
@@ -794,8 +788,8 @@ export default function PulsePage() {
                               <div className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{formatMC(caSearchResult.marketCap)}</div>
                             </div>
                             <div className={cn(
-                              "px-2 py-1 text-xs font-semibold",
-                              caSearchResult.priceChange24h >= 0 ? "text-up bg-up/15" : "text-down bg-down/15"
+                              "text-xs font-mono font-medium tabular-nums",
+                              caSearchResult.priceChange24h >= 0 ? "text-up" : "text-down"
                             )}>
                               {formatPercent(caSearchResult.priceChange24h)}
                             </div>
@@ -813,7 +807,7 @@ export default function PulsePage() {
                           )}
                           <button
                             onClick={() => goToToken(searchValue.trim())}
-                            className="px-4 py-2 bg-[#FF6B4A]/20 border border-[#FF6B4A]/30 text-[#FF6B4A] text-sm hover:bg-[#FF6B4A]/30 transition-colors"
+                            className="px-4 py-2 rounded-xl border border-[#FF6B4A]/40 text-[#FF6B4A] text-sm hover:bg-[#FF6B4A]/10 transition-colors"
                           >
                             Go to {shortenAddress(searchValue.trim())} anyway →
                           </button>

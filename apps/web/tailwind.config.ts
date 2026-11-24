@@ -50,8 +50,8 @@ const config: Config = {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
-        up: "#22c55e",
-        down: "#ef4444",
+        up: "#7FD39B",
+        down: "#EF8A80",
       },
       borderRadius: {
         lg: "var(--radius)",
