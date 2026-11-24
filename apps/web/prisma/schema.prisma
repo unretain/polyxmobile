@@ -8,18 +8,18 @@ datasource db {
 }
 
 model Token {
-  id             String   @id @default(cuid())
-  address        String   @unique
-  symbol         String
-  name           String
-  decimals       Int
-  logoUri        String?
-  description    String?
-  website        String?
-  twitter        String?
-  telegram       String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id          String   @id @default(cuid())
+  address     String   @unique
+  symbol      String
+  name        String
+  decimals    Int
+  logoUri     String?
+  description String?
+  website     String?
+  twitter     String?
+  telegram    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // Cached market data
   price          Float?
@@ -37,12 +37,12 @@ model Token {
 }
 
 model OHLCV {
-  id        String   @id @default(cuid())
-  tokenId   String
-  token     Token    @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+  id      String @id @default(cuid())
+  tokenId String
+  token   Token  @relation(fields: [tokenId], references: [id], onDelete: Cascade)
 
   timestamp DateTime
-  timeframe String   // "1m", "5m", "15m", "1h", "4h", "1d"
+  timeframe String // "1m", "5m", "15m", "1h", "4h", "1d"
   open      Float
   high      Float
   low       Float
@@ -70,36 +70,36 @@ model Watchlist {
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
-  passwordHash  String?   // Null for OAuth-only users
+  passwordHash  String? // Null for OAuth-only users
   name          String?
   image         String?
   emailVerified DateTime?
 
   // Profile fields
-  username      String?   @unique  // Set in profile, used for adding friends
-  bio           String?
+  username String? @unique // Set in profile, used for adding friends
+  bio      String?
 
   // Email verification
   verificationCode   String?
   verificationExpiry DateTime?
 
   // Two-factor authentication
-  twoFactorEnabled Boolean  @default(false)
-  twoFactorSecret  String?  // TOTP secret (encrypted)
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret  String? // TOTP secret (encrypted)
 
   // Solana wallet (generated on first sign-in)
-  walletAddress    String?   @unique  // Public key
-  walletEncrypted  String?   @db.Text // Encrypted private key
+  walletAddress   String? @unique // Public key
+  walletEncrypted String? @db.Text // Encrypted private key
 
   // OAuth accounts
-  accounts      Account[]
-  sessions      Session[]
+  accounts Account[]
+  sessions Session[]
 
   // Subscription link
-  subscription  Subscription?
+  subscription Subscription?
 
   // Trading history
-  trades        Trade[]
+  trades Trade[]
 
   // Friend relations
   sentFriendRequests     FriendRequest[] @relation("SentRequests")
@@ -107,8 +107,8 @@ model User {
   friends                Friendship[]    @relation("UserFriends")
   friendOf               Friendship[]    @relation("FriendOf")
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([email])
   @@index([walletAddress])
@@ -171,31 +171,31 @@ enum SubscriptionStatus {
 }
 
 model Subscription {
-  id                   String             @id @default(cuid())
-  email                String             @unique
-  plan                 SubscriptionPlan   @default(FREE)
-  status               SubscriptionStatus @default(ACTIVE)
+  id     String             @id @default(cuid())
+  email  String             @unique
+  plan   SubscriptionPlan   @default(FREE)
+  status SubscriptionStatus @default(ACTIVE)
 
   // Link to User (optional - for users who have accounts)
-  userId               String?            @unique
-  user                 User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   // Stripe integration
-  stripeCustomerId     String?            @unique
-  stripeSubscriptionId String?            @unique
+  stripeCustomerId     String? @unique
+  stripeSubscriptionId String? @unique
 
   // License key (encrypted format for embed validation)
-  licenseKey           String?            @unique
+  licenseKey String? @unique
 
   // Domain licensing
-  domains              Domain[]
+  domains Domain[]
 
   // Usage tracking
-  embedViews           Int                @default(0)
-  embedViewsResetAt    DateTime           @default(now())
+  embedViews        Int      @default(0)
+  embedViewsResetAt DateTime @default(now())
 
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([email])
   @@index([stripeCustomerId])
@@ -205,15 +205,15 @@ model Subscription {
 
 model Domain {
   id             String       @id @default(cuid())
-  domain         String       // e.g., "example.com" or "*.example.com"
+  domain         String // e.g., "example.com" or "*.example.com"
   subscriptionId String
   subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 
-  isVerified     Boolean      @default(false)
-  verifyToken    String?      // For DNS TXT verification
+  isVerified  Boolean @default(false)
+  verifyToken String? // For DNS TXT verification
 
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([domain, subscriptionId])
   @@index([domain])
@@ -222,10 +222,10 @@ model Domain {
 
 // Track embed usage for analytics
 model EmbedView {
-  id             String   @id @default(cuid())
-  domain         String   // Referrer domain
-  tokenAddress   String   // Token being viewed
-  timestamp      DateTime @default(now())
+  id           String   @id @default(cuid())
+  domain       String // Referrer domain
+  tokenAddress String // Token being viewed
+  timestamp    DateTime @default(now())
 
   @@index([domain, timestamp])
   @@index([tokenAddress, timestamp])
@@ -237,7 +237,7 @@ model EmbedView {
 
 model PriceCache {
   id        String   @id @default(cuid())
-  symbol    String   @unique  // e.g., "SOL", "BTC", "ETH"
+  symbol    String   @unique // e.g., "SOL", "BTC", "ETH"
   priceUsd  Float
   updatedAt DateTime @updatedAt
 
@@ -249,24 +249,24 @@ model PriceCache {
 // ==========================================
 
 model PolymarketEvent {
-  id              String   @id  // Polymarket event ID
-  slug            String   @unique
-  title           String
-  description     String?  @db.Text
-  category        String?
-  image           String?
-  icon            String?
-  volume          Float    @default(0)
-  liquidity       Float    @default(0)
-  startDate       DateTime?
-  endDate         DateTime
-  active          Boolean  @default(true)
-  closed          Boolean  @default(false)
+  id          String    @id // Polymarket event ID
+  slug        String    @unique
+  title       String
+  description String?   @db.Text
+  category    String?
+  image       String?
+  icon        String?
+  volume      Float     @default(0)
+  liquidity   Float     @default(0)
+  startDate   DateTime?
+  endDate     DateTime
+  active      Boolean   @default(true)
+  closed      Boolean   @default(false)
 
-  markets         PolymarketMarket[]
+  markets PolymarketMarket[]
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([category])
   @@index([volume])
@@ -274,31 +274,31 @@ model PolymarketEvent {
 }
 
 model PolymarketMarket {
-  id              String   @id  // Polymarket market ID
-  eventId         String
-  event           PolymarketEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  id      String          @id // Polymarket market ID
+  eventId String
+  event   PolymarketEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
-  question        String
-  outcome         String   // "Yes", "No", or specific outcome name
-  probability     Float    @default(0.5)
-  tokenId         String?  // CLOB token ID for price history
-  volume          Float    @default(0)
+  question    String
+  outcome     String // "Yes", "No", or specific outcome name
+  probability Float   @default(0.5)
+  tokenId     String? // CLOB token ID for price history
+  volume      Float   @default(0)
 
-  priceHistory    PolymarketPriceHistory[]
+  priceHistory PolymarketPriceHistory[]
 
-  updatedAt       DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
   @@index([eventId])
   @@index([tokenId])
 }
 
 model PolymarketPriceHistory {
-  id              String   @id @default(cuid())
-  marketId        String
-  market          PolymarketMarket @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  id       String           @id @default(cuid())
+  marketId String
+  market   PolymarketMarket @relation(fields: [marketId], references: [id], onDelete: Cascade)
 
-  timestamp       DateTime
-  probability     Float
+  timestamp   DateTime
+  probability Float
 
   @@unique([marketId, timestamp])
   @@index([marketId, timestamp])
@@ -309,42 +309,42 @@ model PolymarketPriceHistory {
 // ==========================================
 
 enum PulseCategory {
-  NEW           // Just launched on pump.fun
-  GRADUATING    // Near bonding curve completion ($15K-$69K MC)
-  GRADUATED     // Migrated to Raydium/PumpSwap
+  NEW // Just launched on pump.fun
+  GRADUATING // Near bonding curve completion ($15K-$69K MC)
+  GRADUATED // Migrated to Raydium/PumpSwap
 }
 
 model PulseToken {
-  id              String        @id @default(cuid())
-  address         String        @unique
-  symbol          String
-  name            String
-  logoUri         String?
-  description     String?       @db.Text
+  id          String  @id @default(cuid())
+  address     String  @unique
+  symbol      String
+  name        String
+  logoUri     String?
+  description String? @db.Text
 
   // Market data
-  price           Float         @default(0)
-  priceChange24h  Float         @default(0)
-  volume24h       Float         @default(0)
-  marketCap       Float         @default(0)
-  liquidity       Float         @default(0)
+  price          Float @default(0)
+  priceChange24h Float @default(0)
+  volume24h      Float @default(0)
+  marketCap      Float @default(0)
+  liquidity      Float @default(0)
 
   // Pulse-specific
   category        PulseCategory @default(NEW)
-  bondingProgress Float?        // 0-100% for graduating tokens
+  bondingProgress Float? // 0-100% for graduating tokens
   txCount         Int           @default(0)
   replyCount      Int           @default(0)
 
   // Socials
-  twitter         String?
-  telegram        String?
-  website         String?
+  twitter  String?
+  telegram String?
+  website  String?
 
   // Timestamps
-  tokenCreatedAt  DateTime?     // When token was created on pump.fun
-  graduatedAt     DateTime?     // When token graduated to Raydium
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  tokenCreatedAt DateTime? // When token was created on pump.fun
+  graduatedAt    DateTime? // When token graduated to Raydium
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([category, marketCap])
   @@index([category, tokenCreatedAt])
@@ -357,17 +357,17 @@ model PulseToken {
 
 // Cache OHLCV candles by token address (no Token record required)
 model CandleCache {
-  id          String   @id @default(cuid())
-  tokenAddress String  // Token mint address
-  timeframe   String   // "1m", "5m", "15m", "1h", "4h", "1d"
-  timestamp   DateTime // Candle open time
-  open        Float
-  high        Float
-  low         Float
-  close       Float
-  volume      Float
+  id           String   @id @default(cuid())
+  tokenAddress String // Token mint address
+  timeframe    String // "1m", "5m", "15m", "1h", "4h", "1d"
+  timestamp    DateTime // Candle open time
+  open         Float
+  high         Float
+  low          Float
+  close        Float
+  volume       Float
 
-  updatedAt   DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
   @@unique([tokenAddress, timeframe, timestamp])
   @@index([tokenAddress, timeframe, timestamp(sort: Desc)])
@@ -375,12 +375,12 @@ model CandleCache {
 
 // Cache token prices from Jupiter/other sources
 model TokenPriceCache {
-  id           String   @id @default(cuid())
-  tokenAddress String   @unique  // Token mint address
-  priceUsd     Float
+  id             String   @id @default(cuid())
+  tokenAddress   String   @unique // Token mint address
+  priceUsd       Float
   priceChange24h Float?
-  volume24h    Float?
-  updatedAt    DateTime @updatedAt
+  volume24h      Float?
+  updatedAt      DateTime @updatedAt
 
   @@index([tokenAddress])
 }
@@ -389,8 +389,8 @@ model TokenPriceCache {
 model WalletBalanceCache {
   id            String   @id @default(cuid())
   walletAddress String
-  tokenAddress  String   // "SOL" for native SOL, or token mint
-  balance       String   // Raw balance as string for precision
+  tokenAddress  String // "SOL" for native SOL, or token mint
+  balance       String // Raw balance as string for precision
   decimals      Int      @default(9)
   updatedAt     DateTime @updatedAt
 
@@ -403,51 +403,51 @@ model WalletBalanceCache {
 // ==========================================
 
 enum TradeStatus {
-  PENDING      // Quote generated, awaiting execution
-  SUBMITTED    // Transaction submitted to network
-  CONFIRMING   // Waiting for confirmation
-  SUCCESS      // Trade completed
-  FAILED       // Trade failed
-  EXPIRED      // Quote expired before execution
+  PENDING // Quote generated, awaiting execution
+  SUBMITTED // Transaction submitted to network
+  CONFIRMING // Waiting for confirmation
+  SUCCESS // Trade completed
+  FAILED // Trade failed
+  EXPIRED // Quote expired before execution
 }
 
 model Trade {
-  id              String      @id @default(cuid())
-  userId          String
-  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Token details
-  inputMint       String      // Input token mint address
-  inputSymbol     String      // e.g., "SOL"
-  outputMint      String      // Output token mint address
-  outputSymbol    String      // e.g., "BONK"
+  inputMint    String // Input token mint address
+  inputSymbol  String // e.g., "SOL"
+  outputMint   String // Output token mint address
+  outputSymbol String // e.g., "BONK"
 
   // Amounts (stored as strings for precision)
-  amountIn        String      // Amount of input token (raw)
-  amountOut       String      // Amount of output token (raw)
-  amountOutMin    String      // Minimum output (slippage protected)
+  amountIn     String // Amount of input token (raw)
+  amountOut    String // Amount of output token (raw)
+  amountOutMin String // Minimum output (slippage protected)
 
   // Price info
-  pricePerToken   Float?      // Price per output token in input token
-  priceImpact     Float?      // Price impact percentage
+  pricePerToken Float? // Price per output token in input token
+  priceImpact   Float? // Price impact percentage
 
   // USD values at time of trade (for PnL calculations)
-  inputUsdValue   Float?      // USD value of input at trade time
-  outputUsdValue  Float?      // USD value of output at trade time
-  solPriceUsd     Float?      // SOL/USD price at trade time
+  inputUsdValue  Float? // USD value of input at trade time
+  outputUsdValue Float? // USD value of output at trade time
+  solPriceUsd    Float? // SOL/USD price at trade time
 
   // Transaction
-  txSignature     String?     @unique
-  status          TradeStatus @default(PENDING)
-  errorMessage    String?
+  txSignature  String?     @unique
+  status       TradeStatus @default(PENDING)
+  errorMessage String?
 
   // Fees
-  platformFee     String?     // Platform fee in lamports
-  networkFee      String?     // Network fee in lamports
+  platformFee String? // Platform fee in lamports
+  networkFee  String? // Network fee in lamports
 
   // Timestamps
-  createdAt       DateTime    @default(now())
-  confirmedAt     DateTime?
+  createdAt   DateTime  @default(now())
+  confirmedAt DateTime?
 
   @@index([userId, createdAt])
   @@index([txSignature])
@@ -461,16 +461,16 @@ model Trade {
 // All token swaps - permanent storage, synced from Moralis
 // Used by API service for chart data
 model TokenSwap {
-  id              String   @id @default(cuid())
-  tokenAddress    String   // Token mint address
-  txHash          String   // Transaction hash
-  timestamp       DateTime // Block timestamp
-  type            String   // "buy" or "sell"
-  walletAddress   String
-  tokenAmount     Float    // Amount of the token traded
-  solAmount       Float    // Amount of SOL
-  priceUsd        Float    // Token price in USD at trade time
-  totalValueUsd   Float    // Total trade value in USD
+  id            String   @id @default(cuid())
+  tokenAddress  String // Token mint address
+  txHash        String // Transaction hash
+  timestamp     DateTime // Block timestamp
+  type          String // "buy" or "sell"
+  walletAddress String
+  tokenAmount   Float // Amount of the token traded
+  solAmount     Float // Amount of SOL
+  priceUsd      Float // Token price in USD at trade time
+  totalValueUsd Float // Total trade value in USD
 
   @@unique([tokenAddress, txHash])
   @@index([tokenAddress, timestamp(sort: Desc)], map: "TokenSwap_addr_ts_desc")
@@ -479,22 +479,22 @@ model TokenSwap {
 
 // Track sync status per token
 model TokenSyncStatus {
-  id              String   @id @default(cuid())
-  tokenAddress    String   @unique
+  id           String @id @default(cuid())
+  tokenAddress String @unique
 
   // Swap sync status
-  swapsSynced     Boolean  @default(false)
-  oldestSwapTime  DateTime?
-  newestSwapTime  DateTime?
-  totalSwaps      Int       @default(0)
-  lastSwapSync    DateTime?
+  swapsSynced    Boolean   @default(false)
+  oldestSwapTime DateTime?
+  newestSwapTime DateTime?
+  totalSwaps     Int       @default(0)
+  lastSwapSync   DateTime?
 
   // Token metadata sync
-  metadataSynced  Boolean  @default(false)
+  metadataSynced   Boolean   @default(false)
   lastMetadataSync DateTime?
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tokenAddress])
   @@index([swapsSynced])
@@ -506,48 +506,48 @@ model TokenSyncStatus {
 // ==========================================
 
 model MobileUser {
-  id                  String   @id @default(cuid())
-  encryptedPublicKey  String   @unique  // AES-256-GCM encrypted wallet public key
-  deviceId            String?  // Optional device identifier
+  id                 String  @id @default(cuid())
+  encryptedPublicKey String  @unique // AES-256-GCM encrypted wallet public key
+  deviceId           String? // Optional device identifier
 
   // Profile (optional)
-  displayName     String?
+  displayName String?
 
   // App data
-  lastActiveAt    DateTime @default(now())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  lastActiveAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   // Trading history
-  mobileTrades    MobileTrade[]
+  mobileTrades MobileTrade[]
 
   @@index([encryptedPublicKey])
   @@index([lastActiveAt])
 }
 
 model MobileTrade {
-  id              String   @id @default(cuid())
-  mobileUserId    String
-  mobileUser      MobileUser @relation(fields: [mobileUserId], references: [id], onDelete: Cascade)
+  id           String     @id @default(cuid())
+  mobileUserId String
+  mobileUser   MobileUser @relation(fields: [mobileUserId], references: [id], onDelete: Cascade)
 
   // Token details
-  inputMint       String
-  inputSymbol     String
-  outputMint      String
-  outputSymbol    String
+  inputMint    String
+  inputSymbol  String
+  outputMint   String
+  outputSymbol String
 
   // Amounts
-  amountIn        String
-  amountOut       String
+  amountIn  String
+  amountOut String
 
   // Price info
-  priceUsd        Float?
-  txSignature     String?  @unique
+  priceUsd    Float?
+  txSignature String? @unique
 
   // Status
-  status          String   @default("pending") // pending, success, failed
+  status String @default("pending") // pending, success, failed
 
-  createdAt       DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([mobileUserId, createdAt])
   @@index([txSignature])
@@ -564,8 +564,8 @@ model FriendRequest {
   status     String   @default("pending") // pending, accepted, rejected
   createdAt  DateTime @default(now())
 
-  sender     User     @relation("SentRequests", fields: [senderId], references: [id], onDelete: Cascade)
-  receiver   User     @relation("ReceivedRequests", fields: [receiverId], references: [id], onDelete: Cascade)
+  sender   User @relation("SentRequests", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("ReceivedRequests", fields: [receiverId], references: [id], onDelete: Cascade)
 
   @@unique([senderId, receiverId])
   @@index([receiverId, status])
@@ -577,10 +577,28 @@ model Friendship {
   friendId  String
   createdAt DateTime @default(now())
 
-  user      User     @relation("UserFriends", fields: [userId], references: [id], onDelete: Cascade)
-  friend    User     @relation("FriendOf", fields: [friendId], references: [id], onDelete: Cascade)
+  user   User @relation("UserFriends", fields: [userId], references: [id], onDelete: Cascade)
+  friend User @relation("FriendOf", fields: [friendId], references: [id], onDelete: Cascade)
 
   @@unique([userId, friendId])
   @@index([userId])
   @@index([friendId])
+}
+
+// ==========================================
+// Crossmint onramp: compliance consent log
+// ==========================================
+
+// One row per Buy flow start: evidence that the user saw and accepted the
+// Crossmint Terms of Service + Privacy Policy before paying (required by
+// Crossmint's launch checklist). Never deleted.
+model OnrampConsent {
+  id            String   @id @default(cuid())
+  walletAddress String
+  email         String
+  tosVersion    String
+  orderId       String? // backfilled once the Crossmint order is created
+  createdAt     DateTime @default(now())
+
+  @@index([walletAddress, createdAt])
 }
