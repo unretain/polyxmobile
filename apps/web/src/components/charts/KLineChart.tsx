@@ -447,17 +447,19 @@ const TIMEFRAMES: { value: Timeframe; label: string }[] = [
  * nothing needs registering — `createOverlay(name)` puts the chart straight into
  * drawing mode and the overlay finishes itself on the last click.
  */
-const DRAWING_TOOLS: { overlay: string; label: string; Icon: typeof Minus }[] = [
-  { overlay: "segment", label: "Trend line", Icon: Slash },
+// `mobile` keeps a tool visible on phones; the rest are md+ only, so the toolbar
+// doesn't eat a third of a phone-width chart.
+const DRAWING_TOOLS: { overlay: string; label: string; Icon: typeof Minus; mobile?: boolean }[] = [
+  { overlay: "segment", label: "Trend line", Icon: Slash, mobile: true },
   { overlay: "rayLine", label: "Ray", Icon: TrendingUp },
-  { overlay: "horizontalStraightLine", label: "Horizontal line", Icon: Minus },
+  { overlay: "horizontalStraightLine", label: "Horizontal line", Icon: Minus, mobile: true },
   { overlay: "verticalStraightLine", label: "Vertical line", Icon: MoveVertical },
   { overlay: "priceLine", label: "Price line", Icon: Spline },
   { overlay: OVERLAY_RECT, label: "Rectangle", Icon: Square },
   { overlay: OVERLAY_CIRCLE, label: "Circle", Icon: CircleIcon },
   { overlay: "fibonacciLine", label: "Fibonacci retracement", Icon: Activity },
   { overlay: "brush", label: "Freehand", Icon: Brush },
-  { overlay: OVERLAY_MEASURE, label: "Measure", Icon: Ruler },
+  { overlay: OVERLAY_MEASURE, label: "Measure", Icon: Ruler, mobile: true },
   { overlay: OVERLAY_TEXT, label: "Text", Icon: TypeIcon },
 ];
 
@@ -830,10 +832,10 @@ export function KLineChart({
   // (hidden) at page load before OHLCV arrives; if we early-return here the
   // container never exists, init never runs, and the chart stays blank forever.
   // Loading/empty are rendered as overlays instead.
-  const toolBtn = (active: boolean) =>
-    `flex items-center justify-center h-7 w-7 transition-colors ${
+  const toolBtn = (active: boolean, essential = true) =>
+    `${essential ? "flex" : "hidden md:flex"} items-center justify-center h-7 w-7 rounded-md transition-colors ${
       active
-        ? "bg-[#FF6B4A] text-white"
+        ? "bg-[#FF6B4A]/15 text-[#FF6B4A]"
         : isDark
         ? "text-white/50 hover:bg-white/10 hover:text-white/80"
         : "text-gray-500 hover:bg-black/5 hover:text-gray-800"
@@ -859,13 +861,14 @@ export function KLineChart({
           <MousePointer2 className="h-3.5 w-3.5" />
         </button>
 
-        {DRAWING_TOOLS.map(({ overlay, label, Icon }) => (
+        {DRAWING_TOOLS.map(({ overlay, label, Icon, mobile }) => (
           <button
             key={overlay}
             onClick={() => selectTool(overlay)}
             title={label}
             className={toolBtn(
-              activeTool === overlay || (overlay === OVERLAY_TEXT && textPromptOpen)
+              activeTool === overlay || (overlay === OVERLAY_TEXT && textPromptOpen),
+              !!mobile
             )}
           >
             <Icon className="h-3.5 w-3.5" />
@@ -877,7 +880,7 @@ export function KLineChart({
         <button
           onClick={toggleMagnet}
           title={magnet ? "Magnet: on (snaps to price)" : "Magnet: off"}
-          className={toolBtn(magnet)}
+          className={toolBtn(magnet, false)}
         >
           <Magnet className="h-3.5 w-3.5" />
         </button>

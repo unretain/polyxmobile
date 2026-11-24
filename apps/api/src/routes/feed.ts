@@ -11,13 +11,25 @@ import { Router } from "express";
 import {
   isPulseConnected, getSolPrice,
   getNewPairs, getGraduating, getGraduated, getToken, getSnapshot,
-  getCandles, hasCandles,
+  getCandles, hasCandles, tagPolyxLaunch,
 } from "../pulse/feed";
 import * as ch from "../clickhouse/queries";
 import { clickhouseEnabled } from "../clickhouse/client";
 import { memo } from "../lib/memo";
 
 export const feedRoutes = Router();
+
+// Tag a mint as launched through the Polyx app (/launch). Internal-key
+// protected like every /api route; the web server calls it right after the
+// create transaction confirms. Pulse then serves source: "polyx" for it.
+feedRoutes.post("/polyx-launch", (req, res) => {
+  const mint = String(req.body?.mint || "");
+  if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)) {
+    return res.status(400).json({ error: "valid mint required" });
+  }
+  tagPolyxLaunch(mint);
+  res.json({ ok: true });
+});
 
 /** Filter params off the query string. Absent/blank => undefined (bound not applied). */
 function parseFilters(q: any): ch.PairFilters {

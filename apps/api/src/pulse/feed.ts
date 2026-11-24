@@ -459,10 +459,30 @@ const PUBLIC_API_URL = process.env.PUBLIC_API_URL || "https://api.polyx.trade";
 // proxyImg is shared with the ClickHouse query layer — see ../lib/imgurl.
 
 
+// ---- Polyx launches --------------------------------------------------------
+// Coins created through the app's /launch flow. The web server tags the mint at
+// launch time (POST /api/feed/polyx-launch); the set persists to disk so the
+// badge survives restarts. usd() applies the tag on every serialization, so it
+// also covers coins that get tagged after they were first seen.
+const POLYX_LAUNCH_FILE = require("path").join(process.cwd(), ".polyx-launches.json");
+const polyxMints = new Set<string>((() => {
+  try { return JSON.parse(require("fs").readFileSync(POLYX_LAUNCH_FILE, "utf8")) as string[]; }
+  catch { return []; }
+})());
+
+export function tagPolyxLaunch(mint: string): void {
+  if (polyxMints.has(mint)) return;
+  polyxMints.add(mint);
+  try { require("fs").writeFileSync(POLYX_LAUNCH_FILE, JSON.stringify([...polyxMints])); }
+  catch { /* best effort — the in-memory tag still works */ }
+  console.log(`[pulse] tagged polyx launch: ${mint} (${polyxMints.size} total)`);
+}
+
 function usd(token: PulseToken): PulseToken {
   const p = state.solPrice;
   return {
     ...token,
+    source: polyxMints.has(token.address) ? "polyx" : token.source,
     marketCap: token.marketCapSol * p,
     price: (token.priceSol || 0) * p,
     migrationMc: MIGRATION_MC_SOL * p,

@@ -130,6 +130,11 @@ function TokenRow({ token, showProgress = false, isDark, buyAmount = 0 }: TokenR
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <span className={`font-semibold text-sm truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>{token.symbol}</span>
+          {token.source === "polyx" && (
+            <span className="shrink-0 px-1.5 py-px rounded-full text-[9px] font-semibold uppercase tracking-wide text-[#FF6B4A] bg-[#FF6B4A]/10">
+              polyx
+            </span>
+          )}
           <span className={`text-xs truncate max-w-[80px] ${isDark ? 'text-white/40' : 'text-gray-500'}`}>{token.name}</span>
         </div>
         <div className={`flex items-center gap-2 text-xs ${isDark ? 'text-white/40' : 'text-gray-500'}`}>
@@ -323,6 +328,9 @@ export default function PulsePage() {
   // Start empty and hydrate from localStorage after mount — reading storage during
   // render would mismatch the server-rendered markup.
   const [filters, setFilters] = useState<PulseFilters>(EMPTY_FILTERS);
+  // Source toggle: everything on pump.fun, or only coins launched through Polyx
+  // (/launch tags the mint in the feed, which serves them as source:"polyx").
+  const [sourceFilter, setSourceFilter] = useState<"all" | "polyx">("all");
   const { amounts: buyAmounts, set: setBuyAmount } = useInstantBuyAmounts();
   useEffect(() => { setFilters(loadFilters()); }, []);
   const applyFilters = (f: PulseFilters) => { setFilters(f); saveFilters(f); };
@@ -472,9 +480,11 @@ export default function PulsePage() {
 
   // The socket replaces these lists every second, so filtering has to happen here on
   // each render rather than once at fetch time.
-  const liveNew = applyFilter(newPairs, filters.new);
-  const liveFinal = applyFilter(graduatingPairs, filters.final);
-  const liveMigrated = applyFilter(graduatedPairs, filters.migrated);
+  const bySource = (list: PulseToken[]) =>
+    sourceFilter === "all" ? list : list.filter((t) => t.source === "polyx");
+  const liveNew = applyFilter(bySource(newPairs), filters.new);
+  const liveFinal = applyFilter(bySource(graduatingPairs), filters.final);
+  const liveMigrated = applyFilter(bySource(graduatedPairs), filters.migrated);
   const filterCount = activeCount(filters.new) + activeCount(filters.final) + activeCount(filters.migrated);
 
   // Each column freezes itself while you point at it — see TokenColumn.
@@ -495,6 +505,25 @@ export default function PulsePage() {
         </div>
 
         <div className="flex items-center gap-2">
+        {/* Source: all pump.fun coins vs Polyx launches only */}
+        <div className={`flex items-center p-0.5 rounded-xl border ${
+          isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'
+        }`}>
+          {(["all", "polyx"] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setSourceFilter(s)}
+              className={`px-2.5 py-1.5 rounded-[10px] text-xs font-medium transition-colors ${
+                sourceFilter === s
+                  ? 'bg-[#FF6B4A]/15 text-[#FF6B4A]'
+                  : isDark ? 'text-white/50 hover:text-white/80' : 'text-black/50 hover:text-black/80'
+              }`}
+            >
+              {s === "all" ? "All" : "Polyx"}
+            </button>
+          ))}
+        </div>
+
         {/* Filters */}
         <button
           onClick={() => setIsFiltersOpen(true)}

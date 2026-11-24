@@ -80,6 +80,12 @@ export default function LaunchPage() {
       );
       setResult({ mint: res.mint, explorerUrl: res.explorerUrl });
       setPhase("done");
+      // Tag it in the live feed so Pulse shows the Polyx badge/filter (best-effort).
+      fetch("/api/launch/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mint: res.mint }),
+      }).catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : "Launch failed");
       setPhase("form");

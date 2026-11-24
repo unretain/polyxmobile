@@ -1028,7 +1028,7 @@ export default function TokenClient() {
                 <button
                   onClick={handleCopyAddress}
                   className={`flex items-center gap-1 text-[10px] md:text-xs transition-colors ${
-                    copied ? 'text-[#00ffa3]' : isDark ? 'text-white/50 hover:text-white' : 'text-black/50 hover:text-black'
+                    copied ? 'text-[#7FD39B]' : isDark ? 'text-white/50 hover:text-white' : 'text-black/50 hover:text-black'
                   }`}
                 >
                   {copied ? "Copied!" : shortenAddress(address, 4)}

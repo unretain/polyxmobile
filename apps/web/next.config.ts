@@ -8,7 +8,13 @@ import type { NextConfig } from "next";
 // dependency entirely: if the page loaded, its images load. The upstream sends
 // `max-age=31536000, immutable`, so this costs one hop on a cold cache and nothing
 // afterwards.
-const IMG_ORIGIN = process.env.NEXT_PUBLIC_IMG_ORIGIN || "https://images.polyx.trade";
+// Default to the API origin: that's the service that actually runs the image
+// cache (/img?u=…). images.polyx.trade / api.polyx.trade both went dark at some
+// point, which is why every avatar on the site broke.
+const IMG_ORIGIN =
+  process.env.NEXT_PUBLIC_IMG_ORIGIN ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:3001";
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@shared/types"],
