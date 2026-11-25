@@ -67,7 +67,8 @@ export interface PulseToken {
   txCount: number;
   buys?: number;
   sells?: number;
-  // Gas fees (network + priority + tips) summed across every transaction on this
+  // GLOBAL fees (base + priority + Jito bribes + platform protocol/creator fees)
+  // summed across every transaction on this
   // coin. Goes up with tx count and how hard people bid on priority, not with
   // volume — coins with snipers/bots paying big tips rack it up fast. Low gas on
   // a big mcap is the sign of a bundled fake chart.
@@ -470,6 +471,48 @@ const polyxMints = new Set<string>((() => {
   catch { return []; }
 })());
 
+// ---- Jito bribes ------------------------------------------------------------
+// meta.fee covers base + priority fees ONLY. Jito tips ("bribes") are plain SOL
+// transfers to one of Jito's 8 tip accounts, so they have to be read off the
+// balance deltas. Compared as raw bytes — no base58 encode on the hot path.
+const JITO_TIP_ACCOUNTS: Uint8Array[] = [
+  "96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5",
+  "HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe",
+  "Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY",
+  "ADaUMid9yfUytqMBgopwjb2DTLSokTSzL1zt6iGPaS49",
+  "DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh",
+  "ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt",
+  "DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL",
+  "3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT",
+].map((a) => bs58.decode(a));
+
+function isJitoTipAccount(key: Uint8Array): boolean {
+  if (!key || key.length !== 32) return false;
+  outer: for (const t of JITO_TIP_ACCOUNTS) {
+    for (let i = 0; i < 32; i++) if (key[i] !== t[i]) continue outer;
+    return true;
+  }
+  return false;
+}
+
+/** SOL tipped to Jito in this tx (0 for the overwhelming majority). */
+function jitoTipSol(tx: any): number {
+  const pre = tx.meta?.preBalances, post = tx.meta?.postBalances;
+  if (!pre || !post) return 0;
+  const keys: Uint8Array[] = [
+    ...(tx.transaction?.message?.accountKeys || []),
+    ...(tx.meta?.loadedWritableAddresses || []),
+    ...(tx.meta?.loadedReadonlyAddresses || []),
+  ];
+  let tip = 0;
+  for (let i = 0; i < keys.length; i++) {
+    if (!isJitoTipAccount(keys[i])) continue;
+    const d = Number(post[i] ?? 0) - Number(pre[i] ?? 0);
+    if (d > 0) tip += d / 1e9;
+  }
+  return tip;
+}
+
 // ---- Wallet tracking -------------------------------------------------------
 // Union of every wallet any connected client is tracking. The websocket layer
 // recomputes this as clients come and go; the hot decode path pays one Set
@@ -677,9 +720,10 @@ function handleTransaction(update: any) {
         token.volume24h += (solLamports / 1e9) * state.solPrice;
         token.txCount++;
         if (isBuy) token.buys = (token.buys || 0) + 1; else token.sells = (token.sells || 0) + 1;
-        // Gas fees: network + priority + tips the signer paid to land this txn.
-        const gasFeeSol = Number(tx.meta?.fee ?? 0) / 1e9;
-        token.feesPaidSol = (token.feesPaidSol || 0) + gasFeeSol;
+        // Global fees, axiom-style: priority/base (meta.fee) + Jito bribe + the
+        // platform's protocol + creator fees. meta.fee alone missed two of three.
+        const gasFeeSol = Number(tx.meta?.fee ?? 0) / 1e9 + jitoTipSol(tx);
+        token.feesPaidSol = (token.feesPaidSol || 0) + gasFeeSol + feeSol + creatorFeeSol;
         // Record at RECEIVE time so the 250ms fine candles get real sub-second
         // resolution (block time is only 1s-precise). The stream is smooth end-to-end
         // (verified), so this no longer piles a burst into one wrong bucket.
@@ -891,8 +935,8 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
     if (!token.launchPriceSol) token.launchPriceSol = priceSol;
     token.priceChange24h = token.launchPriceSol > 0 ? ((priceSol - token.launchPriceSol) / token.launchPriceSol) * 100 : 0;
     token.volume24h += volSol * state.solPrice;
-    const gasFeeSolAmm = Number(tx.meta?.fee ?? 0) / 1e9;
-    token.feesPaidSol = (token.feesPaidSol || 0) + gasFeeSolAmm;
+    const gasFeeSolAmm = Number(tx.meta?.fee ?? 0) / 1e9 + jitoTipSol(tx);
+    token.feesPaidSol = (token.feesPaidSol || 0) + gasFeeSolAmm + protocolFeeSol + creatorFeeSol;
     token.txCount++;
   }
   recordCandle(mint, priceSol, volSol); // keep charting under the same mint
@@ -909,7 +953,7 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
   // Persist post-migration trades too, so ClickHouse holds a graduated coin's full
   // history (not just its bonding-curve life) and the chart's durable fallback works
   // after migration. real_token_reserves isn't tracked on PumpSwap (pool AMM) -> 0.
-  const gasFeeSolTrade = Number(tx.meta?.fee ?? 0) / 1e9;
+  const gasFeeSolTrade = Number(tx.meta?.fee ?? 0) / 1e9 + jitoTipSol(tx);
   recordTrade({
     mint, signature, slot, ts: chDateTime(Date.now()), is_buy: isBuy ? 1 : 0,
     sol_amount: volSol, token_amount: absTok, price_sol: priceSol,

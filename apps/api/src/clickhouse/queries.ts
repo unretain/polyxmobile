@@ -74,7 +74,7 @@ const TRADE_AGG = `
     sumIf(sol_amount, ts > now() - INTERVAL 1 HOUR)  AS vol_1h,
     sum(sol_amount)                                  AS total_sol,
     argMax(real_sol, ts)                             AS real_sol,
-    sum(gas_fee_sol)                                 AS fees_sol,
+    sum(gas_fee_sol + fee_sol + creator_fee_sol)     AS fees_sol,
     countIf(is_buy = 1)                              AS buys,
     countIf(is_buy = 0)                              AS sells,
     max(ts) AS last_ts,
@@ -256,7 +256,7 @@ export async function getGraduatedPairs(limit: number, solPrice: number, f: Pair
      -- Gas fees a MIGRATED coin has accumulated post-migration only. Counting its
      -- whole life lets a bundled curve-completing buy carry gas past a filter forever.
      LEFT JOIN (
-       SELECT tr.mint AS mint, sum(tr.gas_fee_sol) AS fees_post
+       SELECT tr.mint AS mint, sum(tr.gas_fee_sol + tr.fee_sol + tr.creator_fee_sol) AS fees_post
        FROM trades tr
        INNER JOIN (SELECT mint, max(ts) AS gts FROM graduations GROUP BY mint) gg
          ON tr.mint = gg.mint
@@ -461,7 +461,7 @@ export async function getFeesForMints(mints: string[]) {
   if (!mints.length) return [] as any[];
   return q<any>(
     `SELECT mint,
-       sum(gas_fee_sol) AS fees_sol,
+       sum(gas_fee_sol + fee_sol + creator_fee_sol) AS fees_sol,
        countIf(is_buy = 1) AS buys,
        countIf(is_buy = 0) AS sells
      FROM trades WHERE mint IN {mints:Array(String)}
