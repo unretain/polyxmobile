@@ -47,7 +47,16 @@ export function OnrampModal({ isOpen, onClose }: OnrampModalProps) {
   const { wallet } = useMobileWalletStore();
 
   const [step, setStep] = useState<Step>("form");
+  // Receipt email pre-fills from the verified sign-up email (editable).
   const [email, setEmail] = useState("");
+  useEffect(() => {
+    if (!isOpen || email) return;
+    try {
+      const saved = localStorage.getItem("polyx-email");
+      if (saved) setEmail(saved);
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
   const [amount, setAmount] = useState("25");
   const [customAmount, setCustomAmount] = useState("");
   const [accepted, setAccepted] = useState(false);

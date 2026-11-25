@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Copy, Check, Eye, EyeOff, ChevronRight, Shield, AlertTriangle, Download, Plus } from "lucide-react";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
@@ -60,30 +59,6 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
       setEmailError(e instanceof Error ? e.message : "Could not send the code.");
     } finally { setEmailBusy(false); }
   };
-
-  // Which OAuth providers are actually configured (Apple only shows with keys).
-  const [oauth, setOauth] = useState<{ google: boolean; apple: boolean }>({ google: false, apple: false });
-  useEffect(() => {
-    if (step !== "signup") return;
-    fetch("/api/auth/providers")
-      .then((r) => r.json())
-      .then((p) => setOauth({ google: !!p?.google, apple: !!p?.apple }))
-      .catch(() => {});
-    // Returning from an OAuth redirect: the provider already verified the email —
-    // adopt it exactly like a completed code flow and move on.
-    fetch("/api/auth/email/session-proof")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        if (!j?.ok) return;
-        try {
-          localStorage.setItem(EMAIL_KEY, j.email);
-          localStorage.setItem(EMAIL_PROOF_KEY, j.proof);
-          localStorage.setItem(EMAIL_DECISION_KEY, j.email);
-        } catch {}
-        setStep("choose");
-      })
-      .catch(() => {});
-  }, [step]);
 
   const verifyEmailCode = async () => {
     setEmailBusy(true); setEmailError("");
@@ -307,12 +282,9 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/90 backdrop-blur-sm" />
-
-      {/* Modal - Full screen on mobile, centered on desktop */}
-      <div className="relative w-full sm:max-w-md bg-[#0a0a0a] sm:rounded-2xl sm:border sm:border-white/10 min-h-screen sm:min-h-0 sm:max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-[#0a0a0a]">
+      {/* Full-page onboarding — the app IS this flow until a wallet exists */}
+      <div className="relative mx-auto w-full max-w-md min-h-dvh flex flex-col justify-center">
         {/* Content - pt-safe accounts for iOS notch/status bar */}
         <div className="p-6 pt-16 sm:pt-6" style={{ paddingTop: 'max(4rem, env(safe-area-inset-top, 1rem) + 1rem)' }}>
           {/* Choose: Create or Import */}
@@ -328,33 +300,6 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
               </div>
 
               <div className="space-y-3">
-                {oauth.google && (
-                  <button
-                    onClick={() => signIn("google", { callbackUrl: "/" })}
-                    type="button"
-                    className="w-full bg-white hover:bg-white/90 text-black font-semibold py-4 rounded-xl transition-colors flex items-center justify-center gap-3 touch-manipulation"
-                  >
-                    <svg className="w-5 h-5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.1A6.6 6.6 0 0 1 5.5 12c0-.73.13-1.44.34-2.1V7.06H2.18A11 11 0 0 0 1 12c0 1.77.43 3.45 1.18 4.94l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15A11 11 0 0 0 12 1 11 11 0 0 0 2.18 7.06l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/></svg>
-                    Continue with Google
-                  </button>
-                )}
-                {oauth.apple && (
-                  <button
-                    onClick={() => signIn("apple", { callbackUrl: "/" })}
-                    type="button"
-                    className="w-full bg-white/5 hover:bg-white/10 border border-white/15 text-white font-semibold py-4 rounded-xl transition-colors flex items-center justify-center gap-3 touch-manipulation"
-                  >
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8.94-.19 1.84-.86 3.04-.78 1.44.12 2.53.7 3.24 1.76-2.98 1.78-2.28 5.7.46 6.84-.55 1.42-1.26 2.83-1.82 4.35zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
-                    Continue with Apple
-                  </button>
-                )}
-
-                <div className="flex items-center gap-3 py-1">
-                  <div className="h-px flex-1 bg-white/10" />
-                  <span className="text-xs text-white/30">or</span>
-                  <div className="h-px flex-1 bg-white/10" />
-                </div>
-
                 <input
                   type="email"
                   value={email}
