@@ -11,12 +11,16 @@ export interface MobileWallet {
 
 interface MobileWalletState {
   wallet: MobileWallet | null;
+  /** Every wallet this device has created/imported. `wallet` is the active one. */
+  accounts: MobileWallet[];
   pendingMnemonic: string | null; // Only stored temporarily during onboarding
   isOnboarding: boolean;
   _hasHydrated: boolean; // Track hydration state
 
   // Actions
   setWallet: (wallet: MobileWallet) => void;
+  switchAccount: (publicKey: string) => void;
+  removeAccount: (publicKey: string) => void;
   setPendingMnemonic: (mnemonic: string | null) => void;
   setOnboarding: (isOnboarding: boolean) => void;
   confirmBackup: () => void;
@@ -89,11 +93,27 @@ export const useMobileWalletStore = create<MobileWalletState>()(
   persist(
     (set, get) => ({
       wallet: null,
+      accounts: [],
       pendingMnemonic: null, // Never persisted
       isOnboarding: false,
       _hasHydrated: false,
 
-      setWallet: (wallet) => set({ wallet }),
+      // Setting the active wallet also upserts it into the accounts list, so
+      // every wallet ever created/imported on this device stays switchable.
+      setWallet: (wallet) => set((state) => ({
+        wallet,
+        accounts: [wallet, ...state.accounts.filter((a) => a.publicKey !== wallet.publicKey)],
+      })),
+      switchAccount: (publicKey) => set((state) => {
+        const next = state.accounts.find((a) => a.publicKey === publicKey);
+        return next ? { wallet: next, pendingMnemonic: null } : {};
+      }),
+      // Only non-active accounts can be removed; the key material goes with it.
+      removeAccount: (publicKey) => set((state) => ({
+        accounts: state.wallet?.publicKey === publicKey
+          ? state.accounts
+          : state.accounts.filter((a) => a.publicKey !== publicKey),
+      })),
       setPendingMnemonic: (mnemonic) => set({ pendingMnemonic: mnemonic }),
       setOnboarding: (isOnboarding) => set({ isOnboarding }),
       confirmBackup: () => set((state) => {
@@ -113,11 +133,14 @@ export const useMobileWalletStore = create<MobileWalletState>()(
       // so getMnemonic() — and therefore client-side signing — works even if the
       // user never completes the backup-verify step. Without this, buys fall back
       // to the (session-only) server path and fail with "Authentication required".
-      storeMnemonic: (mnemonic) => set((state) => ({
-        wallet: state.wallet
-          ? { ...state.wallet, encryptedMnemonic: encryptMnemonic(mnemonic) }
-          : state.wallet,
-      })),
+      storeMnemonic: (mnemonic) => set((state) => {
+        if (!state.wallet) return {};
+        const updated = { ...state.wallet, encryptedMnemonic: encryptMnemonic(mnemonic) };
+        return {
+          wallet: updated,
+          accounts: [updated, ...state.accounts.filter((a) => a.publicKey !== updated.publicKey)],
+        };
+      }),
       clearWallet: () => set({ wallet: null, pendingMnemonic: null, isOnboarding: false }),
       setHasHydrated: (state) => set({ _hasHydrated: state }),
       getMnemonic: async () => {
@@ -147,9 +170,14 @@ export const useMobileWalletStore = create<MobileWalletState>()(
       name: "polyx-mobile-wallet",
       partialize: (state) => ({
         wallet: state.wallet, // This now includes encryptedMnemonic
+        accounts: state.accounts,
         // Never persist pendingMnemonic (plaintext), onboarding, or hydration state
       }),
       onRehydrateStorage: () => (state) => {
+        // Migrate single-wallet installs: the active wallet becomes account #1.
+        if (state && state.wallet && (!state.accounts || state.accounts.length === 0)) {
+          useMobileWalletStore.setState({ accounts: [state.wallet] });
+        }
         state?.setHasHydrated(true);
       },
     }

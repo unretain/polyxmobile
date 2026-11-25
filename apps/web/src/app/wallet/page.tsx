@@ -18,6 +18,8 @@ import { shortenAddress } from "@/lib/wallet";
 import { executeClientWithdraw } from "@/lib/mobileSwap";
 import { SwapWidget } from "@/components/trading";
 import { OnrampModal } from "@/components/onramp/OnrampModal";
+import { WalletOnboarding } from "@/components/wallet/WalletOnboarding";
+import { Eye, EyeOff, KeyRound, Plus, Users } from "lucide-react";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -56,8 +58,15 @@ const ACTIONS: Array<{ id: Panel; label: string; icon: typeof CreditCard }> = [
 
 export default function WalletPage() {
   const router = useRouter();
-  const { wallet } = useMobileWalletStore();
+  const { wallet, accounts, switchAccount } = useMobileWalletStore();
   const { isDark } = useThemeStore();
+
+  // Account management
+  const [exportOpen, setExportOpen] = useState(false);
+  const [revealed, setRevealed] = useState(false);
+  const [phrase, setPhrase] = useState<string | null>(null);
+  const [phraseCopied, setPhraseCopied] = useState(false);
+  const [onboardOpen, setOnboardOpen] = useState(false);
 
   const [panel, setPanel] = useState<Panel>("deposit");
   const [buyOpen, setBuyOpen] = useState(false);
@@ -339,6 +348,120 @@ export default function WalletPage() {
           </button>
         </div>
       )}
+
+      {/* ---------------- Account ---------------- */}
+      <div className={`${card} p-4 space-y-3`}>
+        <p className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${isDark ? "text-white/50" : "text-black/50"}`}>
+          Account
+        </p>
+
+        {/* Switch between wallets on this device */}
+        {accounts.length > 1 && (
+          <div className="space-y-1">
+            {accounts.map((a) => (
+              <button
+                key={a.publicKey}
+                onClick={() => { if (a.publicKey !== wallet.publicKey) { switchAccount(a.publicKey); setBalance(null); setLoading(true); } }}
+                className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-colors ${
+                  a.publicKey === wallet.publicKey
+                    ? "border-[#FF6B4A]/40 bg-[#FF6B4A]/5"
+                    : isDark ? "border-white/10 hover:bg-white/5" : "border-black/10 hover:bg-black/5"
+                }`}
+              >
+                <Users className={`h-4 w-4 ${a.publicKey === wallet.publicKey ? "text-[#FF6B4A]" : isDark ? "text-white/40" : "text-black/40"}`} />
+                <span className={`flex-1 text-sm font-mono truncate ${isDark ? "text-white/70" : "text-black/70"}`}>
+                  {shortenAddress(a.publicKey, 6)}
+                </span>
+                {a.publicKey === wallet.publicKey && (
+                  <span className="text-[10px] font-semibold uppercase text-[#FF6B4A]">active</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            onClick={() => { setExportOpen(true); setRevealed(false); setPhrase(null); }}
+            className={`flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-medium transition-colors ${
+              isDark ? "border-white/10 text-white/70 hover:bg-white/5" : "border-black/10 text-black/70 hover:bg-black/5"
+            }`}
+          >
+            <KeyRound className="h-4 w-4" /> Export phrase
+          </button>
+          <button
+            onClick={() => setOnboardOpen(true)}
+            className={`flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-medium transition-colors ${
+              isDark ? "border-white/10 text-white/70 hover:bg-white/5" : "border-black/10 text-black/70 hover:bg-black/5"
+            }`}
+          >
+            <Plus className="h-4 w-4" /> Add wallet
+          </button>
+        </div>
+      </div>
+
+      {/* Export recovery phrase — stays on this device, revealed only on tap */}
+      {exportOpen && (
+        <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center sm:p-4">
+          <div className={`absolute inset-0 backdrop-blur-sm ${isDark ? "bg-black/60" : "bg-black/40"}`} onClick={() => setExportOpen(false)} />
+          <div className={`relative w-full sm:max-w-md rounded-t-3xl sm:rounded-2xl border shadow-2xl p-5 space-y-4 ${isDark ? "bg-[#111] border-white/10" : "bg-white border-gray-200"}`}>
+            <h2 className={`text-lg font-semibold ${isDark ? "text-white" : "text-gray-900"}`}>Recovery phrase</h2>
+            <p className={`text-xs ${isDark ? "text-white/40" : "text-gray-500"}`}>
+              Anyone with these words controls this wallet. Never share them, never type them into another site.
+            </p>
+            <button
+              onClick={async () => {
+                if (!revealed) {
+                  const m = await useMobileWalletStore.getState().getMnemonic();
+                  setPhrase(m);
+                  setRevealed(true);
+                } else setRevealed(false);
+              }}
+              className={`w-full rounded-xl border p-4 text-left ${isDark ? "border-white/10 bg-black/30" : "border-gray-200 bg-gray-50"}`}
+            >
+              {revealed && phrase ? (
+                <div className="grid grid-cols-3 gap-1.5">
+                  {phrase.split(" ").map((w, i) => (
+                    <span key={i} className={`text-xs font-mono ${isDark ? "text-white/80" : "text-gray-800"}`}>
+                      <span className={isDark ? "text-white/30" : "text-gray-400"}>{i + 1}.</span> {w}
+                    </span>
+                  ))}
+                </div>
+              ) : revealed && !phrase ? (
+                <span className="text-sm text-down">Wallet locked — re-import your phrase to export it.</span>
+              ) : (
+                <span className={`flex items-center justify-center gap-2 text-sm ${isDark ? "text-white/50" : "text-gray-500"}`}>
+                  <Eye className="h-4 w-4" /> Tap to reveal
+                </span>
+              )}
+            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  const m = phrase ?? (await useMobileWalletStore.getState().getMnemonic());
+                  if (m) {
+                    await navigator.clipboard.writeText(m);
+                    setPhraseCopied(true);
+                    setTimeout(() => setPhraseCopied(false), 2000);
+                  }
+                }}
+                className="flex-1 py-3 rounded-xl text-sm font-semibold bg-[#FF6B4A] text-white hover:bg-[#FF8F6B] transition-colors"
+              >
+                {phraseCopied ? "Copied!" : "Copy phrase"}
+              </button>
+              <button
+                onClick={() => setExportOpen(false)}
+                className={`px-5 rounded-xl border text-sm ${isDark ? "border-white/10 text-white/60" : "border-gray-200 text-gray-600"}`}
+              >
+                {revealed ? <EyeOff className="h-4 w-4" /> : "Close"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create / import another wallet (reuses onboarding) */}
+      <WalletOnboarding isOpen={onboardOpen} onClose={() => { setOnboardOpen(false); fetchBalance(); }} />
 
       {/* Token holdings intentionally live in the Portfolio (Positions), not here. */}
 

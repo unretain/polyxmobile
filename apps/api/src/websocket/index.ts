@@ -4,7 +4,16 @@ import { getGrpcService } from "../grpc";
 import { Timeframe } from "../ohlcv";
 import { prisma } from "../lib/prisma";
 import crypto from "crypto";
-import { getSnapshot, getSnapshotDurable, feedEvents, addViewer, removeViewer } from "../pulse/feed";
+import { getSnapshot, getSnapshotDurable, feedEvents, addViewer, removeViewer, setWatchedTraders } from "../pulse/feed";
+
+// ---- Wallet tracking: per-socket tracked wallets, union pushed to the feed ----
+const trackedWalletsBySocket = new Map<string, Set<string>>();
+const SOLANA_ADDR = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+function recomputeWatchedTraders() {
+  const union = new Set<string>();
+  for (const set of trackedWalletsBySocket.values()) for (const a of set) union.add(a);
+  setWatchedTraders(union);
+}
 
 // ==========================================
 // Rate Limiting
@@ -197,6 +206,20 @@ export function setupWebSocket(io: Server) {
         // Send the current snapshot immediately so late-joiners aren't empty.
         getSnapshotDurable().then((s) => socket.emit("pulse:snapshot", s)).catch(() => socket.emit("pulse:snapshot", getSnapshot()));
       }
+    });
+
+    // Track wallets: client sends its full list (replaces the previous one);
+    // matching trades come back as "wallet:trade" events on this socket only.
+    socket.on("wallets:track", (addresses: unknown) => {
+      const list = Array.isArray(addresses)
+        ? addresses.filter((a): a is string => typeof a === "string" && SOLANA_ADDR.test(a)).slice(0, 25)
+        : [];
+      if (list.length === 0) trackedWalletsBySocket.delete(socket.id);
+      else trackedWalletsBySocket.set(socket.id, new Set(list));
+      recomputeWatchedTraders();
+    });
+    socket.on("disconnect", () => {
+      if (trackedWalletsBySocket.delete(socket.id)) recomputeWatchedTraders();
     });
 
     // Handle Pulse unsubscription
@@ -1315,6 +1338,12 @@ export function setupWebSocket(io: Server) {
   feedEvents.on("graduated", (token) => io.to("pulse").emit("pulse:graduated", token));
   // Per-trade fan-out to whoever has this token's page open (subscribe:token).
   feedEvents.on("trade", (t: any) => io.to(`token:${t.mint}`).emit("trade", t));
+  // Tracked-wallet trades go only to the sockets tracking that trader.
+  feedEvents.on("wallet:trade", (t: any) => {
+    for (const [sid, set] of trackedWalletsBySocket) {
+      if (set.has(t.trader)) io.to(sid).emit("wallet:trade", t);
+    }
+  });
 
   // Dashboard price streaming (SOL/ETH majors on the homepage).
   initializeDashboardPriceStreaming(io);

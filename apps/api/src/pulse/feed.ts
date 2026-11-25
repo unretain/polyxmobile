@@ -470,6 +470,16 @@ const polyxMints = new Set<string>((() => {
   catch { return []; }
 })());
 
+// ---- Wallet tracking -------------------------------------------------------
+// Union of every wallet any connected client is tracking. The websocket layer
+// recomputes this as clients come and go; the hot decode path pays one Set
+// lookup per trade and only builds an event object on a hit.
+const watchedTraders = new Set<string>();
+export function setWatchedTraders(all: Iterable<string>): void {
+  watchedTraders.clear();
+  for (const a of all) watchedTraders.add(a);
+}
+
 export function tagPolyxLaunch(mint: string): void {
   if (polyxMints.has(mint)) return;
   polyxMints.add(mint);
@@ -691,6 +701,13 @@ function handleTransaction(update: any) {
             timestamp: (tsSec > 0 ? tsSec : Math.floor(Date.now() / 1000)) * 1000,
           });
         }
+        if (watchedTraders.has(trader)) {
+          feedEvents.emit("wallet:trade", {
+            mint, symbol: token.symbol, type: isBuy ? "buy" : "sell",
+            solAmount: solLamports / 1e9, marketCap: token.marketCapSol * state.solPrice,
+            trader, signature, timestamp: Date.now(),
+          });
+        }
         state.stats.trades++;
         if (token.progress >= FINAL_STRETCH_PROGRESS && state.newTokens.has(mint)) {
           state.newTokens.delete(mint);
@@ -907,6 +924,13 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
       marketCap: priceSol * TOTAL_SUPPLY * state.solPrice,
       priceUsd: priceSol * state.solPrice, solPrice: state.solPrice,
       volume24h: token?.volume24h ?? 0, liquidity: token?.liquidity ?? 0,
+      trader, signature, timestamp: Date.now(),
+    });
+  }
+  if (watchedTraders.has(trader)) {
+    feedEvents.emit("wallet:trade", {
+      mint, symbol: token?.symbol ?? mint.slice(0, 6), type: isBuy ? "buy" : "sell",
+      solAmount: volSol, marketCap: priceSol * TOTAL_SUPPLY * state.solPrice,
       trader, signature, timestamp: Date.now(),
     });
   }

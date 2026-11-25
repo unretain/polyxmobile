@@ -566,11 +566,11 @@ export function SwapWidget({
         isDark ? "bg-[#0d0d0d] border-white/10" : "bg-white border-gray-200"
       )}>
         {/* Buy/Sell toggle */}
-        <div className={cn("flex gap-1 mb-3 p-0.5 rounded-xl", isDark ? "bg-black/40" : "bg-gray-100")}>
+        <div className={cn("flex gap-1 mb-3 p-0.5 rounded-full", isDark ? "bg-black/40" : "bg-gray-100")}>
           <button
             onClick={() => setIsBuy(true)}
             className={cn(
-              "flex-1 py-2 rounded-lg text-xs font-medium transition-colors",
+              "flex-1 py-2 rounded-full text-xs font-medium transition-colors",
               isBuy
                 ? "bg-[#7FD39B] text-black"
                 : isDark ? "text-white/50" : "text-gray-400"
@@ -581,7 +581,7 @@ export function SwapWidget({
           <button
             onClick={() => setIsBuy(false)}
             className={cn(
-              "flex-1 py-2 rounded-lg text-xs font-medium transition-colors",
+              "flex-1 py-2 rounded-full text-xs font-medium transition-colors",
               !isBuy
                 ? "bg-down text-white"
                 : isDark ? "text-white/50" : "text-gray-400"
@@ -647,7 +647,7 @@ export function SwapWidget({
                     key={amt}
                     onClick={() => setInputAmount(amt.toString())}
                     className={cn(
-                      "flex-1 py-2.5 rounded-lg text-xs font-mono transition-colors border",
+                      "flex-1 py-2.5 rounded-full text-xs font-mono transition-colors border",
                       inputAmount === amt.toString()
                         ? "bg-[#7FD39B]/20 text-[#7FD39B] border-[#7FD39B]/50"
                         : isDark
@@ -730,7 +730,7 @@ export function SwapWidget({
                     key={pct}
                     onClick={() => handleSellPercent(pct)}
                     className={cn(
-                      "flex-1 py-2.5 rounded-lg text-xs font-mono transition-colors border",
+                      "flex-1 py-2.5 rounded-full text-xs font-mono transition-colors border",
                       selectedPercent === pct
                         ? "bg-down/15 text-down border-down/50"
                         : isDark
@@ -838,7 +838,7 @@ export function SwapWidget({
         <button
           onClick={() => setIsBuy(true)}
           className={cn(
-            "flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors",
+            "flex-1 py-2.5 rounded-full text-sm font-medium transition-colors",
             isBuy
               ? "bg-[#7FD39B]/10 text-[#7FD39B] border-b-2 border-[#7FD39B]"
               : isDark ? "text-white/50 hover:text-white/70" : "text-gray-400 hover:text-gray-600"
@@ -849,7 +849,7 @@ export function SwapWidget({
         <button
           onClick={() => setIsBuy(false)}
           className={cn(
-            "flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors",
+            "flex-1 py-2.5 rounded-full text-sm font-medium transition-colors",
             !isBuy
               ? "bg-down/10 text-down border-b-2 border-down"
               : isDark ? "text-white/50 hover:text-white/70" : "text-gray-400 hover:text-gray-600"

@@ -1,6 +1,7 @@
 "use client";
 
 import { MobileHeader } from "@/components/layout/MobileHeader";
+import { WalletTradeToasts } from "@/components/layout/WalletTradeToasts";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import { useThemeStore } from "@/stores/themeStore";
 
@@ -23,6 +24,7 @@ export function AppShell({ children, guard = true }: AppShellProps) {
     <div className={`flex h-dvh flex-col ${isDark ? "bg-[#0a0a0a]" : "bg-gray-50"}`}>
       {isDark && <div className="fixed inset-0 star-grid opacity-20 pointer-events-none" />}
       <MobileHeader />
+      <WalletTradeToasts />
       <main
         className="relative z-10 flex-1 overflow-auto pt-20 px-4 sm:px-6"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 24px)" }}

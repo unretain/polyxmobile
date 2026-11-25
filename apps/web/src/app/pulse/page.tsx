@@ -3,6 +3,7 @@
 import { useEffect, useCallback, useRef, useState, useMemo } from "react";
 import Image from "next/image";
 import { FiltersPanel } from "@/components/pulse/FiltersPanel";
+import { WalletTracker } from "@/components/pulse/WalletTracker";
 import { SocialIcons } from "@/components/pulse/TweetHover";
 import { PulseFilters, EMPTY_FILTERS, loadFilters, saveFilters, applyFilter, activeCount } from "@/lib/pulseFilters";
 import { instantBuy, useInstantBuyAmounts } from "@/lib/instantBuy";
@@ -523,6 +524,9 @@ export default function PulsePage() {
             </button>
           ))}
         </div>
+
+        {/* Wallet tracking */}
+        <WalletTracker isDark={isDark} />
 
         {/* Filters */}
         <button

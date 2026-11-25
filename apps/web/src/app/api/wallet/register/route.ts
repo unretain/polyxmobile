@@ -11,7 +11,8 @@ const ENCRYPTION_KEY = process.env.AUTH_SECRET!;
  */
 export async function POST(request: Request) {
   try {
-    const { publicKey, deviceId } = await request.json();
+    const { publicKey, deviceId, email } = await request.json();
+    const safeEmail = typeof email === "string" && /^[^s@]+@[^s@]+.[^s@]+$/.test(email) ? email.slice(0, 254) : undefined;
 
     if (!publicKey) {
       return NextResponse.json(
@@ -29,11 +30,13 @@ export async function POST(request: Request) {
       create: {
         encryptedPublicKey,
         deviceId,
+        email: safeEmail,
         lastActiveAt: new Date(),
       },
       update: {
         lastActiveAt: new Date(),
         deviceId: deviceId || undefined,
+        email: safeEmail,
       },
     });
 

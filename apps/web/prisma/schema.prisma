@@ -523,6 +523,7 @@ model MobileUser {
 
   @@index([encryptedPublicKey])
   @@index([lastActiveAt])
+  email              String?
 }
 
 model MobileTrade {

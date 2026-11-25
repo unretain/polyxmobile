@@ -5,6 +5,31 @@ import { io, Socket } from "socket.io-client";
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "http://localhost:3001";
 let _pulseSocket: Socket | null = null;
 
+// ---- Wallet tracking --------------------------------------------------------
+// The tracked list lives in localStorage; the server matches trades against it
+// and pushes "wallet:trade" events down this same socket.
+export interface TrackedWallet { address: string; label?: string }
+const TRACKED_KEY = "polyx-tracked-wallets";
+
+export function getTrackedWallets(): TrackedWallet[] {
+  try {
+    const raw = localStorage.getItem(TRACKED_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+
+export function saveTrackedWallets(list: TrackedWallet[]): void {
+  try { localStorage.setItem(TRACKED_KEY, JSON.stringify(list.slice(0, 25))); } catch {}
+  syncTrackedWallets();
+}
+
+/** Push the current tracked list to the server (called on connect + on change). */
+export function syncTrackedWallets(): void {
+  if (!_pulseSocket) return;
+  _pulseSocket.emit("wallets:track", getTrackedWallets().map((w) => w.address));
+}
+
 export interface OHLCV {
   timestamp: number;
   open: number;
@@ -286,7 +311,15 @@ export const usePulseStore = create<PulseStore>()(
 
     socket.on("connect", () => {
       socket.emit("subscribe:pulse");
+      syncTrackedWallets(); // re-send the tracked list on every (re)connect
       set({ isRealtime: true });
+    });
+
+    // Tracked-wallet activity → app-wide event (WalletTradeToasts listens).
+    socket.on("wallet:trade", (t: any) => {
+      try {
+        window.dispatchEvent(new CustomEvent("polyx:wallet-trade", { detail: t }));
+      } catch { /* non-browser */ }
     });
 
     const applySnapshot = (snap: any) => {
