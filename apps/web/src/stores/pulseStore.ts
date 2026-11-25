@@ -324,11 +324,12 @@ export const usePulseStore = create<PulseStore>()(
   },
 
   disconnectRealtime: () => {
-    if (_pulseSocket) {
-      _pulseSocket.emit("unsubscribe:pulse");
-      _pulseSocket.disconnect();
-      _pulseSocket = null;
-    }
+    // Intentionally does NOT tear the socket down. Home and Pulse both call this
+    // on unmount, so navigating between them was disconnect -> redial -> wait for
+    // the next snapshot on every page switch — the single biggest reason moving
+    // around the app felt slow. One app-wide socket costs the server one extra
+    // room member; keeping it means the store still has live lists the instant
+    // the next page mounts. (connectRealtime is already idempotent.)
     const interval = (window as any).__pulsePollingInterval;
     if (interval) {
       clearInterval(interval);
