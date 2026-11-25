@@ -244,7 +244,7 @@ export function OnrampModal({ isOpen, onClose }: OnrampModalProps) {
 
               {/* Live order status */}
               <div className={`flex items-center gap-2 text-xs ${isDark ? "text-white/40" : "text-gray-500"}`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${phase === "delivery" ? "bg-amber-300 animate-pulse" : "bg-up"}`} />
+                <span className={`h-1.5 w-1.5 rounded-full ${phase === "delivery" ? "bg-[#FF6B4A] animate-pulse" : "bg-up"}`} />
                 {phase === "delivery"
                   ? "Payment received — delivering USDC to your wallet…"
                   : "Awaiting payment — complete the form below"}

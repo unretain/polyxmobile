@@ -884,7 +884,7 @@ export function SwapWidget({
           className={cn(
             "flex-1 py-2.5 rounded-full text-sm font-medium transition-colors",
             isBuy
-              ? "bg-[#7FD39B]/10 text-[#7FD39B] border-b-2 border-[#7FD39B]"
+              ? "bg-[#7FD39B] text-black"
               : isDark ? "text-white/50 hover:text-white/70" : "text-gray-400 hover:text-gray-600"
           )}
         >
@@ -895,7 +895,7 @@ export function SwapWidget({
           className={cn(
             "flex-1 py-2.5 rounded-full text-sm font-medium transition-colors",
             !isBuy
-              ? "bg-down/10 text-down border-b-2 border-down"
+              ? "bg-down text-black"
               : isDark ? "text-white/50 hover:text-white/70" : "text-gray-400 hover:text-gray-600"
           )}
         >
@@ -924,7 +924,7 @@ export function SwapWidget({
           </div>
           {/* Fee warning for low balance */}
           {isBuy && balance && balance.sol.uiBalance < 0.01 && (
-            <div className="mb-2 p-2 rounded-lg bg-amber-400/10 border border-amber-400/20 text-amber-300 text-[10px]">
+            <div className="mb-2 p-2 rounded-lg bg-white/5 border border-white/10 text-white/60 text-[10px]">
               Low balance. First-time swaps need ~0.003 SOL for fees (token account + tip).
             </div>
           )}
@@ -1187,7 +1187,7 @@ export function SwapWidget({
                   quote.priceImpactPct > 5
                     ? "text-down"
                     : quote.priceImpactPct > 1
-                    ? "text-amber-300"
+                    ? "text-[#FF6B4A]"
                     : "text-[#7FD39B]"
                 )}
               >
