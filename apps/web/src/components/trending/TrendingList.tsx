@@ -31,7 +31,9 @@ const AGE_FILTERS: Array<{ id: AgeFilter; label: string; maxAgeMs: number }> = [
 ];
 
 const MIN_MCAP_USD = 10_000;
-const MIN_FEES_SOL = 0.5;
+/** The fee bar is a RATIO: ≥0.5 SOL of global fees per $10K of market cap.
+ *  A $34K coin needs ≥1.7 ◎ — size has to be backed by proportional fee burn. */
+const MIN_FEES_SOL_PER_10K = 0.5;
 const FRESH_MS = 15 * 60 * 1000;
 
 function trendingScore(t: PulseToken): number {
@@ -41,9 +43,12 @@ function trendingScore(t: PulseToken): number {
 }
 
 function passesQualityBar(t: PulseToken): boolean {
-  if ((t.marketCap || 0) < MIN_MCAP_USD) return false;
+  const mc = t.marketCap || 0;
+  if (mc < MIN_MCAP_USD) return false;
   // Fee bar only when the data actually carries fees (live gRPC feed).
-  if (typeof t.feesPaidSol === "number" && t.feesPaidSol < MIN_FEES_SOL) return false;
+  if (typeof t.feesPaidSol === "number" && t.feesPaidSol < MIN_FEES_SOL_PER_10K * (mc / 10_000)) {
+    return false;
+  }
   return true;
 }
 
@@ -200,7 +205,7 @@ export function TrendingList({ limit = 30, heightClass = "h-[26rem]", onNeedWall
             <div className={`flex flex-col items-center justify-center h-full ${isDark ? 'text-white/40' : 'text-gray-400'}`}>
               <Activity className="h-8 w-8 mb-2 opacity-40" />
               <span className="text-sm">Waiting for coins that clear the bar…</span>
-              <span className={`mt-1 text-xs ${isDark ? 'text-white/25' : 'text-gray-300'}`}>≥ $10K MC · ≥ 0.5 ◎ fees paid</span>
+              <span className={`mt-1 text-xs ${isDark ? 'text-white/25' : 'text-gray-300'}`}>≥ $10K MC · ≥ 0.5 ◎ fees per $10K MC</span>
             </div>
           ) : (
             trending.map((t, i) => (
