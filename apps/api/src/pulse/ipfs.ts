@@ -24,6 +24,7 @@ import { Agent, setGlobalDispatcher } from "undici";
 // so Pinata's own gateway is the origin and usually answers first and warmest.
 const GATEWAYS = (process.env.IPFS_GATEWAYS ||
   [
+    "https://pump.mypinata.cloud/ipfs/",
     "https://gateway.pinata.cloud/ipfs/",
     "https://ipfs.io/ipfs/",
     "https://dweb.link/ipfs/",

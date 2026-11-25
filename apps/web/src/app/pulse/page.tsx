@@ -116,14 +116,14 @@ function TokenRow({ token, showProgress = false, isDark, buyAmount = 0 }: TokenR
       <div className={`relative h-9 w-9 flex-shrink-0 overflow-hidden rounded-full ring-1 ${
         isDark ? 'bg-white/5 ring-white/10' : 'bg-black/5 ring-black/10'
       }`}>
-        {token.logoUri ? (
-          <Image src={imgSrc(token.logoUri)!} alt={token.symbol} fill className="object-cover" unoptimized />
-        ) : (
+        {/* Letter sits underneath; a broken logo hides itself and reveals it. */}
           <div className={`flex h-full w-full items-center justify-center text-sm font-bold ${
             isDark ? 'text-white/40 bg-white/10' : 'text-black/40 bg-black/10'
           }`}>
             {token.symbol?.charAt(0) ?? "?"}
           </div>
+          {token.logoUri && (
+          <Image src={imgSrc(token.logoUri)!} alt="" fill className="object-cover relative z-10" unoptimized onError={(e) => { e.currentTarget.style.display = "none"; }} />
         )}
       </div>
 
@@ -687,14 +687,14 @@ export default function PulsePage() {
                           <div className={`relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full ring-1 ${
                             isDark ? 'bg-white/5 ring-white/10' : 'bg-gray-100 ring-gray-200'
                           }`}>
-                            {token.logoUri ? (
-                              <Image src={imgSrc(token.logoUri)!} alt={token.symbol} fill className="object-cover" unoptimized />
-                            ) : (
+                            {/* Letter sits underneath; a broken logo hides itself and reveals it. */}
                               <div className={`flex h-full w-full items-center justify-center text-sm font-bold ${
                                 isDark ? 'text-white/40 bg-white/10' : 'text-gray-400 bg-gray-100'
                               }`}>
                                 {token.symbol?.charAt(0) ?? "?"}
                               </div>
+                              {token.logoUri && (
+                              <Image src={imgSrc(token.logoUri)!} alt="" fill className="object-cover relative z-10" unoptimized onError={(e) => { e.currentTarget.style.display = "none"; }} />
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -741,14 +741,14 @@ export default function PulsePage() {
                       <div className={`relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-full ring-1 ${
                         isDark ? 'bg-white/5 ring-white/10' : 'bg-gray-100 ring-gray-200'
                       }`}>
-                        {token.logoUri ? (
-                          <Image src={imgSrc(token.logoUri)!} alt={token.symbol} fill className="object-cover" unoptimized />
-                        ) : (
+                        {/* Letter sits underneath; a broken logo hides itself and reveals it. */}
                           <div className={`flex h-full w-full items-center justify-center text-sm font-bold ${
                             isDark ? 'text-white/40 bg-white/10' : 'text-gray-400 bg-gray-100'
                           }`}>
                             {token.symbol?.charAt(0) ?? "?"}
                           </div>
+                          {token.logoUri && (
+                          <Image src={imgSrc(token.logoUri)!} alt="" fill className="object-cover relative z-10" unoptimized onError={(e) => { e.currentTarget.style.display = "none"; }} />
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
