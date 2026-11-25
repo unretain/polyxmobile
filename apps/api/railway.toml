@@ -1,9 +1,9 @@
 [build]
 builder = "nixpacks"
-buildCommand = "cd apps/api && npm install && npm run build"
+buildCommand = "npm ci --include=dev"
 
 [deploy]
-startCommand = "cd apps/api && npm run start"
+startCommand = "cd apps/api && npx tsx src/index.ts"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"
