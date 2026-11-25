@@ -4,11 +4,11 @@
 # web app — that's why the service kept deploying a second copy of the site).
 [build]
 builder = "nixpacks"
-buildCommand = "cd apps/api && npm install && npm run build"
+buildCommand = "npm ci --include=dev"
 watchPatterns = ["apps/api/**", "packages/**"]
 
 [deploy]
-startCommand = "cd apps/api && npm run start"
+startCommand = "cd apps/api && npx tsx src/index.ts"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"
