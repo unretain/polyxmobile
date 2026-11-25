@@ -11,13 +11,22 @@ interface WalletOnboardingProps {
   onClose: () => void;
 }
 
-type Step = "choose" | "create-intro" | "show-phrase" | "verify" | "complete" | "import";
+type Step = "signup" | "verify-email" | "skip-warn" | "choose" | "create-intro" | "show-phrase" | "verify" | "complete" | "import";
+
+// First-launch email decision ("skipped" or the verified address). Once made,
+// reopening onboarding (e.g. Add wallet) starts at the wallet step directly.
+const EMAIL_DECISION_KEY = "polyx-email-decision";
+const EMAIL_KEY = "polyx-email";
+const EMAIL_PROOF_KEY = "polyx-email-proof";
+const emailDecisionMade = () => {
+  try { return !!localStorage.getItem(EMAIL_DECISION_KEY); } catch { return true; }
+};
 
 export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
   const router = useRouter();
   const { setWallet, setPendingMnemonic, pendingMnemonic, confirmBackup, storeMnemonic } = useMobileWalletStore();
 
-  const [step, setStep] = useState<Step>("choose");
+  const [step, setStep] = useState<Step>(() => (emailDecisionMade() ? "choose" : "signup"));
   const [words, setWords] = useState<string[]>([]);
   const [publicKey, setPublicKey] = useState("");
   const [copied, setCopied] = useState(false);
@@ -25,8 +34,51 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
   const [verifyIndexes, setVerifyIndexes] = useState<number[]>([]);
   const [verifyInputs, setVerifyInputs] = useState<string[]>(["", "", ""]);
   const [verifyError, setVerifyError] = useState("");
-  // Optional email, attached at wallet registration (receipts / future recovery)
+  // Email sign-up flow (Resend code) — optional, with an explicit skip warning.
   const [email, setEmail] = useState("");
+  const [emailCode, setEmailCode] = useState("");
+  const [emailToken, setEmailToken] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailError, setEmailError] = useState("");
+
+  const sendCode = async () => {
+    const addr = email.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr)) { setEmailError("Enter a valid email."); return; }
+    setEmailBusy(true); setEmailError("");
+    try {
+      const r = await fetch("/api/auth/email/send", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: addr }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || "Could not send the code.");
+      setEmailToken(j.token);
+      setEmailCode("");
+      setStep("verify-email");
+    } catch (e) {
+      setEmailError(e instanceof Error ? e.message : "Could not send the code.");
+    } finally { setEmailBusy(false); }
+  };
+
+  const verifyEmailCode = async () => {
+    setEmailBusy(true); setEmailError("");
+    try {
+      const r = await fetch("/api/auth/email/verify", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), code: emailCode.trim(), token: emailToken }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || "Wrong code.");
+      try {
+        localStorage.setItem(EMAIL_KEY, email.trim());
+        localStorage.setItem(EMAIL_PROOF_KEY, j.proof);
+        localStorage.setItem(EMAIL_DECISION_KEY, email.trim());
+      } catch {}
+      setStep("choose");
+    } catch (e) {
+      setEmailError(e instanceof Error ? e.message : "Wrong code.");
+    } finally { setEmailBusy(false); }
+  };
 
   // Import wallet state
   const [importPhrase, setImportPhrase] = useState("");
@@ -39,7 +91,11 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
       await fetch("/api/wallet/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ publicKey: pk, email: email.trim() || undefined }),
+        body: JSON.stringify({
+          publicKey: pk,
+          email: (typeof localStorage !== "undefined" && localStorage.getItem(EMAIL_KEY)) || undefined,
+          emailProof: (typeof localStorage !== "undefined" && localStorage.getItem(EMAIL_PROOF_KEY)) || undefined,
+        }),
       });
     } catch {
       // Silent fail - wallet still works locally
@@ -235,6 +291,124 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
         {/* Content - pt-safe accounts for iOS notch/status bar */}
         <div className="p-6 pt-16 sm:pt-6" style={{ paddingTop: 'max(4rem, env(safe-area-inset-top, 1rem) + 1rem)' }}>
           {/* Choose: Create or Import */}
+          {step === "signup" && (
+            <div className="space-y-6">
+              <div className="text-center">
+                <div className="w-20 h-20 rounded-full bg-[#FF6B4A]/20 flex items-center justify-center mx-auto mb-6">
+                  <Shield className="w-10 h-10 text-[#FF6B4A]" />
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-3">Welcome to Polyx</h2>
+                <p className="text-white/60">
+                  Sign up with your email to get receipts and keep a way back into your account.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") sendCode(); }}
+                  placeholder="you@email.com"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3.5 text-white placeholder-white/30 outline-none focus:border-[#FF6B4A]/50 transition-colors"
+                />
+                {emailError && <p className="text-sm text-down">{emailError}</p>}
+                <button
+                  onClick={sendCode}
+                  disabled={emailBusy}
+                  type="button"
+                  className="w-full bg-[#FF6B4A] hover:bg-[#FF8F6B] text-white font-semibold py-4 rounded-xl transition-colors disabled:opacity-50 touch-manipulation"
+                >
+                  {emailBusy ? "Sending code..." : "Continue with email"}
+                </button>
+                <button
+                  onClick={() => setStep("skip-warn")}
+                  type="button"
+                  className="w-full text-white/40 hover:text-white/70 text-sm py-2 transition-colors touch-manipulation"
+                >
+                  Skip for now
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === "verify-email" && (
+            <div className="space-y-6">
+              <div className="text-center">
+                <h2 className="text-2xl font-bold text-white mb-3">Check your inbox</h2>
+                <p className="text-white/60 text-sm">
+                  We sent a 6-digit code to <span className="text-white">{email.trim()}</span>
+                </p>
+              </div>
+              <div className="space-y-3">
+                <input
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  value={emailCode}
+                  onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, ""))}
+                  onKeyDown={(e) => { if (e.key === "Enter" && emailCode.length === 6) verifyEmailCode(); }}
+                  placeholder="000000"
+                  autoFocus
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3.5 text-white text-center text-2xl font-mono tracking-[0.5em] placeholder-white/20 outline-none focus:border-[#FF6B4A]/50 transition-colors"
+                />
+                {emailError && <p className="text-sm text-down text-center">{emailError}</p>}
+                <button
+                  onClick={verifyEmailCode}
+                  disabled={emailBusy || emailCode.length !== 6}
+                  type="button"
+                  className="w-full bg-[#FF6B4A] hover:bg-[#FF8F6B] text-white font-semibold py-4 rounded-xl transition-colors disabled:opacity-50 touch-manipulation"
+                >
+                  {emailBusy ? "Verifying..." : "Verify"}
+                </button>
+                <div className="flex items-center justify-center gap-4 text-sm">
+                  <button onClick={sendCode} disabled={emailBusy} type="button" className="text-white/40 hover:text-white/70 transition-colors">
+                    Resend code
+                  </button>
+                  <button onClick={() => { setStep("signup"); setEmailError(""); }} type="button" className="text-white/40 hover:text-white/70 transition-colors">
+                    Change email
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {step === "skip-warn" && (
+            <div className="space-y-6">
+              <div className="text-center">
+                <div className="w-20 h-20 rounded-full bg-down/15 flex items-center justify-center mx-auto mb-6">
+                  <AlertTriangle className="w-10 h-10 text-down" />
+                </div>
+                <h2 className="text-2xl font-bold text-white mb-3">No email, no safety net</h2>
+                <p className="text-white/60 text-sm leading-relaxed">
+                  Without an email, your 12-word recovery phrase is the <span className="text-white font-semibold">only</span> way
+                  into this wallet. Lose the phrase and the wallet is gone — nobody, including us, can recover it.
+                </p>
+              </div>
+              <div className="space-y-3">
+                <button
+                  onClick={() => {
+                    try { localStorage.setItem(EMAIL_DECISION_KEY, "skipped"); } catch {}
+                    setStep("choose");
+                  }}
+                  type="button"
+                  className="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold py-4 rounded-xl transition-colors touch-manipulation"
+                >
+                  I understand — continue without email
+                </button>
+                <button
+                  onClick={() => { setStep("signup"); setEmailError(""); }}
+                  type="button"
+                  className="w-full bg-[#FF6B4A] hover:bg-[#FF8F6B] text-white font-semibold py-4 rounded-xl transition-colors touch-manipulation"
+                >
+                  Go back and add an email
+                </button>
+              </div>
+            </div>
+          )}
+
           {step === "choose" && (
             <div className="space-y-6">
               <div className="text-center">
@@ -268,22 +442,6 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
                   Import Existing Wallet
                 </button>
 
-                {/* Optional email — attached to the wallet for receipts and
-                    future account recovery. Works exactly the same without it. */}
-                <div className="pt-1">
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Email (optional)"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder-white/30 outline-none focus:border-[#FF6B4A]/50 transition-colors"
-                  />
-                  <p className="mt-1.5 text-center text-xs text-white/30">
-                    Used for receipts. Skip it and nothing changes.
-                  </p>
-                </div>
               </div>
             </div>
           )}

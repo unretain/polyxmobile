@@ -11,8 +11,15 @@ const ENCRYPTION_KEY = process.env.AUTH_SECRET!;
  */
 export async function POST(request: Request) {
   try {
-    const { publicKey, deviceId, email } = await request.json();
-    const safeEmail = typeof email === "string" && /^[^s@]+@[^s@]+.[^s@]+$/.test(email) ? email.slice(0, 254) : undefined;
+    const { publicKey, deviceId, email, emailProof } = await request.json();
+    // Only a VERIFIED email is persisted: the proof comes from completing the
+    // /api/auth/email code flow, so nobody attaches an address they don't own.
+    const { verifyProof, EMAIL_RE } = await import("@/lib/emailCode");
+    const safeEmail =
+      typeof email === "string" && EMAIL_RE.test(email) && email.length <= 254 &&
+      typeof emailProof === "string" && verifyProof(email, emailProof)
+        ? email
+        : undefined;
 
     if (!publicKey) {
       return NextResponse.json(
