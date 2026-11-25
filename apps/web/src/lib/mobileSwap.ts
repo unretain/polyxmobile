@@ -45,6 +45,25 @@ async function confirmByPolling(connection: Connection, signature: string, timeo
 // Current free endpoint is lite-api.jup.ag/swap/v1 (same /quote and /swap paths).
 const JUPITER_API = "https://lite-api.jup.ag/swap/v1";
 
+// ---- Priority fee / tip -----------------------------------------------------
+// User-settable, 0 allowed ("zero that out"). Applies to every trade signed on
+// this device: Jupiter swaps, pump.fun swaps, and launches.
+const PRIORITY_FEE_KEY = "polyx-priority-fee-sol";
+const DEFAULT_PRIORITY_FEE_SOL = 0.0001;
+
+export function getPriorityFeeSol(): number {
+  try {
+    const raw = localStorage.getItem(PRIORITY_FEE_KEY);
+    if (raw === null) return DEFAULT_PRIORITY_FEE_SOL;
+    const v = Number(raw);
+    return Number.isFinite(v) && v >= 0 ? Math.min(v, 0.05) : DEFAULT_PRIORITY_FEE_SOL;
+  } catch { return DEFAULT_PRIORITY_FEE_SOL; }
+}
+
+export function setPriorityFeeSol(v: number): void {
+  try { localStorage.setItem(PRIORITY_FEE_KEY, String(Math.max(0, Math.min(v, 0.05)))); } catch {}
+}
+
 export interface SwapQuote {
   inputMint: string;
   outputMint: string;
@@ -118,7 +137,8 @@ export async function executeSwap(
       userPublicKey: publicKey,
       wrapAndUnwrapSol: true,
       dynamicComputeUnitLimit: true,
-      prioritizationFeeLamports: "auto",
+      // User tip setting; 0 means exactly 0 — no auto bump behind their back.
+      prioritizationFeeLamports: Math.round(getPriorityFeeSol() * 1e9),
     }),
   });
 
@@ -147,6 +167,10 @@ export async function executeSwap(
   // Clear sensitive data
   secretKey.fill(0);
 
+  if (inputMint !== SOL_MINT_STR) {
+    // Selling a token to SOL may have emptied its account — reclaim the rent.
+    import("./rent").then((r) => r.closeTokenAccountIfEmpty(mnemonic, inputMint)).catch(() => {});
+  }
   return {
     signature,
     explorerUrl: `https://solscan.io/tx/${signature}`,
@@ -184,7 +208,7 @@ export async function executeClientPumpSwap(
       amount: amountValue,
       denominatedInSol,
       slippage: Math.max(1, Math.round(slippageBps / 100)),
-      priorityFee: 0.00001,
+      priorityFee: getPriorityFeeSol(),
       pool: "auto",
     }),
   });
@@ -202,6 +226,10 @@ export async function executeClientPumpSwap(
   await confirmByPolling(connection, signature);
 
   secretKey.fill(0);
+  if (!isBuy) {
+    // Sell may have emptied the token account — close it and reclaim the rent.
+    import("./rent").then((r) => r.closeTokenAccountIfEmpty(mnemonic, tokenMint)).catch(() => {});
+  }
   return { signature, explorerUrl: `https://solscan.io/tx/${signature}` };
 }
 
@@ -232,7 +260,7 @@ export async function executeClientPumpCreate(
       denominatedInSol: "true",
       amount: devBuySol,
       slippage: Math.max(1, Math.round(slippagePct)),
-      priorityFee: 0.0005,
+      priorityFee: Math.max(getPriorityFeeSol(), 0.0001) /* creates need a floor to land */,
       pool: "pump",
     }),
   });

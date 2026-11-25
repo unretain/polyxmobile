@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useThemeStore } from "@/stores/themeStore";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
+import { RentBanner } from "@/components/wallet/RentBanner";
 import { useTradeLogStore, type LoggedTrade } from "@/stores/tradeLogStore";
 import { tokenPnl } from "@/lib/portfolio";
 import { imgSrc } from "@/lib/imgSrc";
@@ -477,6 +478,8 @@ export default function PortfolioPage() {
 
   return (
     <div className={isDark ? "text-white" : "text-black"}>
+      {/* Rent to recover from emptied token accounts */}
+      <div className="mb-3"><RentBanner /></div>
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
             <h1 className={`text-xl font-bold ${isDark ? "text-white" : "text-gray-900"}`}>

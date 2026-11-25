@@ -228,14 +228,36 @@ function mapDexPairToPulse(pair: any, category: string): FallbackPulseToken {
 
 /** Fetch latest Solana pairs from DexScreener for "new pairs". */
 export async function fallbackNewPairs(limit = 50): Promise<FallbackPulseToken[]> {
-  // Latest pairs on Solana
-  const data = await safeFetch(`${DEXSCREENER_BASE}/latest/dex/pairs/solana`);
-  if (!data?.pairs || !Array.isArray(data.pairs)) return [];
+  // DexScreener removed /latest/dex/pairs/<chain> (it returns nothing now, which
+  // emptied the New Pairs column whenever the live feed was down). The newest
+  // *token profiles* are the closest public signal — resolve their pairs for
+  // real stats, same pattern as fallbackGraduating.
+  const profiles = await safeFetch(`${DEXSCREENER_BASE}/token-profiles/latest/v1`);
+  if (!profiles || !Array.isArray(profiles)) return [];
 
-  return data.pairs
-    .filter((p: any) => p.baseToken?.address && p.liquidity?.usd > 100)
-    .slice(0, limit)
-    .map((p: any) => mapDexPairToPulse(p, "new"));
+  const solTokens = profiles
+    .filter((t: any) => t.chainId === "solana" && t.tokenAddress)
+    .slice(0, Math.min(limit, 30));
+  if (solTokens.length === 0) return [];
+
+  const addresses = solTokens.map((t: any) => t.tokenAddress).join(",");
+  const details = await safeFetch(`${DEXSCREENER_BASE}/tokens/v1/solana/${addresses}`);
+  if (!details || !Array.isArray(details)) return [];
+
+  const byAddress = new Map<string, any>();
+  for (const pair of details) {
+    const addr = pair.baseToken?.address;
+    if (!addr) continue;
+    const existing = byAddress.get(addr);
+    if (!existing || (pair.liquidity?.usd ?? 0) > (existing.liquidity?.usd ?? 0)) {
+      byAddress.set(addr, pair);
+    }
+  }
+
+  return Array.from(byAddress.values())
+    .filter((p: any) => p.liquidity?.usd > 100)
+    .map((p: any) => mapDexPairToPulse(p, "new"))
+    .slice(0, limit);
 }
 
 /** Fetch trending Solana tokens for "graduating" (high momentum memecoins). */

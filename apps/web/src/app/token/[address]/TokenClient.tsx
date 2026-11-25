@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { formatPrice, formatNumber, formatPercent, shortenAddress, cn } from "@/lib/utils";
 import { useTokenStore } from "@/stores/tokenStore";
-import { usePulseStore, type OHLCV } from "@/stores/pulseStore";
+import { usePulseStore, getTrackedWallets, type OHLCV } from "@/stores/pulseStore";
 import { useThemeStore } from "@/stores/themeStore";
 import { ChartControls } from "@/components/charts/ChartControls";
 
@@ -337,8 +337,14 @@ export default function TokenClient() {
           .filter((t) => t.wallet === userWallet)
           .map((t) => ({ time: Math.floor(t.timestamp / 1000), type: t.type as "buy" | "sell" }))
       : [];
+    // Tracked wallets' trades on this coin get the same B/S bubbles — watching
+    // a wallet means seeing where it hit the chart, not just a toast.
+    const trackedSet = new Set(getTrackedWallets().map((w) => w.address));
+    const tracked = trades
+      .filter((t) => t.wallet && t.wallet !== userWallet && trackedSet.has(t.wallet))
+      .map((t) => ({ time: Math.floor(t.timestamp / 1000), type: t.type as "buy" | "sell" }));
     const seen = new Set<string>();
-    return [...local, ...feed].filter((m) => {
+    return [...local, ...feed, ...tracked].filter((m) => {
       const k = `${m.time}:${m.type}`;
       if (seen.has(k)) return false;
       seen.add(k);

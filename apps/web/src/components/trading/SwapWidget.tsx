@@ -10,7 +10,7 @@ import { Loader2, RefreshCw, RotateCcw, Pencil, X } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import { useToast } from "@/components/ui/Toast";
 import { cn } from "@/lib/utils";
-import { executeSwap as executeClientSwap, executeClientPumpSwap } from "@/lib/mobileSwap";
+import { executeSwap as executeClientSwap, executeClientPumpSwap, getPriorityFeeSol, setPriorityFeeSol } from "@/lib/mobileSwap";
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -112,6 +112,48 @@ const playTradeSound = (isBuy: boolean) => {
     // Audio not supported or blocked - fail silently
   }
 };
+
+const TIP_PRESETS = [0, 0.0001, 0.001];
+
+function TipControl({ isDark }: { isDark: boolean }) {
+  const [tip, setTip] = useState(0.0001);
+  useEffect(() => { setTip(getPriorityFeeSol()); }, []);
+  const apply = (v: number) => { setTip(v); setPriorityFeeSol(v); };
+  return (
+    <div className="flex items-center gap-1.5 mb-3">
+      <span className={cn("text-[10px] uppercase tracking-wide", isDark ? "text-white/30" : "text-gray-400")}>
+        Tip
+      </span>
+      {TIP_PRESETS.map((v) => (
+        <button
+          key={v}
+          onClick={() => apply(v)}
+          className={cn(
+            "px-2 py-1 rounded-full text-[10px] font-mono border transition-colors",
+            tip === v
+              ? "border-[#FF6B4A]/40 text-[#FF6B4A] bg-[#FF6B4A]/10"
+              : isDark ? "border-white/10 text-white/40 hover:text-white/70" : "border-black/10 text-gray-400 hover:text-gray-600"
+          )}
+        >
+          {v === 0 ? "0" : v}
+        </button>
+      ))}
+      <input
+        type="number"
+        min={0}
+        step={0.0001}
+        value={TIP_PRESETS.includes(tip) ? "" : tip}
+        placeholder="…"
+        onChange={(e) => { const v = Number(e.target.value); if (Number.isFinite(v) && v >= 0) apply(v); }}
+        className={cn(
+          "w-16 px-2 py-1 rounded-full text-[10px] font-mono border bg-transparent outline-none",
+          isDark ? "border-white/10 text-white/70" : "border-black/10 text-gray-600"
+        )}
+      />
+      <span className={cn("text-[10px]", isDark ? "text-white/30" : "text-gray-400")}>SOL</span>
+    </div>
+  );
+}
 
 export function SwapWidget({
   defaultOutputMint,
@@ -591,6 +633,8 @@ export function SwapWidget({
           </button>
         </div>
 
+        <TipControl isDark={isDark} />
+
         {/* Quick amount buttons */}
         {isBuy ? (
           <div className="flex gap-1.5 items-center">
@@ -860,6 +904,7 @@ export function SwapWidget({
       </div>
 
       <div className="p-4">
+        <TipControl isDark={isDark} />
         {/* Amount Input */}
         <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
