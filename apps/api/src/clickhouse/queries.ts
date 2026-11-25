@@ -459,12 +459,24 @@ export async function getTokensMissingImages(limit: number, hours = 6) {
  *  feesPaidSol is a fraction of the real total. */
 export async function getFeesForMints(mints: string[]) {
   if (!mints.length) return [] as any[];
+  // Gas is deduped per (mint, signature): legacy rows wrote the full tx fee on
+  // EVERY trade event of a bundled tx, so a plain sum() multiplied the gas
+  // buckets. max() per signature recovers the true once-per-tx figure for old
+  // rows, and new rows (gas on first event only, 0 after) sum identically.
   return q<any>(
     `SELECT mint,
-       sum(gas_fee_sol + fee_sol + creator_fee_sol) AS fees_sol,
-       countIf(is_buy = 1) AS buys,
-       countIf(is_buy = 0) AS sells
-     FROM trades WHERE mint IN {mints:Array(String)}
+       sum(platform) + sum(gas_once) AS fees_sol,
+       sum(b) AS buys,
+       sum(se) AS sells
+     FROM (
+       SELECT mint, signature,
+         max(gas_fee_sol)              AS gas_once,
+         sum(fee_sol + creator_fee_sol) AS platform,
+         countIf(is_buy = 1)           AS b,
+         countIf(is_buy = 0)           AS se
+       FROM trades WHERE mint IN {mints:Array(String)}
+       GROUP BY mint, signature
+     )
      GROUP BY mint`,
     { mints }
   );

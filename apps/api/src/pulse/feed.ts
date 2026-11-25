@@ -578,6 +578,11 @@ function handleTransaction(update: any) {
   // Mints this transaction already accounted for via a bonding-curve TradeEvent, so
   // the PumpSwap pass below cannot record the same swap a second time.
   const curveMints = new Set<string>();
+  // Gas (base+priority) + Jito tip, computed ONCE per transaction. A bundled tx
+  // carries several TradeEvents; charging meta.fee per EVENT multiplied the gas
+  // buckets 2-7x on sniper-heavy coins (BEAST: 9 SOL shown vs 2.86 real).
+  const txGasSol = Number(tx.meta?.fee ?? 0) / 1e9 + jitoTipSol(tx);
+  const gasCharged = new Set<string>(); // mints already billed this tx's gas
   // FULL account list, in runtime order: static keys, then the addresses resolved
   // from Address Lookup Tables (writable, then readonly). PumpSwap swaps put the
   // program + pool accounts in an ALT, so a static-only key list makes us miss every
@@ -720,9 +725,10 @@ function handleTransaction(update: any) {
         token.volume24h += (solLamports / 1e9) * state.solPrice;
         token.txCount++;
         if (isBuy) token.buys = (token.buys || 0) + 1; else token.sells = (token.sells || 0) + 1;
-        // Global fees, axiom-style: priority/base (meta.fee) + Jito bribe + the
-        // platform's protocol + creator fees. meta.fee alone missed two of three.
-        const gasFeeSol = Number(tx.meta?.fee ?? 0) / 1e9 + jitoTipSol(tx);
+        // Global fees, axiom-style: priority/base + Jito bribe (once per tx) + the
+        // platform's protocol + creator fees (per trade event).
+        const gasFeeSol = gasCharged.has(mint) ? 0 : txGasSol;
+        gasCharged.add(mint);
         token.feesPaidSol = (token.feesPaidSol || 0) + gasFeeSol + feeSol + creatorFeeSol;
         // Record at RECEIVE time so the 250ms fine candles get real sub-second
         // resolution (block time is only 1s-precise). The stream is smooth end-to-end
@@ -794,13 +800,13 @@ function handleTransaction(update: any) {
   // deltas. Verified on 7WbM...SJDU, whose 35.26 SOL bundle buy appears in both sets
   // under one signature. Every double count inflates that coin's volume and its fees.
   if (keys.some((k) => bytesEqual(k, PUMPSWAP_PROGRAM_BYTES))) {
-    handlePumpSwap(tx, signature, keys, slot, curveMints);
+    handlePumpSwap(tx, signature, keys, slot, curveMints, txGasSol, gasCharged);
   }
 }
 
 // Price from pool reserves (uiAmount handles decimals) — IDL-independent, robust
 // to pump changing their event layout. quote=WSOL(9), base=token.
-function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot = 0, curveMints?: Set<string>) {
+function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot = 0, curveMints?: Set<string>, txGasSol = 0, gasCharged?: Set<string>) {
   const post = tx.meta.postTokenBalances || [];
   if (!post.length) return;
   const mints = [...new Set(post.map((b: any) => b.mint))].filter((m: any) => m && m !== WSOL) as string[];
@@ -913,6 +919,10 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
   const ref = lastPrice.get(mint);
   if (ref && ref > 0 && (priceSol > ref * 20 || priceSol < ref * 0.05)) return;
 
+  // Gas + tip for THIS tx, at most once per coin (handleTransaction shares the set).
+  const gasFeeSolAmm = gasCharged?.has(mint) ? 0 : txGasSol;
+  gasCharged?.add(mint);
+
   if (token) {
     // Migration: was on the bonding curve, now trading on PumpSwap.
     if (state.newTokens.has(mint) || state.graduatingTokens.has(mint)) {
@@ -935,7 +945,6 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
     if (!token.launchPriceSol) token.launchPriceSol = priceSol;
     token.priceChange24h = token.launchPriceSol > 0 ? ((priceSol - token.launchPriceSol) / token.launchPriceSol) * 100 : 0;
     token.volume24h += volSol * state.solPrice;
-    const gasFeeSolAmm = Number(tx.meta?.fee ?? 0) / 1e9 + jitoTipSol(tx);
     token.feesPaidSol = (token.feesPaidSol || 0) + gasFeeSolAmm + protocolFeeSol + creatorFeeSol;
     token.txCount++;
   }
@@ -953,7 +962,7 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
   // Persist post-migration trades too, so ClickHouse holds a graduated coin's full
   // history (not just its bonding-curve life) and the chart's durable fallback works
   // after migration. real_token_reserves isn't tracked on PumpSwap (pool AMM) -> 0.
-  const gasFeeSolTrade = Number(tx.meta?.fee ?? 0) / 1e9 + jitoTipSol(tx);
+  const gasFeeSolTrade = gasFeeSolAmm; // already once-per-tx-per-mint (0 on repeats)
   recordTrade({
     mint, signature, slot, ts: chDateTime(Date.now()), is_buy: isBuy ? 1 : 0,
     sol_amount: volSol, token_amount: absTok, price_sol: priceSol,
@@ -1457,8 +1466,10 @@ async function hydrateFeesFromCH() {
       const t = anyToken(String(r.mint));
       if (!t) continue;
       const durable = Number(r.fees_sol) || 0;
-      // Durable covers every trade we ever recorded, so it is never behind memory.
-      if (durable > (t.feesPaidSol || 0)) t.feesPaidSol = durable;
+      // SET, don't max: the deduped durable sum is the truth. max() preserved
+      // inflated legacy values (gas written per-event before the dedup fix).
+      // Worst case a set loses <8s of live accrual until the next hydrate.
+      if (durable > 0) t.feesPaidSol = durable;
       const b = Number(r.buys) || 0, se = Number(r.sells) || 0;
       if (b > (t.buys || 0)) t.buys = b;
       if (se > (t.sells || 0)) t.sells = se;
