@@ -1,15 +1,18 @@
+# ROOT config for the `api-service` BRANCH ONLY.
+# The polyxmobile Railway service connects to this branch, so with zero extra
+# settings it builds and runs apps/api (master's root railway.toml builds the
+# web app — that's why the service kept deploying a second copy of the site).
 [build]
 builder = "nixpacks"
-buildCommand = "cd apps/web && npm install && npx prisma generate && npm run build"
-watchPatterns = ["apps/web/**"]
+buildCommand = "cd apps/api && npm install && npm run build"
+watchPatterns = ["apps/api/**", "packages/**"]
 
 [deploy]
-startCommand = "cd apps/web && npm run start"
-healthcheckPath = "/"
+startCommand = "cd apps/api && npm run start"
+healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
 [build.nixpacks]
 pkgManager = "npm"
-aptPkgs = ["ffmpeg"]
