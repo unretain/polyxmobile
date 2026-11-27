@@ -307,6 +307,14 @@ const PUMPSWAP_FEE_TIERS: Array<[number, number, number]> = [
   [83500, 15, 40],  [88400, 12.5, 37.5], [93330, 10, 35], [98240, 7.5, 32.5],
 ];
 
+/** Total PumpSwap fee (bps) the published schedule charges at this market cap. */
+function pumpswapTotalBps(mcapSol: number): number {
+  for (const [ceiling, , total] of PUMPSWAP_FEE_TIERS) {
+    if (mcapSol < ceiling) return total;
+  }
+  return 30; // 98,240 SOL and above
+}
+
 /** What share of a PumpSwap fee goes to the creator at this market cap. */
 function pumpswapCreatorShare(mcapSol: number): number {
   for (const [ceiling, creator, total] of PUMPSWAP_FEE_TIERS) {
@@ -902,6 +910,14 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
   // A fee is a fraction of the trade. Anything near the trade size is a misread of a
   // routing hop, and storing it would poison the column all over again.
   if (!(feeSol > 0) || feeSol > volSol * 0.05) feeSol = 0;
+  // Leg measurement misses whole classes of trades (fee paid in native SOL,
+  // owner overlap, bundles tripping the 5% guard), and those were billed ZERO,
+  // which is why our platform-fee totals ran ~half the reference's. The venue's
+  // published schedule is what those trades actually paid, so estimate from it
+  // whenever measurement comes up empty.
+  if (feeSol === 0 && volSol > 0) {
+    feeSol = volSol * (pumpswapTotalBps(priceSol * TOTAL_SUPPLY) / 10000);
+  }
 
   // The creator's slice OF WHAT WAS ACTUALLY PAID. feeSol above is measured from the
   // SOL that moved, so a trade routed to dodge fees contributes nothing here instead
@@ -931,11 +947,9 @@ function handlePumpSwap(tx: any, signature = "", keys: Uint8Array[] = [], slot =
       token.complete = true;
       token.progress = 100;
       token.destination = "pumpswap";
-      // Fees restart at migration. What a coin charged on its bonding curve is not
-      // what it charges on the AMM, and carrying it over means one curve-completing
-      // bundle buy (~1.06 SOL, and it recurs verbatim across coins) sits in the
-      // headline forever on a coin that has traded almost nothing since.
-      token.feesPaidSol = 0;
+      // Global Fees Paid is WHOLE-LIFE (bonding curve + AMM), matching the
+      // reference trackers. The old reset-at-migration made our number a
+      // fraction of everyone else's for every migrated coin.
     token.graduatedAt = Date.now();
       state.graduatedTokens.set(mint, token);
       feedEvents.emit("graduated", usd(token));

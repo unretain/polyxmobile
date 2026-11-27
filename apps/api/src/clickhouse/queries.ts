@@ -64,22 +64,44 @@ function shapePair(r: any, solPrice: number) {
 
 // join_use_nulls=1 so unmatched (no-trade) tokens are NULL → coalesce applies,
 // instead of ClickHouse's default 0-fill (which made no-trade tokens 100% progress).
+// Two-level on purpose: the inner pass collapses each transaction (gas was
+// historically written on EVERY trade event of a bundled tx, so max() per
+// signature recovers the true once-per-tx figure; new rows carry it on the
+// first event only and 0 after, which max() returns identically).
 const TRADE_AGG = `
   SELECT mint,
-    argMax(price_sol, ts) AS last_price_sol,
-    argMin(price_sol, ts) AS first_price_sol,
-    argMax(mcap_sol, ts)  AS mcap_sol,
-    argMax(real_token_reserves, ts) AS real_tok,
-    sumIf(sol_amount, ts > now() - INTERVAL 24 HOUR) AS vol_sol,
-    sumIf(sol_amount, ts > now() - INTERVAL 1 HOUR)  AS vol_1h,
-    sum(sol_amount)                                  AS total_sol,
-    argMax(real_sol, ts)                             AS real_sol,
-    sum(gas_fee_sol + fee_sol + creator_fee_sol)     AS fees_sol,
-    countIf(is_buy = 1)                              AS buys,
-    countIf(is_buy = 0)                              AS sells,
-    max(ts) AS last_ts,
-    count() AS tx
-  FROM trades GROUP BY mint`;
+    argMax(p_last, ts_sig) AS last_price_sol,
+    argMin(p_first, ts_sig_min) AS first_price_sol,
+    argMax(mc_sig, ts_sig)  AS mcap_sol,
+    argMax(rt_sig, ts_sig) AS real_tok,
+    sum(vol24_sig) AS vol_sol,
+    sum(vol1h_sig) AS vol_1h,
+    sum(vol_sig)   AS total_sol,
+    argMax(rs_sig, ts_sig) AS real_sol,
+    sum(gas_once + plat_sig) AS fees_sol,
+    sum(b_sig)  AS buys,
+    sum(se_sig) AS sells,
+    max(ts_sig) AS last_ts,
+    sum(tx_sig) AS tx
+  FROM (
+    SELECT mint, signature,
+      argMax(price_sol, ts) AS p_last,
+      argMin(price_sol, ts) AS p_first,
+      argMax(mcap_sol, ts)  AS mc_sig,
+      argMax(real_token_reserves, ts) AS rt_sig,
+      sumIf(sol_amount, ts > now() - INTERVAL 24 HOUR) AS vol24_sig,
+      sumIf(sol_amount, ts > now() - INTERVAL 1 HOUR)  AS vol1h_sig,
+      sum(sol_amount) AS vol_sig,
+      argMax(real_sol, ts) AS rs_sig,
+      max(gas_fee_sol) AS gas_once,
+      sum(fee_sol + creator_fee_sol) AS plat_sig,
+      countIf(is_buy = 1) AS b_sig,
+      countIf(is_buy = 0) AS se_sig,
+      max(ts) AS ts_sig,
+      min(ts) AS ts_sig_min,
+      count() AS tx_sig
+    FROM trades GROUP BY mint, signature
+  ) GROUP BY mint`;
 
 async function activePairs(limit: number, solPrice: number, f: PairFilters = {}) {
   const { where, params } = filterSql(f, solPrice);
@@ -240,7 +262,7 @@ export async function getGraduatedPairs(limit: number, solPrice: number, f: Pair
        coalesce(lt.real_sol, 0) * 2 * {sol:Float64} AS liquidity,
        coalesce(lt.vol_sol, 0) * {sol:Float64} AS volume24h,
        coalesce(lt.vol_1h, 0) * {sol:Float64} AS volume1h,
-       coalesce(gf.fees_post, 0) AS feesPaidSol,
+       coalesce(lt.fees_sol, 0) AS feesPaidSol,
        coalesce(lt.tx, 0) AS txCount,
        coalesce(lt.buys, 0) AS buys,
        coalesce(lt.sells, 0) AS sells,
@@ -253,16 +275,6 @@ export async function getGraduatedPairs(limit: number, solPrice: number, f: Pair
      ) g
      LEFT JOIN tokens t FINAL ON g.mint = t.mint
      LEFT JOIN (${TRADE_AGG}) lt ON g.mint = lt.mint
-     -- Gas fees a MIGRATED coin has accumulated post-migration only. Counting its
-     -- whole life lets a bundled curve-completing buy carry gas past a filter forever.
-     LEFT JOIN (
-       SELECT tr.mint AS mint, sum(tr.gas_fee_sol + tr.fee_sol + tr.creator_fee_sol) AS fees_post
-       FROM trades tr
-       INNER JOIN (SELECT mint, max(ts) AS gts FROM graduations GROUP BY mint) gg
-         ON tr.mint = gg.mint
-       WHERE tr.ts >= gg.gts
-       GROUP BY tr.mint
-     ) gf ON g.mint = gf.mint
      WHERE 1 ${where}
      ORDER BY g.ts DESC
      LIMIT {limit:UInt32}
