@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, Check, Eye, EyeOff, ChevronRight, Shield, AlertTriangle, Download, Plus } from "lucide-react";
+import { Copy, Check, Eye, EyeOff, ChevronRight, AlertTriangle, Download, Plus } from "lucide-react";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { generateWalletWithMnemonic, formatMnemonicForDisplay, deriveKeypairFromMnemonic, validateMnemonic } from "@/lib/mobileWallet";
 
@@ -18,6 +18,13 @@ type Step = "signup" | "verify-email" | "skip-warn" | "choose" | "create-intro" 
 const EMAIL_DECISION_KEY = "polyx-email-decision";
 const EMAIL_KEY = "polyx-email";
 const EMAIL_PROOF_KEY = "polyx-email-proof";
+
+// Onboarding progress: which of the four stages this step belongs to.
+const ONBOARDING_STAGES: Step[][] = [
+  ["signup", "verify-email", "skip-warn"],
+  ["choose", "import", "create-intro", "show-phrase", "verify"],
+  ["complete"],
+];
 const emailDecisionMade = () => {
   try { return !!localStorage.getItem(EMAIL_DECISION_KEY); } catch { return true; }
 };
@@ -122,7 +129,11 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
     // Register with backend (public key only, the seed phrase never leaves the device)
     registerWallet(pk);
 
-    setStep("create-intro");
+    // No seed-phrase ceremony during onboarding: the encrypted key is already
+    // stored on-device, and the phrase is exportable any time from the Wallet
+    // page (Export phrase). Straight to done.
+    setPendingMnemonic(null);
+    setStep("complete");
   };
 
 
@@ -140,13 +151,8 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
     }
   }, [step, words]);
 
-  // Load pending mnemonic if exists
-  useEffect(() => {
-    if (pendingMnemonic && step === "choose") {
-      setWords(formatMnemonicForDisplay(pendingMnemonic));
-      setStep("show-phrase");
-    }
-  }, [pendingMnemonic, step]);
+  // (The old redirect into the show-phrase ceremony is gone: creating a wallet
+  // completes immediately, and the phrase lives behind Wallet -> Export phrase.)
 
   // Cleanup sensitive data on unmount
   useEffect(() => {
@@ -284,7 +290,7 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
   return (
     <div className="fixed inset-0 z-[100] overflow-y-auto bg-[#0a0a0a]">
       {/* Full-page onboarding, the app IS this flow until a wallet exists */}
-      <div className="relative mx-auto w-full max-w-md min-h-dvh flex flex-col justify-center">
+      <div className="relative mx-auto w-full max-w-md min-h-dvh flex flex-col justify-center pb-16">
         {/* Content - pt-safe accounts for iOS notch/status bar */}
         <div className="p-6 pt-16 sm:pt-6" style={{ paddingTop: 'max(4rem, env(safe-area-inset-top, 1rem) + 1rem)' }}>
           {/* Choose: Create or Import */}
@@ -408,9 +414,11 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
           {step === "choose" && (
             <div className="space-y-6">
               <div className="text-center">
-                <div className="w-20 h-20 rounded-full bg-[#FF6B4A]/20 flex items-center justify-center mx-auto mb-6">
-                  <Shield className="w-10 h-10 text-[#FF6B4A]" />
-                </div>
+                <h1 className="text-4xl font-bold tracking-tight mb-6">
+                  <span className="text-white">[poly</span>
+                  <span className="text-[#FF6B4A]">x</span>
+                  <span className="text-white">]</span>
+                </h1>
                 <h2 className="text-2xl font-bold text-white mb-3">Welcome to Polyx</h2>
                 <p className="text-white/60">
                   Create a new wallet or import an existing one to get started.
@@ -521,9 +529,11 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
           {step === "create-intro" && (
             <div className="space-y-6">
               <div className="text-center">
-                <div className="w-20 h-20 rounded-full bg-[#FF6B4A]/20 flex items-center justify-center mx-auto mb-6">
-                  <Shield className="w-10 h-10 text-[#FF6B4A]" />
-                </div>
+                <h1 className="text-4xl font-bold tracking-tight mb-6">
+                  <span className="text-white">[poly</span>
+                  <span className="text-[#FF6B4A]">x</span>
+                  <span className="text-white">]</span>
+                </h1>
                 <h2 className="text-2xl font-bold text-white mb-3">Your Wallet is Ready</h2>
                 <p className="text-white/60">
                   Save your recovery phrase to keep your funds safe.
@@ -709,12 +719,12 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
           {step === "complete" && (
             <div className="space-y-6">
               <div className="text-center">
-                <div className="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-6">
-                  <Check className="w-10 h-10 text-green-500" />
+                <div className="w-20 h-20 rounded-full bg-up/15 flex items-center justify-center mx-auto mb-6">
+                  <Check className="w-10 h-10 text-up" />
                 </div>
                 <h2 className="text-2xl font-bold text-white mb-3">You&apos;re All Set!</h2>
                 <p className="text-white/60">
-                  Your wallet is ready. Start trading on Solana.
+                  Your wallet is ready. Back it up any time in Wallet, Export phrase.
                 </p>
               </div>
 
@@ -732,6 +742,24 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
               </button>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Progress dots */}
+      <div className="pointer-events-none fixed bottom-0 left-0 right-0 z-10 flex justify-center pb-6"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 24px)" }}>
+        <div className="flex items-center gap-2">
+          {ONBOARDING_STAGES.map((group, i) => {
+            const active = ONBOARDING_STAGES.findIndex((g) => g.includes(step));
+            return (
+              <span
+                key={i}
+                className={`h-1.5 rounded-full transition-all duration-300 ${
+                  i === active ? "w-6 bg-[#FF6B4A]" : i < active ? "w-1.5 bg-[#FF6B4A]/50" : "w-1.5 bg-white/15"
+                }`}
+              />
+            );
+          })}
         </div>
       </div>
     </div>
