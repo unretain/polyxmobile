@@ -11,7 +11,7 @@ interface WalletOnboardingProps {
   onClose: () => void;
 }
 
-type Step = "signup" | "verify-email" | "skip-warn" | "choose" | "create-intro" | "show-phrase" | "verify" | "complete" | "import";
+type Step = "signup" | "verify-email" | "skip-warn" | "welcome-back" | "choose" | "create-intro" | "show-phrase" | "verify" | "complete" | "import";
 
 // First-launch email decision ("skipped" or the verified address). Once made,
 // reopening onboarding (e.g. Add wallet) starts at the wallet step directly.
@@ -22,7 +22,7 @@ const EMAIL_PROOF_KEY = "polyx-email-proof";
 // Onboarding progress: which of the four stages this step belongs to.
 const ONBOARDING_STAGES: Step[][] = [
   ["signup", "verify-email", "skip-warn"],
-  ["choose", "import", "create-intro", "show-phrase", "verify"],
+  ["welcome-back", "choose", "import", "create-intro", "show-phrase", "verify"],
   ["complete"],
 ];
 const emailDecisionMade = () => {
@@ -47,6 +47,8 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
   const [emailToken, setEmailToken] = useState("");
   const [emailBusy, setEmailBusy] = useState(false);
   const [emailError, setEmailError] = useState("");
+  // Wallets already registered under this email but not on this device.
+  const [knownWallets, setKnownWallets] = useState<string[]>([]);
 
   const sendCode = async () => {
     const addr = email.trim();
@@ -81,6 +83,23 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
         localStorage.setItem(EMAIL_PROOF_KEY, j.proof);
         localStorage.setItem(EMAIL_DECISION_KEY, email.trim());
       } catch {}
+      // Same email signed up before? Offer the existing wallet instead of
+      // silently minting a fresh one.
+      try {
+        const lr = await fetch("/api/wallet/lookup", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim(), emailProof: j.proof }),
+        });
+        const lj = await lr.json().catch(() => ({}));
+        const known: string[] = Array.isArray(lj.wallets) ? lj.wallets : [];
+        const local = new Set(useMobileWalletStore.getState().accounts.map((a) => a.publicKey));
+        const missing = known.filter((a) => !local.has(a));
+        if (missing.length > 0) {
+          setKnownWallets(missing);
+          setStep("welcome-back");
+          return;
+        }
+      } catch { /* lookup is best-effort */ }
       setStep("choose");
     } catch (e) {
       setEmailError(e instanceof Error ? e.message : "Wrong code.");
@@ -373,6 +392,43 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
                     Change email
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {step === "welcome-back" && (
+            <div className="space-y-6">
+              <div className="text-center">
+                <h2 className="text-2xl font-bold text-white mb-3">Welcome back</h2>
+                <p className="text-white/60 text-sm">
+                  This email is already linked to {knownWallets.length === 1 ? "a wallet" : `${knownWallets.length} wallets`}:
+                </p>
+              </div>
+              <div className="space-y-2">
+                {knownWallets.slice(0, 4).map((a) => (
+                  <div key={a} className="px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-sm font-mono text-white/70 truncate">
+                    {a.slice(0, 8)}...{a.slice(-6)}
+                  </div>
+                ))}
+              </div>
+              <p className="text-white/50 text-sm text-center">
+                Your email can&apos;t restore a wallet by itself. To use it on this device, import its 12-word recovery phrase.
+              </p>
+              <div className="space-y-3">
+                <button
+                  onClick={() => setStep("import")}
+                  type="button"
+                  className="w-full bg-[#FF6B4A] hover:bg-[#FF8F6B] text-white font-semibold py-4 rounded-xl transition-colors touch-manipulation"
+                >
+                  Import that wallet
+                </button>
+                <button
+                  onClick={() => setStep("choose")}
+                  type="button"
+                  className="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold py-4 rounded-xl transition-colors touch-manipulation"
+                >
+                  Create a new wallet instead
+                </button>
               </div>
             </div>
           )}

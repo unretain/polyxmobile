@@ -59,7 +59,24 @@ export function EmailAuthModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
           body: JSON.stringify({ publicKey: wallet.publicKey, email: email.trim(), emailProof: j.proof }),
         }).catch(() => {});
       }
-      showToast("Email verified, receipts and account recovery are set up", "success");
+      // If this email already has wallets that aren't on this device, say so.
+      try {
+        const lr = await fetch("/api/wallet/lookup", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim(), emailProof: j.proof }),
+        });
+        const lj = await lr.json().catch(() => ({}));
+        const known: string[] = Array.isArray(lj.wallets) ? lj.wallets : [];
+        const local = new Set(useMobileWalletStore.getState().accounts.map((a) => a.publicKey));
+        const missing = known.filter((a) => !local.has(a));
+        if (missing.length > 0) {
+          showToast(`This email is linked to ${missing[0].slice(0, 6)}...${missing[0].slice(-4)}. Import its phrase under Wallet, Add wallet to restore it.`, "info");
+        } else {
+          showToast("Email verified, receipts and account recovery are set up", "success");
+        }
+      } catch {
+        showToast("Email verified, receipts and account recovery are set up", "success");
+      }
       onClose();
       setStage("email");
     } catch (e) { setError(e instanceof Error ? e.message : "Wrong code."); }
