@@ -89,7 +89,7 @@ export interface MarketInfo {
 
 // Build the portfolio straight from the locally-logged trades, valuing open
 // positions at the current price (market: mint -> live price/metadata) for
-// unrealized PnL. This is the reliable source for a client-side wallet — the shared
+// unrealized PnL. This is the reliable source for a client-side wallet, the shared
 // feed's trader field is too flaky to reconstruct history from. Runs each mint
 // through the same tokenPnl() the swap panel uses, so the numbers always agree.
 function buildLocalPortfolio(trades: LoggedTrade[], market: Map<string, MarketInfo>): PnLData {
@@ -204,7 +204,7 @@ export default function PortfolioPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Mobile wallet: the portfolio is built from the local trade log (the reliable
-  // record of this wallet's own trades — the shared feed's trader field is too flaky
+  // record of this wallet's own trades, the shared feed's trader field is too flaky
   // to reconstruct history from).
   const myTrades = useMemo(
     () => (wallet?.publicKey ? loggedTrades.filter((t) => t.wallet === wallet.publicKey) : []),
@@ -891,7 +891,7 @@ function PnLChart({ data, isDark }: { data: { date: string; value: number; daily
   const width = 100;
 
   // Generate SVG path. With a single data point, i/(length-1) is 0/0 = NaN and the
-  // whole SVG breaks — center the lone point instead.
+  // whole SVG breaks, center the lone point instead.
   const points = data.map((d, i) => {
     const x = data.length > 1 ? (i / (data.length - 1)) * width : width / 2;
     const y = height - ((d.value - minValue) / range) * height;
@@ -1045,7 +1045,7 @@ function PositionCard({ position, isDark }: { position: Position; isDark: boolea
   // old (null/stale) src must not stick.
   useEffect(() => { setImgFailed(false); }, [position.image]);
   // Realized + unrealized. Showing realized alone meant every open position read
-  // "+0.0000 / +0.0%" forever — you haven't sold, so nothing is realized yet.
+  // "+0.0000 / +0.0%" forever, you haven't sold, so nothing is realized yet.
   const pnl = position.realizedPnl + position.unrealizedPnl;
   const pnlPercent = position.totalBuyCost > 0 ? (pnl / position.totalBuyCost) * 100 : 0;
   const up = pnl >= 0;
@@ -1056,7 +1056,7 @@ function PositionCard({ position, isDark }: { position: Position; isDark: boolea
       className={`p-3 rounded-xl border cursor-pointer transition-colors ${isDark ? "bg-white/5 border-white/10 hover:bg-white/10" : "bg-white border-gray-200 hover:bg-gray-50"}`}
     >
       <div className="flex items-center gap-3">
-        {/* Token Image. unoptimized like every other logo on the site — routing these
+        {/* Token Image. unoptimized like every other logo on the site, routing these
             through Next's image optimizer breaks them (the logos are already resized
             and cached by our own /img service). */}
         <div className="w-10 h-10 rounded-full overflow-hidden bg-white/10 flex-shrink-0">

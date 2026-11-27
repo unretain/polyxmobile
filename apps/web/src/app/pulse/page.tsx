@@ -41,7 +41,7 @@ function timeAgo(timestamp: number): string {
 
 // Bonding curve progress (0-100%).
 // Prefer the backend's curve-based progress (% of the curve's tokens actually
-// sold — price-independent). Only fall back to a market-cap estimate for legacy
+// sold, price-independent). Only fall back to a market-cap estimate for legacy
 // data that predates the progress field.
 function getBondingProgress(token: PulseToken): number {
   if (typeof token.progress === "number") return Math.min(100, Math.max(0, token.progress));
@@ -165,7 +165,7 @@ function TokenRow({ token, showProgress = false, isDark, buyAmount = 0 }: TokenR
         {formatPercent(token.priceChange24h)}
       </div>
 
-      {/* Quick Actions. The buy button is ALWAYS visible — it's the primary action on
+      {/* Quick Actions. The buy button is ALWAYS visible, it's the primary action on
           this page, and hiding it behind a row hover made it impossible to find.
           Copy stays hover-only. */}
       <div className="flex items-center gap-1">
@@ -217,7 +217,7 @@ function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDa
   const paused = useColumnPaused(colKey);
 
   // This column's rows hold still while it's paused. Updates keep arriving in the
-  // store — only what THIS column renders is frozen, and the other two keep running.
+  // store, only what THIS column renders is frozen, and the other two keep running.
   const frozenRef = useRef<PulseToken[] | null>(null);
   const shown = useMemo(() => {
     if (paused && frozenRef.current) return frozenRef.current;
@@ -254,7 +254,7 @@ function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDa
 
         {/* Instant-buy amount for THIS column. Per column on purpose: what you throw
             at a 30-second-old launch isn't what you put into something migrated. */}
-        {/* Square, #111, orange accent — the pulse page's own conventions. */}
+        {/* Square, #111, orange accent, the pulse page's own conventions. */}
         <label
           className={cn(
             "flex items-center gap-1.5 flex-shrink-0 rounded-lg border px-2 py-1 transition-colors focus-within:border-[#FF6B4A]/50",
@@ -280,7 +280,7 @@ function TokenColumn({ title, subtitle, tokens, emptyMessage, showProgress, isDa
         </label>
       </div>
 
-      {/* Token List. Hovering here freezes THIS column only — the other two keep
+      {/* Token List. Hovering here freezes THIS column only, the other two keep
           streaming. See pulsePauseStore. */}
       <div
         className="flex-1 overflow-y-auto p-2 space-y-1"
@@ -326,7 +326,7 @@ export default function PulsePage() {
 
   const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
-  // Start empty and hydrate from localStorage after mount — reading storage during
+  // Start empty and hydrate from localStorage after mount, reading storage during
   // render would mismatch the server-rendered markup.
   const [filters, setFilters] = useState<PulseFilters>(EMPTY_FILTERS);
   // Source toggle: everything on pump.fun, or only coins launched through Polyx
@@ -471,7 +471,7 @@ export default function PulsePage() {
   };
 
   // Connect to the live WebSocket stream on mount (it does the initial fetch and
-  // then receives pushed snapshots ~1x/sec — no client polling needed).
+  // then receives pushed snapshots ~1x/sec, no client polling needed).
   useEffect(() => {
     connectRealtime();
     return () => {
@@ -488,7 +488,7 @@ export default function PulsePage() {
   const liveMigrated = applyFilter(bySource(graduatedPairs), filters.migrated);
   const filterCount = activeCount(filters.new) + activeCount(filters.final) + activeCount(filters.migrated);
 
-  // Each column freezes itself while you point at it — see TokenColumn.
+  // Each column freezes itself while you point at it, see TokenColumn.
   const shownNew = liveNew, shownFinal = liveFinal, shownMigrated = liveMigrated;
   const totalTokens = shownNew.length + shownFinal.length + shownMigrated.length;
 

@@ -1,5 +1,5 @@
 /**
- * Pulse list filters — one set per tab (New Pairs / Final Stretch / Migrated).
+ * Pulse list filters, one set per tab (New Pairs / Final Stretch / Migrated).
  *
  * Applied in BOTH places on purpose:
  *  - as query params on the HTTP fetch, so the server narrows a 24h window down to
@@ -62,7 +62,7 @@ export function saveFilters(f: PulseFilters) {
   try { window.localStorage.setItem(KEY, JSON.stringify(f)); } catch { /* private mode */ }
 }
 
-/** How many bounds/keywords are set — drives the little count badge on each tab. */
+/** How many bounds/keywords are set, drives the little count badge on each tab. */
 export function activeCount(f: PulseFilter): number {
   let n = 0;
   if (f.search.trim()) n++;

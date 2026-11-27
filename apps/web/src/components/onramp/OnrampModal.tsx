@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 
 const CLIENT_API_KEY = process.env.NEXT_PUBLIC_CROSSMINT_CLIENT_API_KEY || "";
 
-// Crossmint components touch browser APIs — client-side only.
+// Crossmint components touch browser APIs, client-side only.
 const CrossmintCheckout = dynamic(() => import("./CrossmintCheckoutWrapper"), {
   ssr: false,
   loading: () => (
@@ -47,7 +47,16 @@ export function OnrampModal({ isOpen, onClose }: OnrampModalProps) {
   const { wallet } = useMobileWalletStore();
 
   const [step, setStep] = useState<Step>("form");
+  // Receipt email pre-fills from the verified sign-up email (editable).
   const [email, setEmail] = useState("");
+  useEffect(() => {
+    if (!isOpen || email) return;
+    try {
+      const saved = localStorage.getItem("polyx-email");
+      if (saved) setEmail(saved);
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
   const [amount, setAmount] = useState("25");
   const [customAmount, setCustomAmount] = useState("");
   const [accepted, setAccepted] = useState(false);
@@ -185,7 +194,7 @@ export function OnrampModal({ isOpen, onClose }: OnrampModalProps) {
                   Purchase complete
                 </p>
                 <p className={`mt-1 text-sm ${isDark ? "text-white/50" : "text-gray-500"}`}>
-                  ${order.quote.totalUsd} {order.quote.currency} paid —{" "}
+                  ${order.quote.totalUsd} {order.quote.currency} paid,{" "}
                   {order.quote.receiveAmount ? `${order.quote.receiveAmount} ` : ""}USDC sent to{" "}
                   <span className="font-mono">{shortenAddress(wallet?.publicKey || "", 4)}</span>
                 </p>
@@ -244,10 +253,10 @@ export function OnrampModal({ isOpen, onClose }: OnrampModalProps) {
 
               {/* Live order status */}
               <div className={`flex items-center gap-2 text-xs ${isDark ? "text-white/40" : "text-gray-500"}`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${phase === "delivery" ? "bg-amber-300 animate-pulse" : "bg-up"}`} />
+                <span className={`h-1.5 w-1.5 rounded-full ${phase === "delivery" ? "bg-[#FF6B4A] animate-pulse" : "bg-up"}`} />
                 {phase === "delivery"
-                  ? "Payment received — delivering USDC to your wallet…"
-                  : "Awaiting payment — complete the form below"}
+                  ? "Payment received, delivering USDC to your wallet…"
+                  : "Awaiting payment, complete the form below"}
               </div>
 
               {error && (
@@ -335,7 +344,7 @@ export function OnrampModal({ isOpen, onClose }: OnrampModalProps) {
                 </div>
               </div>
 
-              {/* Crossmint ToS consent — required before any order is created */}
+              {/* Crossmint ToS consent, required before any order is created */}
               <label
                 className={cn(
                   "flex items-start gap-2.5 rounded-xl border px-3 py-2.5 cursor-pointer select-none",
@@ -396,7 +405,7 @@ export function OnrampModal({ isOpen, onClose }: OnrampModalProps) {
                 ) : (
                   <>
                     <CreditCard className="h-4 w-4" />
-                    Continue — ${effectiveAmount || "0"}
+                    Continue ${effectiveAmount || "0"}
                   </>
                 )}
               </button>

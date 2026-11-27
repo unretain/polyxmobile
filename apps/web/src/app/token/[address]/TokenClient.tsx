@@ -132,7 +132,7 @@ const MORALIS_CANDLE_CONFIG: Record<string, { interval: string; seconds: number 
 };
 
 // Get the appropriate config based on API source, chart type, and period
-// Candle bucket size per timeframe — used to tick the live candle from trades.
+// Candle bucket size per timeframe, used to tick the live candle from trades.
 const CANDLE_INTERVAL_MS: Record<string, number> = {
   // "1s" builds 250ms candles (4/sec) to match the server's fine tier, so trades
   // spread into thin distinct candles like Axiom instead of chunky 1s blocks.
@@ -259,12 +259,12 @@ function TradesTable({ trades, isLoading, symbol, isDark = true }: { trades: Tra
                 <span className={`ml-1 ${isDark ? 'text-white/50' : 'text-black/50'}`}>{trade.tokenSymbol || symbol}</span>
               </td>
               <td className={`py-2 pr-4 font-mono text-xs ${isDark ? 'text-white/50' : 'text-black/50'}`}>
-                ${trade.priceUsd?.toFixed(8) || "—"}
+                ${trade.priceUsd?.toFixed(8) || "-"}
               </td>
               <td className="py-2 pr-4 font-mono text-xs">
                 <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>${trade.totalValueUsd?.toFixed(2) || "0.00"}</span>
                 <span className={`ml-1 ${isDark ? 'text-white/50' : 'text-black/50'}`}>
-                  ({trade.otherAmount ? formatTokenAmount(trade.otherAmount) : "—"} {trade.otherSymbol || "SOL"})
+                  ({trade.otherAmount ? formatTokenAmount(trade.otherAmount) : "-"} {trade.otherSymbol || "SOL"})
                 </span>
               </td>
               <td className="py-2 pr-4">
@@ -301,7 +301,7 @@ export default function TokenClient() {
   const { isDark } = useThemeStore();
   const address = params.address as string;
   // `?source=pulse` is a NAVIGATION hint, not a fact about the coin. It records how the
-  // user arrived and is lost on a refresh, a shared link, or a typed URL — at which
+  // user arrived and is lost on a refresh, a shared link, or a typed URL, at which
   // point the chart fell through to the provider path, which returns [] for a pump.fun
   // coin, and drew nothing. Our own feed holds every one of these coins, so it is tried
   // first and this flag only seeds the initial guess.
@@ -337,7 +337,7 @@ export default function TokenClient() {
           .filter((t) => t.wallet === userWallet)
           .map((t) => ({ time: Math.floor(t.timestamp / 1000), type: t.type as "buy" | "sell" }))
       : [];
-    // Tracked wallets' trades on this coin get the same B/S bubbles — watching
+    // Tracked wallets' trades on this coin get the same B/S bubbles, watching
     // a wallet means seeing where it hit the chart, not just a toast.
     const trackedSet = new Set(getTrackedWallets().map((w) => w.address));
     const tracked = trades
@@ -370,7 +370,7 @@ export default function TokenClient() {
   // Real USD-per-SOL rate, derived from the token snapshot (the API computes it with
   // the live SOL price). Cached so the socket trade handler never falls back to 200.
   const solRateRef = useRef<number | null>(null);
-  // Once a fill's market-cap level is resolved it is never recomputed — see the
+  // Once a fill's market-cap level is resolved it is never recomputed, see the
   // comment in the avgEntry/avgExit memo. Keyed by trade signature.
   const frozenCapRef = useRef<Map<string, number>>(new Map());
   // Flips once, the first time a real USD/SOL rate arrives. Lets the average lines
@@ -379,7 +379,7 @@ export default function TokenClient() {
 
   // Volume-weighted average entry and exit, drawn as horizontal lines on the chart.
   // Weighted by TOKEN amount, not trade count, so one big fill moves the line more
-  // than several dust fills — that is what an average cost basis means.
+  // than several dust fills, that is what an average cost basis means.
   //
   // The log stores SOL in/out and the token amount, so price is solAmount/tokenAmount.
   // The chart's y-axis is market cap in USD, so the level is that price converted to
@@ -387,7 +387,7 @@ export default function TokenClient() {
   const { avgEntry, avgExit } = useMemo(() => {
     const source = isDemo
       ? demoTrades.filter((t) => t.mint === address)
-      // Rows written before the wallet connected have no `wallet` — don't drop them.
+      // Rows written before the wallet connected have no `wallet`, don't drop them.
       : loggedTrades.filter(
           (t) => t.mint === address && (!userWallet || !t.wallet || t.wallet === userWallet)
         );
@@ -395,7 +395,7 @@ export default function TokenClient() {
 
     // Price a fill AT THE CHART'S OWN MARKET CAP.
     //
-    // solAmount/tokenAmount is the EXECUTED price — it carries slippage and the 1%
+    // solAmount/tokenAmount is the EXECUTED price, it carries slippage and the 1%
     // fee, and converting it needs a USD/SOL rate from the moment of the trade that
     // we never stored. Both errors push the level off the candles, so the line could
     // not sit where the fill visibly happened. The candle covering the fill is already
@@ -403,7 +403,7 @@ export default function TokenClient() {
     // conversion is involved at all.
     //
     // THE LEVEL MUST NOT MOVE ONCE SET. Reading it from the nearest candle means that,
-    // for a fill you just made, the nearest candle is the LIVE one — and its `close`
+    // for a fill you just made, the nearest candle is the LIVE one, and its `close`
     // tracks the price until the candle closes, dragging the line along with it. Two
     // defences, in order:
     //   1. `capUsd`, stamped onto the trade at execution time. Exact, and immune by
@@ -424,7 +424,7 @@ export default function TokenClient() {
       return best.close * PUMP_FUN_SUPPLY;
     };
     // Fall back to the executed price when the fill predates the loaded history.
-    // NOTE declared before capForTrade, which calls it — a const arrow referenced
+    // NOTE declared before capForTrade, which calls it, a const arrow referenced
     // above its own declaration is a runtime TDZ crash that tsc will not catch.
     const rate = solRateRef.current || 0;
     const executedCap = (t: { solAmount: number; tokenAmount: number }) =>
@@ -488,7 +488,7 @@ export default function TokenClient() {
   }, [pulseToken]);
 
   // Current timeframe as a ref so the live socket handlers can read it WITHOUT the
-  // socket effect depending on chartPeriod — otherwise every timeframe switch tears
+  // socket effect depending on chartPeriod, otherwise every timeframe switch tears
   // down and reopens the WebSocket, and each fresh connection is another chance to
   // hit a reset. The connection should live as long as the coin is open.
   const chartPeriodRef = useRef<string | null>(null);
@@ -504,7 +504,7 @@ export default function TokenClient() {
 
     // Reuse the ONE shared realtime socket (the same connection the pulse feed uses)
     // instead of opening a second one. New connection handshakes to the box get reset;
-    // an already-established WebSocket survives — so piggybacking on it is what keeps
+    // an already-established WebSocket survives, so piggybacking on it is what keeps
     // the chart live-updating on client-side navigation (not just on a full reload).
     const socket = ensureRealtimeSocket();
     socketRef.current = socket;
@@ -514,14 +514,14 @@ export default function TokenClient() {
       socket.emit("subscribe:token", { address });
     };
     // If the shared socket is already connected (the common navigation case), the
-    // "connect" event won't fire again — subscribe right now.
+    // "connect" event won't fire again, subscribe right now.
     if (socket.connected) subscribe();
     socket.on("connect", subscribe);
 
     // LIVE: Handle real-time trade events. A hyped final-stretch / migrated coin fires
     // 50-100 trades/sec; doing a React render per trade blocks the main thread, the
     // socket misses its heartbeat, and the server drops it (that was the disconnect).
-    // So buffer EVERY trade and flush the whole batch once per animation frame — nothing
+    // So buffer EVERY trade and flush the whole batch once per animation frame, nothing
     // is dropped, and there's one render per frame no matter how fast the trades come.
     type TradeMsg = { mint: string; type: string; tokenAmount: number; solAmount: number; marketCapSol: number; marketCap?: number; priceUsd?: number; solPrice?: number; volume24h?: number; liquidity?: number; trader: string; signature: string; timestamp: number };
     const pendingTrades: TradeMsg[] = [];
@@ -529,7 +529,7 @@ export default function TokenClient() {
 
     const processTrade = (data: TradeMsg) => {
       // Add new trade to the top of the list. Use the REAL SOL price the API sent
-      // (fall back to 200 only if an old build omits it) — hardcoding it made the
+      // (fall back to 200 only if an old build omits it), hardcoding it made the
       // market cap flicker to the wrong multiple on every trade.
       const rate = data.solPrice || solRateRef.current || 0;
       const solPrice = rate || 200; // last resort, only for a single trade row's USD
@@ -554,7 +554,7 @@ export default function TokenClient() {
 
       // Update token market cap using functional update to avoid stale closure.
       // Prefer the USD value the API computed with the live SOL price.
-      // Only update with a POSITIVE value — a bad feed trade can emit marketCap:0
+      // Only update with a POSITIVE value, a bad feed trade can emit marketCap:0
       // (?? doesn't catch 0), which would nuke the displayed cap to $0. Ignore those
       // and keep the last good number instead.
       const feedMc = (data.marketCap && data.marketCap > 0)
@@ -566,7 +566,7 @@ export default function TokenClient() {
           marketCap: feedMc,
           // price and marketCapSol MUST move with marketCap. The swap widget derives
           // the live SOL price as price * marketCapSol / marketCap, so updating only
-          // marketCap left the other two stale and drove that ratio the WRONG WAY —
+          // marketCap left the other two stale and drove that ratio the WRONG WAY -
           // PnL drifted opposite to the actual price instead of tracking it.
           price: (priceUsd && priceUsd > 0) ? priceUsd : prev.price,
           marketCapSol: (data.marketCapSol && data.marketCapSol > 0) ? data.marketCapSol : (prev as any).marketCapSol,
@@ -577,7 +577,7 @@ export default function TokenClient() {
       }
 
       // LIVE chart: tick the current candle from this trade. The feed emits no
-      // ohlcv:update, so we build the live candle from the trade stream — works
+      // ohlcv:update, so we build the live candle from the trade stream, works
       // on every timeframe with no polling.
       // The fetched candles are in USD price (chart renders close * supply as the
       // dollar market cap), so the live tick MUST use the USD price too. Using
@@ -597,10 +597,10 @@ export default function TokenClient() {
           if (last.close > 0 && (priceUsd > last.close * 20 || priceUsd < last.close * 0.05)) return prev;
           // A newer 1s bucket → open a fresh candle. Otherwise (same bucket OR a
           // few seconds of block-time jitter, common with PROCESSED commitment)
-          // update the current live candle — never drop the trade, so the chart
+          // update the current live candle, never drop the trade, so the chart
           // always ticks on every trade.
           if (bucket > last.timestamp) {
-            // high/low must span the connected open as well as the trade price —
+            // high/low must span the connected open as well as the trade price -
             // with open taken from the previous close they are rarely equal, and a
             // body outside [low, high] renders past the top of the y-axis.
             return [...prev, {
@@ -647,7 +647,7 @@ export default function TokenClient() {
     // LIVE: Handle real-time OHLCV candle updates (1-second candles)
     const onOhlcv = (data: { mint: string; candle: { timestamp: number; open: number; high: number; low: number; close: number; volume: number } }) => {
       if (data.mint !== address) return;
-      // Live candles apply to every sub-minute tier, not just 1s — the coarser ones
+      // Live candles apply to every sub-minute tier, not just 1s, the coarser ones
       // fold trades into their own bucket via CANDLE_INTERVAL_MS.
       if (!["1s", "5s", "15s", "30s"].includes(chartPeriodRef.current || "")) return;
 
@@ -658,7 +658,7 @@ export default function TokenClient() {
         // The socket forwards the RAW aggregator candle, whose open is simply the
         // first trade price in the bucket. The HTTP history is continuity-corrected
         // server-side (each bar opens where the last closed), so appending the raw
-        // candle re-introduced the gaps the fetch had just removed — which is why
+        // candle re-introduced the gaps the fetch had just removed, which is why
         // the chart looked right after a refresh and drifted apart while live.
         // Connect it here, exactly like the per-trade path above already does.
         if (lastCandle.timestamp === data.candle.timestamp) {
@@ -671,7 +671,7 @@ export default function TokenClient() {
         return [
           ...prev,
           // Widen the wick to cover the joined open, otherwise the body can sit
-          // outside [low, high] — KLineChart builds the y-axis range from low/high
+          // outside [low, high], KLineChart builds the y-axis range from low/high
           // alone, so such a bar renders past the top of the scale.
           {
             ...data.candle,
@@ -685,7 +685,7 @@ export default function TokenClient() {
     socket.on("ohlcv:update", onOhlcv);
 
     return () => {
-      // Leave only THIS token's room + handlers — never disconnect the shared socket
+      // Leave only THIS token's room + handlers, never disconnect the shared socket
       // (the pulse feed and other views ride the same connection).
       socket.emit("unsubscribe:token", { address });
       socket.off("connect", subscribe);
@@ -696,7 +696,7 @@ export default function TokenClient() {
     };
     // NOTE: Do NOT include pulseToken in deps - it changes every second from polling
     // which would cause reconnection loop. We access it via closure in event handlers.
-    // chartPeriod is intentionally NOT a dep — the handlers read it via chartPeriodRef
+    // chartPeriod is intentionally NOT a dep, the handlers read it via chartPeriodRef
     // so switching timeframes never tears down the live connection.
   }, [address, servedByPulse]);
 
@@ -797,7 +797,7 @@ export default function TokenClient() {
       const response = await fetch(`/api/pulse/token/${address}`);
       if (response.ok) {
         const data = await response.json();
-        // Keep the last known logo sticky — the 1s poll sometimes returns a
+        // Keep the last known logo sticky, the 1s poll sometimes returns a
         // response without logoUri (feed hiccup / fallback source), and replacing
         // the whole object would blank the image a second after it loaded.
         setPulseToken((prev: any) =>
@@ -823,7 +823,7 @@ export default function TokenClient() {
 
     if (fromPulse) {
       // Fetch ONCE on load; live price/market cap/trades arrive over the WebSocket
-      // ("trade" events). No polling — data stays cached until navigation/refresh.
+      // ("trade" events). No polling, data stays cached until navigation/refresh.
       fetchPulseToken(false);
     } else {
       // For Dashboard tokens, fetch fresh data from Birdeye API (no polling needed)
@@ -871,7 +871,7 @@ export default function TokenClient() {
         let response;
         let ohlcvData: OHLCV[] = [];
 
-        // Our own feed FIRST, whatever the url says — it costs one request, and
+        // Our own feed FIRST, whatever the url says, it costs one request, and
         // skipping it on the strength of a query parameter is what left charts blank.
         try {
           response = await fetch(
@@ -929,7 +929,7 @@ export default function TokenClient() {
     fetchOhlcv();
 
     // Fetch ONCE per token/timeframe. Live candles arrive over the WebSocket
-    // ("ohlcv:update"). No polling — the chart stays cached until the user
+    // ("ohlcv:update"). No polling, the chart stays cached until the user
     // switches timeframe/token or refreshes.
     return () => {
       if (ohlcvIntervalRef.current) clearInterval(ohlcvIntervalRef.current);
@@ -937,7 +937,7 @@ export default function TokenClient() {
   }, [address, chartType, chartPeriod, fromPulse]);
 
   // Seed recent trades ONCE from REST; live trades arrive over the WebSocket
-  // ("trade" events) and accumulate. Do NOT poll/replace — that was overwriting
+  // ("trade" events) and accumulate. Do NOT poll/replace, that was overwriting
   // the socket-accumulated list every 2s and clearing it back to 1-2 rows.
   useEffect(() => {
     if (!address) return;
@@ -1100,7 +1100,7 @@ export default function TokenClient() {
       <div className="flex-1 flex flex-col md:flex-row gap-3 md:gap-4 min-h-0 overflow-y-auto md:overflow-hidden px-3 md:px-0">
         {/* Left: Chart + Trades */}
         <div className="flex-1 flex flex-col gap-3 md:gap-4 min-w-0 overflow-visible md:overflow-hidden">
-          {/* Stats Row — compact; one glance, five numbers */}
+          {/* Stats Row, compact; one glance, five numbers */}
           <div className="grid gap-1.5 md:gap-2 grid-cols-3 md:grid-cols-5 flex-shrink-0">
             <div className={`rounded-xl border p-2 ${isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'}`}>
               <p className={`text-[10px] uppercase tracking-wide ${isDark ? 'text-white/40' : 'text-black/40'}`}>Price</p>
@@ -1126,12 +1126,12 @@ export default function TokenClient() {
               <p className={`text-sm font-bold font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>${formatNumber(token?.liquidity ?? 0)}</p>
             </div>
 
-            {/* Gas actually burned on this coin (priority fees + tips) — the
+            {/* Gas actually burned on this coin (priority fees + tips), the
                 strongest "is this real" signal the feed tracks. */}
             <div className={`rounded-xl border p-2 col-span-1 ${isDark ? 'border-white/10 bg-white/5' : 'border-black/10 bg-black/5'}`}>
               <p className={`text-[10px] uppercase tracking-wide ${isDark ? 'text-white/40' : 'text-black/40'}`}>Fees Paid</p>
               <p className={`text-sm font-bold font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                {typeof (token as any)?.feesPaidSol === "number" ? `${(token as any).feesPaidSol.toFixed(2)} ◎` : "—"}
+                {typeof (token as any)?.feesPaidSol === "number" ? `${(token as any).feesPaidSol.toFixed(2)} ◎` : "-"}
               </p>
             </div>
           </div>
@@ -1179,7 +1179,7 @@ export default function TokenClient() {
                 </button>
               </div>
 
-              {/* 2D/3D Toggle — 2D first, since it's the default. */}
+              {/* 2D/3D Toggle, 2D first, since it's the default. */}
               <div className={`flex items-center gap-0.5 border p-0.5 flex-shrink-0 ${isDark ? 'bg-white/5 border-white/10' : 'bg-black/5 border-black/10'}`}>
                 <button
                   onClick={() => setChartMode("2d")}

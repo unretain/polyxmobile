@@ -1,5 +1,5 @@
 /**
- * New Pump.fun pairs — from the shared API gRPC feed, with DexScreener fallback.
+ * New Pump.fun pairs, from the shared API gRPC feed, with DexScreener fallback.
  */
 
 import { NextRequest, NextResponse } from "next/server";

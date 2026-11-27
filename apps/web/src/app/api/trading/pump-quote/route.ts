@@ -8,7 +8,7 @@ const SOL_MINT = "So11111111111111111111111111111111111111112";
 export async function GET(req: NextRequest) {
   try {
     // No auth guard: a quote is read-only and touches no funds. The Jupiter quote
-    // route is public too — requiring a NextAuth session here 401'd demo/mobile
+    // route is public too, requiring a NextAuth session here 401'd demo/mobile
     // wallet users (who have no server session) and silently forced them to Jupiter.
     const searchParams = req.nextUrl.searchParams;
     const inputMint = searchParams.get("inputMint");

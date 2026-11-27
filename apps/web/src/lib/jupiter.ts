@@ -89,7 +89,7 @@ export class JupiterService {
     console.log("[JupiterService] RPC URL:", rpcUrl);
 
     if (rpcUrl.includes("api.mainnet-beta.solana.com")) {
-      console.warn("[JupiterService] WARNING: using the public RPC — set SOLANA_RPC_URL to a dedicated provider (Tatum/Helius) + SOLANA_RPC_KEY.");
+      console.warn("[JupiterService] WARNING: using the public RPC, set SOLANA_RPC_URL to a dedicated provider (Tatum/Helius) + SOLANA_RPC_KEY.");
     }
 
     // Tatum (and similar) authenticate via an x-api-key header.
@@ -534,7 +534,7 @@ export class JupiterService {
   ): Promise<Array<{ mint: string; balance: string; decimals: number }>> {
     console.log(`[JupiterService] getTokenAccounts for wallet: ${walletAddress}`);
 
-    // RPC is AUTHORITATIVE and fresh — read it first. Moralis's /tokens endpoint is
+    // RPC is AUTHORITATIVE and fresh, read it first. Moralis's /tokens endpoint is
     // cached and goes stale, showing tokens the wallet already sold (phantom holdings
     // the user could try to withdraw). An empty RPC result is a real answer: no tokens.
     try {
@@ -552,7 +552,7 @@ export class JupiterService {
       ]);
 
       const allAccounts = [...splAccounts.value, ...token2022Accounts.value];
-      // Only accounts with a non-zero balance — drop emptied/closed token accounts.
+      // Only accounts with a non-zero balance, drop emptied/closed token accounts.
       const result = allAccounts
         .map((account) => account.account.data.parsed.info)
         .filter((info) => info?.tokenAmount?.amount && info.tokenAmount.amount !== "0")

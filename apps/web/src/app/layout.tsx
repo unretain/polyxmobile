@@ -24,7 +24,7 @@ export const metadata: Metadata = {
 
 /**
  * MUST be its own export. Next 14+ ignores `viewport` nested inside `metadata`, so the
- * meta tag was never emitted and mobile fell back to browser defaults — which is why
+ * meta tag was never emitted and mobile fell back to browser defaults, which is why
  * the app pinch-zoomed and then would not zoom back out.
  */
 export const viewport: Viewport = {
@@ -46,7 +46,7 @@ export default function RootLayout({
       <head>
         {/* iOS Safari ignores user-scalable=no, so pinch-zoom has to be blocked
             directly. Without this the app could be pinched in and then would not
-            zoom back out, leaving it stuck. Passive:false is required — a passive
+            zoom back out, leaving it stuck. Passive:false is required, a passive
             listener cannot preventDefault. */}
         <script
           dangerouslySetInnerHTML={{

@@ -34,7 +34,7 @@ export function ChartControls({ period, chartType, onPeriodChange, showPulseOpti
       {periods.map((p) => (
         <button
           key={p.value}
-          // Never let a label wrap or shrink — they must stay tappable while scrolling.
+          // Never let a label wrap or shrink, they must stay tappable while scrolling.
           onClick={() => onPeriodChange(p.value)}
           disabled={isLoading}
           className={cn(

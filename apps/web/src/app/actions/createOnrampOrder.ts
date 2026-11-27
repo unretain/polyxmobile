@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/prisma";
 
 /**
- * Crossmint onramp — server-side order management.
+ * Crossmint onramp, server-side order management.
  *
  * Orders are ALWAYS created here (never from the client) per Crossmint's
  * checklist item [8]. The server key must have scopes: orders.create, orders.read.
@@ -42,7 +42,7 @@ interface CreateOrderParams {
   receiptEmail: string;
   /** USD amount, exact-in. */
   amount: string;
-  /** Must be true — the user ticked the Crossmint ToS/Privacy consent box. */
+  /** Must be true, the user ticked the Crossmint ToS/Privacy consent box. */
   acceptedTerms: boolean;
 }
 

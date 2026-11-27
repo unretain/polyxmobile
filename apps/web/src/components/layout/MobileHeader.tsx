@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Sun, Moon, Menu, X, Wallet } from "lucide-react";
+import { Sun, Moon, Menu, X, Wallet, Settings as SettingsIcon } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { shortenAddress } from "@/lib/wallet";
 
 const NAV = [
@@ -22,6 +22,7 @@ export function MobileHeader() {
   const { isDark, toggleTheme } = useThemeStore();
   const { wallet } = useMobileWalletStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
 
   const isActive = (path: string) => pathname === path || pathname.startsWith(path + "/");
 
@@ -101,7 +102,16 @@ export function MobileHeader() {
             </nav>
 
             {wallet && (
-              <div className="p-2">
+              <div className="p-2 space-y-1">
+                <Link
+                  href="/settings"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-colors ${isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}
+                >
+                  <SettingsIcon className="h-4 w-4 text-[#FF6B4A]" />
+                  <span className={`text-sm ${isDark ? 'text-white/70' : 'text-black/70'}`}>Settings</span>
+                  <span className={`ml-auto text-xs ${isDark ? 'text-white/40' : 'text-black/40'}`}>→</span>
+                </Link>
                 <Link
                   href="/wallet"
                   onClick={() => setMobileMenuOpen(false)}

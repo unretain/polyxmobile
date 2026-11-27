@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 /**
- * Branded splash shown on every full page load (not SPA navigations — this
+ * Branded splash shown on every full page load (not SPA navigations, this
  * component mounts once per document). Fades out as soon as the app has
  * hydrated, so it costs ~400ms of brand instead of a flash of empty page.
  */

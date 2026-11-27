@@ -4,7 +4,7 @@ import { useDemoStore, DemoPosition, DemoTrade } from "@/stores/demoStore";
 
 /**
  * Apple App Review demo mode ONLY. While `isDemo` is true, this intercepts the
- * server trading endpoints and answers them from the paper-trading store — real
+ * server trading endpoints and answers them from the paper-trading store, real
  * accounting driven by the actual trade log, so token HOLDING, /wallet balance,
  * and /portfolio (PnL, volume, win rate, streaks, daily chart, positions) all
  * reflect what was actually traded. No fabricated numbers.
@@ -41,7 +41,7 @@ function toFullPosition(p: DemoPosition) {
   };
 }
 
-// Everything below is computed from the REAL trade log — nothing invented.
+// Everything below is computed from the REAL trade log, nothing invented.
 function computePortfolio(trades: DemoTrade[], positions: Record<string, DemoPosition>, period: string) {
   const now = Date.now();
   const days = period === "1d" ? 1 : period === "7d" ? 7 : period === "all" ? 3650 : 30;

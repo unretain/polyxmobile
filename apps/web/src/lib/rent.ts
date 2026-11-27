@@ -2,7 +2,7 @@
  * Token-account rent recovery.
  *
  * Every SPL token you've ever held keeps a token account alive at ~0.00204 SOL
- * of rent. Selling to zero doesn't close the account — the rent just sits
+ * of rent. Selling to zero doesn't close the account, the rent just sits
  * there. These helpers find empty token accounts and close them (client-signed,
  * rent returns to the wallet):
  *  - the Portfolio banner batches all of them behind a Claim button
@@ -81,7 +81,7 @@ export async function claimRent(mnemonic: string): Promise<{ closed: number; sol
 
 /**
  * Best-effort: after a sell, close that mint's token account if it's now empty.
- * Never throws — the sell already succeeded; this is housekeeping.
+ * Never throws, the sell already succeeded; this is housekeeping.
  */
 export async function closeTokenAccountIfEmpty(mnemonic: string, mint: string): Promise<boolean> {
   try {

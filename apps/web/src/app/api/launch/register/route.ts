@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * POST /api/launch/register — tell the feed a mint was launched through Polyx,
+ * POST /api/launch/register, tell the feed a mint was launched through Polyx,
  * so Pulse can badge and filter it (source: "polyx"). Best-effort: the launch
  * itself already succeeded on-chain by the time this is called.
  */

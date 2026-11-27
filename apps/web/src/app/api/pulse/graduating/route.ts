@@ -1,5 +1,5 @@
 /**
- * Graduating Pump.fun tokens — from the shared API gRPC feed, with DexScreener fallback.
+ * Graduating Pump.fun tokens, from the shared API gRPC feed, with DexScreener fallback.
  */
 
 import { NextResponse } from "next/server";

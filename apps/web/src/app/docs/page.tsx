@@ -153,7 +153,7 @@ export default function DocsPage() {
                   <tbody className="divide-y divide-white/5">
                     <tr>
                       <td className="py-2 font-mono text-[#FF6B4A]">license</td>
-                      <td className="py-2 text-white/40">—</td>
+                      <td className="py-2 text-white/40">-</td>
                       <td className="py-2 text-white/60">Your license key (removes watermark)</td>
                     </tr>
                     <tr>
@@ -213,9 +213,9 @@ export default function DocsPage() {
                 <div className="space-y-2">
                   <p className="text-sm font-medium">Parameters:</p>
                   <ul className="text-sm text-white/60 space-y-1">
-                    <li><code className="text-[#FF6B4A]">address</code> — Token mint address (required)</li>
-                    <li><code className="text-[#FF6B4A]">timeframe</code> — 1m, 5m, 15m, 1h, 4h, 1d (default: 1h)</li>
-                    <li><code className="text-[#FF6B4A]">limit</code> — Number of candles (default: 100, max: 1000)</li>
+                    <li><code className="text-[#FF6B4A]">address</code>, Token mint address (required)</li>
+                    <li><code className="text-[#FF6B4A]">timeframe</code>, 1m, 5m, 15m, 1h, 4h, 1d (default: 1h)</li>
+                    <li><code className="text-[#FF6B4A]">limit</code>, Number of candles (default: 100, max: 1000)</li>
                   </ul>
                 </div>
 

@@ -56,7 +56,7 @@ export class PumpFunService {
 
   constructor() {
     // Reads via SOLANA_RPC_URL. Helius puts its key in the URL (no header). Tatum
-    // needs its key in the x-api-key HEADER — attach it when SOLANA_RPC_KEY is set,
+    // needs its key in the x-api-key HEADER, attach it when SOLANA_RPC_KEY is set,
     // so reads work no matter which provider SOLANA_RPC_URL points at.
     this.rpcUrl = config.solanaRpcUrl || "https://api.mainnet-beta.solana.com";
     const readKey = process.env.SOLANA_RPC_KEY || "";
@@ -66,7 +66,7 @@ export class PumpFunService {
       readKey ? { commitment: "confirmed", httpHeaders: { "x-api-key": readKey } } : "confirmed"
     );
 
-    // Sends via Tatum (SOLANA_SEND_RPC_URL) — Tatum's key goes in the x-api-key
+    // Sends via Tatum (SOLANA_SEND_RPC_URL), Tatum's key goes in the x-api-key
     // HEADER, not the URL. Fall back to the read RPC (Helius), never public.
     const sendRpcUrl = process.env.SOLANA_SEND_RPC_URL || this.rpcUrl;
     const sendKey = process.env.SOLANA_SEND_RPC_KEY || "";

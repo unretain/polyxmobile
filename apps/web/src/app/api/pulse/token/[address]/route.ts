@@ -1,5 +1,5 @@
 /**
- * Single token — ONLY from the shared API gRPC feed. No Dexscreener / web-side
+ * Single token, ONLY from the shared API gRPC feed. No Dexscreener / web-side
  * gRPC / internal-API fallback: if the token isn't in the live feed, 404.
  */
 

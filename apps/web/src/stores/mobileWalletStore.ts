@@ -32,7 +32,7 @@ interface MobileWalletState {
 
 // STABLE per-install key for at-rest obfuscation of the seed in localStorage. The
 // seed already lives on this device; the XOR just avoids storing it in the clear.
-// Previously the key was derived from navigator.userAgent — which changes on every
+// Previously the key was derived from navigator.userAgent, which changes on every
 // browser update and silently locked users out of their own wallet. This random
 // key is generated once and persisted, so it survives UA/browser changes.
 const DEVICE_KEY_NAME = 'polyx-device-key';
@@ -48,7 +48,7 @@ const getStableKey = (): string => {
   }
   return k;
 };
-// Legacy UA-derived key — used ONLY to migrate wallets encrypted before the switch.
+// Legacy UA-derived key, used ONLY to migrate wallets encrypted before the switch.
 const getLegacyKey = (): string => {
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent : 'default';
   return `polyx-mobile-${ua.slice(0, 32)}`;
@@ -76,14 +76,14 @@ const encryptMnemonic = (mnemonic: string): string => {
 };
 
 // Try the stable key, then the legacy UA key (migration). Returns the phrase only
-// if it decodes to a valid-looking mnemonic — otherwise null.
+// if it decodes to a valid-looking mnemonic, otherwise null.
 const decryptMnemonic = (encrypted: string): string | null => {
   for (const key of [getStableKey(), getLegacyKey()]) {
     try {
       const phrase = atob(xorCipher(atob(encrypted), key));
       if (looksLikeMnemonic(phrase)) return phrase;
     } catch {
-      // wrong key produced non-base64 — try the next
+      // wrong key produced non-base64, try the next
     }
   }
   return null;
@@ -130,7 +130,7 @@ export const useMobileWalletStore = create<MobileWalletState>()(
         };
       }),
       // Persist the encrypted mnemonic on the wallet RIGHT AWAY (at create/import),
-      // so getMnemonic() — and therefore client-side signing — works even if the
+      // so getMnemonic(), and therefore client-side signing, works even if the
       // user never completes the backup-verify step. Without this, buys fall back
       // to the (session-only) server path and fail with "Authentication required".
       storeMnemonic: (mnemonic) => set((state) => {

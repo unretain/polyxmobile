@@ -2,7 +2,7 @@
  * Rewrite a coin logo onto our own origin.
  *
  * The API stamps logo URLs as `<PUBLIC_API_URL>/img?u=<src>` (its disk-backed
- * image cache). Historically that host was images.polyx.trade / api.polyx.trade —
+ * image cache). Historically that host was images.polyx.trade / api.polyx.trade -
  * both of which have been unreachable at times, so every avatar on the site broke
  * even though the page itself loaded fine.
  *
@@ -13,7 +13,7 @@
  */
 export function imgSrc(url: string | null | undefined): string | null {
   if (!url) return null;
-  // Already relative (or already proxied) — nothing to do.
+  // Already relative (or already proxied), nothing to do.
   if (url.startsWith("/")) return url;
   try {
     const u = new URL(url);

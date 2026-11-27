@@ -26,7 +26,7 @@ export function WalletTradeToasts() {
       showToast(msg, t.type === "buy" ? "success" : "error");
       try {
         if ("Notification" in window && Notification.permission === "granted" && document.hidden) {
-          const n = new Notification("Polyx — wallet activity", { body: msg });
+          const n = new Notification("Polyx, wallet activity", { body: msg });
           n.onclick = () => { window.focus(); router.push(`/token/${t.mint}?source=pulse`); };
         }
       } catch {}

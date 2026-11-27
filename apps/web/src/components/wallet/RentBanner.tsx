@@ -26,7 +26,7 @@ export function RentBanner() {
       const r = await getReclaimableRent(wallet.publicKey);
       setSol(r.sol);
       setCount(r.accounts.length);
-    } catch { /* RPC hiccup — banner just stays hidden */ }
+    } catch { /* RPC hiccup, banner just stays hidden */ }
   }, [wallet?.publicKey]);
 
   useEffect(() => { refresh(); }, [refresh]);
@@ -37,7 +37,7 @@ export function RentBanner() {
     setClaiming(true);
     try {
       const mnemonic = await useMobileWalletStore.getState().getMnemonic();
-      if (!mnemonic) throw new Error("Wallet locked — re-import your phrase to claim.");
+      if (!mnemonic) throw new Error("Wallet locked, re-import your phrase to claim.");
       const r = await claimRent(mnemonic);
       showToast(`Recovered ${r.sol.toFixed(4)} SOL from ${r.closed} empty accounts`, "success");
       setSol(0);

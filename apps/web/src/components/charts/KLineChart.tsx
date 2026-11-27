@@ -56,7 +56,7 @@ function formatCompactUsd(v: number): string {
  * KLineChart keys bars by their raw millisecond `timestamp`, so the 250ms bars the
  * feed produces survive as distinct candles. (The previous lightweight-charts
  * implementation keyed on integer UNIX *seconds*, which collapsed four sub-second
- * bars into one and dropped three of every four — hence the ms-as-seconds hack it
+ * bars into one and dropped three of every four, hence the ms-as-seconds hack it
  * carried. None of that is needed here; we hand over real millisecond timestamps.)
  *
  * The y-axis is registered once, globally, so market-cap values render as $3.7K
@@ -78,7 +78,7 @@ function ensureYAxis() {
  * straight-ray-segment lines, parallelStraightLine, priceChannelLine, priceLine,
  * rayLine, segment, straightLine, simpleAnnotation, simpleTag and brush.
  *
- * Rect, circle and text are *figure primitives*, not overlays — asking
+ * Rect, circle and text are *figure primitives*, not overlays, asking
  * createOverlay for them silently returns null and draws nothing (v9 had them as
  * overlays; v10 dropped them). So we register our own on top of those figures,
  * plus a measure tool, which the library has no equivalent of at all.
@@ -103,7 +103,7 @@ function ensureOverlays() {
 
   // A horizontal level with a text tag on it. The built-in horizontalStraightLine
   // draws an unlabelled dashed line, which is indistinguishable from the last-price
-  // marker (also dashed, also accent/red) — so "why is there a red line before I
+  // marker (also dashed, also accent/red), so "why is there a red line before I
   // sell?" was a fair question. These say what they are.
   registerOverlay({
     name: OVERLAY_LEVEL,
@@ -118,7 +118,7 @@ function ensureOverlays() {
       const color = ext.color || ACCENT;
       const label = ext.label || "";
       // getTextRect honours attrs.align/baseline, so the label is anchored to the
-      // RIGHT edge of the pane — beside the price axis, where you read the level off,
+      // RIGHT edge of the pane, beside the price axis, where you read the level off,
       // and out of the way of the candles on the left.
       //
       // Entry sits above its line, exit below its own, so the two can never land on
@@ -423,9 +423,9 @@ interface KLineChartProps {
   showTimeframeSelector?: boolean;
   /** Total token supply used to render market cap instead of raw price. */
   supply?: number;
-  /** Controlled Line/Candle mode — when set, overrides the internal toggle. */
+  /** Controlled Line/Candle mode, when set, overrides the internal toggle. */
   chartType?: ChartType;
-  /** The user's own buys/sells on this coin — rendered as B/S bubbles on the chart. */
+  /** The user's own buys/sells on this coin, rendered as B/S bubbles on the chart. */
   userTrades?: { time: number; type: "buy" | "sell" }[];
   /** Volume-weighted average entry, in the same units as the y-axis (market cap USD). */
   avgEntry?: number | null;
@@ -444,7 +444,7 @@ const TIMEFRAMES: { value: Timeframe; label: string }[] = [
 
 /**
  * Drawing tools. Every `overlay` here is a built-in KLineChart v10 template, so
- * nothing needs registering — `createOverlay(name)` puts the chart straight into
+ * nothing needs registering, `createOverlay(name)` puts the chart straight into
  * drawing mode and the overlay finishes itself on the last click.
  */
 // `mobile` keeps a tool visible on phones; the rest are md+ only, so the toolbar
@@ -527,7 +527,7 @@ export function KLineChart({
 
   // ---- init (once) --------------------------------------------------------
   // Unlike the old implementation, theme and timeframe changes never tear the
-  // chart down — setStyles / setPeriod handle them in place.
+  // chart down, setStyles / setPeriod handle them in place.
   useEffect(() => {
     if (!containerRef.current) return;
     ensureYAxis();
@@ -635,7 +635,7 @@ export function KLineChart({
       const old = prev[i];
       // `open` belongs in this comparison: continuity rewrites a bar's open when the
       // one before it closes, and leaving it out meant that correction never reached
-      // the chart — the bar kept the disconnected open it was first pushed with.
+      // the chart, the bar kept the disconnected open it was first pushed with.
       if (
         old &&
         old.timestamp === bar.timestamp &&
@@ -653,7 +653,7 @@ export function KLineChart({
   // ---- average entry / exit lines -----------------------------------------
   // Two levels from the user's own fills: where they bought on average, where they
   // sold. Each uses a FIXED overlay id, so a redraw replaces the line in place.
-  // Tracking ids returned from createOverlay was not enough — any redraw that failed
+  // Tracking ids returned from createOverlay was not enough, any redraw that failed
   // to capture the id left the old line on the chart, and they stacked up.
   useEffect(() => {
     const chart = chartRef.current;
@@ -674,7 +674,7 @@ export function KLineChart({
         name: OVERLAY_LEVEL,
         // The y-axis is market cap, so the caller passes price * supply.
         points: [{ value }],
-        lock: true, // derived from real fills — not draggable
+        lock: true, // derived from real fills, not draggable
         extendData: { color, label, below },
       });
     };
@@ -780,7 +780,7 @@ export function KLineChart({
       const out: { x: number; y: number; type: "buy" | "sell" }[] = [];
       if (cands.length) {
         for (const t of userTrades || []) {
-          // Snap to the nearest candle by time — a trade's timestamp often runs a
+          // Snap to the nearest candle by time, a trade's timestamp often runs a
           // few seconds ahead of the last candle (pipeline lag), and the nearest
           // candle IS the trade's candle.
           let nearest = cands[0];
@@ -802,7 +802,7 @@ export function KLineChart({
         }
       }
       // Stack bubbles landing on the same candle so a buy + sell on one bar don't
-      // overlap — each subsequent one sits above the previous.
+      // overlap, each subsequent one sits above the previous.
       const seen = new Map<number, number>();
       for (const b of out) {
         const k = Math.round(b.x);
@@ -827,7 +827,7 @@ export function KLineChart({
     };
   }, [userTrades, chartReady, data, supply]);
 
-  // NOTE: no early returns for loading/empty — the chart container below must
+  // NOTE: no early returns for loading/empty, the chart container below must
   // ALWAYS be in the DOM so KLineChart can initialise on mount. The chart mounts
   // (hidden) at page load before OHLCV arrives; if we early-return here the
   // container never exists, init never runs, and the chart stays blank forever.
@@ -843,7 +843,7 @@ export function KLineChart({
 
   return (
     <div className={`h-full w-full flex ${isDark ? "bg-[#0a0a0a]" : "bg-white"}`}>
-      {/* Drawing toolbar — a real column rather than an overlay, so it never
+      {/* Drawing toolbar, a real column rather than an overlay, so it never
           covers candles on the left edge of the plot. */}
       <div
         className={`flex flex-col items-center gap-0.5 py-2 px-1 border-r flex-shrink-0 ${
@@ -1007,7 +1007,7 @@ export function KLineChart({
             )}
           </div>
 
-          {/* Chart type toggle — hidden when the page controls Line/Candle */}
+          {/* Chart type toggle, hidden when the page controls Line/Candle */}
           {!chartTypeProp &&
             (["line", "candle"] as const).map((t) => (
               <button
@@ -1027,10 +1027,10 @@ export function KLineChart({
         </div>
       </div>
 
-      {/* Chart container — always mounted so the chart can attach even before data */}
+      {/* Chart container, always mounted so the chart can attach even before data */}
       <div ref={containerRef} className="h-full w-full" />
 
-      {/* B/S trade bubbles — pinned to the exact tx time+price. Bevel/emboss via
+      {/* B/S trade bubbles, pinned to the exact tx time+price. Bevel/emboss via
           radial gradient + inset highlight/shadow, white Inter letter. */}
       <div className="absolute inset-0 z-20 pointer-events-none overflow-hidden">
         {bubbles.map((b, i) => (

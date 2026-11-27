@@ -14,7 +14,7 @@ const SOLANA_ADDR = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 /**
  * Track wallets and get a toast whenever one of them buys or sells.
- * (Native iOS push needs the next app build — web toasts + browser
+ * (Native iOS push needs the next app build, web toasts + browser
  * notifications work today.)
  */
 export function WalletTracker({ isDark }: { isDark: boolean }) {

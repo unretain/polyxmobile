@@ -15,7 +15,7 @@ import {
 } from "@solana/spl-token";
 import { deriveKeypairFromMnemonic } from "./mobileWallet";
 
-// RPC endpoint — Tatum by default (env-overridable). The API key, if set, is
+// RPC endpoint, Tatum by default (env-overridable). The API key, if set, is
 // sent as the x-api-key header for the dedicated rate quota.
 const RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://solana-mainnet.gateway.tatum.io";
 const RPC_KEY = process.env.NEXT_PUBLIC_SOLANA_RPC_KEY || "";
@@ -37,7 +37,7 @@ async function confirmByPolling(connection: Connection, signature: string, timeo
     if (value?.confirmationStatus === "confirmed" || value?.confirmationStatus === "finalized") return;
     await new Promise((r) => setTimeout(r, 1200));
   }
-  throw new Error("Confirmation timed out — check the explorer link");
+  throw new Error("Confirmation timed out, check the explorer link");
 }
 
 // Jupiter API
@@ -137,7 +137,7 @@ export async function executeSwap(
       userPublicKey: publicKey,
       wrapAndUnwrapSol: true,
       dynamicComputeUnitLimit: true,
-      // User tip setting; 0 means exactly 0 — no auto bump behind their back.
+      // User tip setting; 0 means exactly 0, no auto bump behind their back.
       prioritizationFeeLamports: Math.round(getPriorityFeeSol() * 1e9),
     }),
   });
@@ -161,14 +161,14 @@ export async function executeSwap(
     maxRetries: 3,
   });
 
-  // 6. Confirm by polling (no WebSocket — Tatum has no WS endpoint).
+  // 6. Confirm by polling (no WebSocket, Tatum has no WS endpoint).
   await confirmByPolling(connection, signature);
 
   // Clear sensitive data
   secretKey.fill(0);
 
   if (inputMint !== SOL_MINT_STR) {
-    // Selling a token to SOL may have emptied its account — reclaim the rent.
+    // Selling a token to SOL may have emptied its account, reclaim the rent.
     import("./rent").then((r) => r.closeTokenAccountIfEmpty(mnemonic, inputMint)).catch(() => {});
   }
   return {
@@ -180,7 +180,7 @@ export async function executeSwap(
 /**
  * Client-side pump.fun / PumpSwap swap using the persisted mobile wallet.
  * Uses PumpPortal's local-trade API (returns a tx we sign locally), so buying a
- * bonding-curve coin never needs a server session — same as the Jupiter path.
+ * bonding-curve coin never needs a server session, same as the Jupiter path.
  * `pool: "auto"` routes to the bonding curve OR the AMM if the coin migrated.
  *
  * amount is RAW: buy -> lamports of SOL; sell -> token base units (6 decimals).
@@ -227,7 +227,7 @@ export async function executeClientPumpSwap(
 
   secretKey.fill(0);
   if (!isBuy) {
-    // Sell may have emptied the token account — close it and reclaim the rent.
+    // Sell may have emptied the token account, close it and reclaim the rent.
     import("./rent").then((r) => r.closeTokenAccountIfEmpty(mnemonic, tokenMint)).catch(() => {});
   }
   return { signature, explorerUrl: `https://solscan.io/tx/${signature}` };

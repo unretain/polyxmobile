@@ -23,7 +23,7 @@ function StarBackground({ isDark }: { isDark: boolean }) {
 }
 
 // ---------------------------------------------------------------------------
-// Majors tab — SOL chart + big-cap rows
+// Majors tab, SOL chart + big-cap rows
 // ---------------------------------------------------------------------------
 
 const MAJORS = [
@@ -37,7 +37,7 @@ function MajorsPanel({ isDark, onOpen }: { isDark: boolean; onOpen: (address: st
   const [candles, setCandles] = useState<OHLCV[]>([]);
   const [quotes, setQuotes] = useState<Record<string, MajorQuote>>({});
 
-  // SOL chart — one fetch, 15m bars.
+  // SOL chart, one fetch, 15m bars.
   useEffect(() => {
     fetch(`/api/tokens/${MAJORS[0].address}/ohlcv?timeframe=15m&limit=64`)
       .then((r) => r.json())

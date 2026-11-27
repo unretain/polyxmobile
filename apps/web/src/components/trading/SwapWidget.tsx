@@ -75,7 +75,7 @@ interface TokenStats {
     if (a >= 1) return v.toFixed(2);
     if (a >= 0.001) return v.toFixed(3);
     // Fixed, not exponential. A PnL of "+1.3e-4" is unreadable at a glance in a stats
-    // row — "+0.0001" says the same thing and lines up with the column above it.
+    // row, "+0.0001" says the same thing and lines up with the column above it.
     return v.toFixed(4);
   };
 
@@ -216,7 +216,7 @@ export function SwapWidget({
   const inputDecimals = isBuy ? 9 : outputDecimals;
   const amountNum = parseFloat(inputAmount);
   const amountValid = !isNaN(amountNum) && amountNum > 0;
-  // Where the swap will actually execute. Known from the coin itself — it does NOT
+  // Where the swap will actually execute. Known from the coin itself, it does NOT
   // need the quote to come back, which is why the button no longer waits on one.
   const venue: "jupiter" | "pumpfun" = tradingSource ?? (isGraduated ? "jupiter" : "pumpfun");
 
@@ -339,7 +339,7 @@ export function SwapWidget({
 
   // What the swap moves, WITHOUT needing the quote.
   //
-  // The quote was never an input to execution — executeSwap()/executeClientPumpSwap()
+  // The quote was never an input to execution, executeSwap()/executeClientPumpSwap()
   // each fetch their own quote and build their own transaction from the raw amount.
   // It was only ever feeding the display and the trade log, so gating the button on
   // it just made every buy wait on a round trip for nothing. When it happens to be
@@ -366,7 +366,7 @@ export function SwapWidget({
   /**
    * Can this trade actually pay for itself?
    *
-   * Checked BEFORE signing, because the swap paths send with skipPreflight — an
+   * Checked BEFORE signing, because the swap paths send with skipPreflight, an
    * unaffordable transaction gets broadcast anyway, never lands, and then confirmation
    * polls for its full 45s timeout before admitting it. That is the "just loads
    * forever" symptom, and the trade was doomed before it left the browser.
@@ -382,20 +382,20 @@ export function SwapWidget({
     if (!amountValid || !inputMint || !outputMint) return;
     if (insufficient) {
       const msg = isBuy
-        ? `Not enough SOL — you have ${getInputBalance().toFixed(4)}, this needs ~${needed.toFixed(4)}`
+        ? `Not enough SOL, you have ${getInputBalance().toFixed(4)}, this needs ~${needed.toFixed(4)}`
         : `Not enough ${outputSymbol} to sell`;
       setError(msg);
       showToast(msg, "error");
       return;
     }
 
-    // Demo mode: simulate the trade against the paper balance — never hits chain.
+    // Demo mode: simulate the trade against the paper balance, never hits chain.
     const demo = useDemoStore.getState();
     if (demo.isDemo) {
       const spend = amountNum;
       // Can't spend SOL / tokens you don't have.
       if (isBuy && spend > demo.solBalance + 1e-9) {
-        setError(`Insufficient balance — you have ${demo.solBalance.toFixed(3)} SOL`);
+        setError(`Insufficient balance, you have ${demo.solBalance.toFixed(3)} SOL`);
         return;
       }
       if (!isBuy) {
@@ -407,7 +407,7 @@ export function SwapWidget({
       }
       const outUi = estimateFill();
       if (!(outUi > 0)) {
-        setError("No price yet — try again in a moment");
+        setError("No price yet, try again in a moment");
         return;
       }
       // capUsd pins the chart's average lines at this fill, same as a real trade.
@@ -438,7 +438,7 @@ export function SwapWidget({
 
       // The OTHER leg of the trade, for the log: tokens received on a buy, SOL out on
       // a sell. Usually already known (the debounced quote landed while you were
-      // reading the panel), but clicking a preset fires faster than that — and logging
+      // reading the panel), but clicking a preset fires faster than that, and logging
       // a 0 there would poison the cost basis and the chart's average lines. Kicked
       // off in parallel with signing so it costs no wall clock.
       const fillPromise: Promise<number> = (async () => {
@@ -459,7 +459,7 @@ export function SwapWidget({
 
       // Try client-side swap first (for mobile wallets with local mnemonic).
       // Works for BOTH Jupiter (graduated) and pump.fun (bonding curve) so a buy
-      // never requires a server session — the persisted wallet signs locally.
+      // never requires a server session, the persisted wallet signs locally.
       const mnemonic = await useMobileWalletStore.getState().getMnemonic();
 
       if (mnemonic) {
@@ -473,7 +473,7 @@ export function SwapWidget({
         const filled = await fillPromise;
 
         // Record the trade locally so B/S bubbles + portfolio show it instantly and
-        // reliably — the shared feed's trader field is too flaky to depend on.
+        // reliably, the shared feed's trader field is too flaky to depend on.
         if (wallet?.publicKey) {
           const tokenMint = isBuy ? outputMint! : inputMint!;
           // A buy knows its SOL exactly (it's what you typed); a sell knows its
@@ -496,7 +496,7 @@ export function SwapWidget({
           });
         }
 
-        // Confirmation says what you SPENT, in SOL — that's the number you chose and
+        // Confirmation says what you SPENT, in SOL, that's the number you chose and
         // the one that matters. The token count is an estimate until the fill lands.
         playTradeSound(isBuy);
         showToast(
@@ -518,8 +518,8 @@ export function SwapWidget({
       // server holds no keys, so there is no server-side fallback.
       throw new Error(
         wallet
-          ? "Wallet locked — re-import your recovery phrase in Settings to enable trading on this device."
-          : "No wallet on this device — create or import one to trade."
+          ? "Wallet locked, re-import your recovery phrase in Settings to enable trading on this device."
+          : "No wallet on this device, create or import one to trade."
       );
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Swap failed";
@@ -541,7 +541,7 @@ export function SwapWidget({
   // "Buy 0.5 SOL" is known instantly; "Buy → 6,427,519 MEME" needed a round trip and
   // was stale by the time you read it anyway.
   // Name the POOL the swap goes through, not the aggregator that found it. "Jupiter"
-  // is a router, not a venue — it told you nothing about where your size was going.
+  // is a router, not a venue, it told you nothing about where your size was going.
   // Graduated coins carry the real pool in the route plan (PumpSwap, Raydium, Meteora...).
   const venueLabel = () => {
     if (venue === "pumpfun") return "Pump.fun";
@@ -803,7 +803,7 @@ export function SwapWidget({
           </div>
         )}
 
-        {/* Swap button. Live the moment an amount is entered — it does NOT wait for a
+        {/* Swap button. Live the moment an amount is entered, it does NOT wait for a
             quote, because execution doesn't use one (see estimateFill). */}
         {amountValid && (
           <button
@@ -884,7 +884,7 @@ export function SwapWidget({
           className={cn(
             "flex-1 py-2.5 rounded-full text-sm font-medium transition-colors",
             isBuy
-              ? "bg-[#7FD39B]/10 text-[#7FD39B] border-b-2 border-[#7FD39B]"
+              ? "bg-[#7FD39B] text-black"
               : isDark ? "text-white/50 hover:text-white/70" : "text-gray-400 hover:text-gray-600"
           )}
         >
@@ -895,7 +895,7 @@ export function SwapWidget({
           className={cn(
             "flex-1 py-2.5 rounded-full text-sm font-medium transition-colors",
             !isBuy
-              ? "bg-down/10 text-down border-b-2 border-down"
+              ? "bg-down text-black"
               : isDark ? "text-white/50 hover:text-white/70" : "text-gray-400 hover:text-gray-600"
           )}
         >
@@ -924,7 +924,7 @@ export function SwapWidget({
           </div>
           {/* Fee warning for low balance */}
           {isBuy && balance && balance.sol.uiBalance < 0.01 && (
-            <div className="mb-2 p-2 rounded-lg bg-amber-400/10 border border-amber-400/20 text-amber-300 text-[10px]">
+            <div className="mb-2 p-2 rounded-lg bg-white/5 border border-white/10 text-white/60 text-[10px]">
               Low balance. First-time swaps need ~0.003 SOL for fees (token account + tip).
             </div>
           )}
@@ -1171,7 +1171,7 @@ export function SwapWidget({
 
         {/* No "You Receive" panel.
             It was the biggest thing on the widget and it showed an estimate that is
-            stale the moment it renders — a memecoin's price moves between the quote
+            stale the moment it renders, a memecoin's price moves between the quote
             and the signature, so the eight digits it printed were never the number
             you got. What you control is the SOL you spend, which the button states.
             Price impact below is the part worth knowing before committing. */}
@@ -1187,7 +1187,7 @@ export function SwapWidget({
                   quote.priceImpactPct > 5
                     ? "text-down"
                     : quote.priceImpactPct > 1
-                    ? "text-amber-300"
+                    ? "text-[#FF6B4A]"
                     : "text-[#7FD39B]"
                 )}
               >
@@ -1243,7 +1243,7 @@ export function SwapWidget({
           )}
         </button>
 
-        {/* Stats Row — ALWAYS rendered. It was gated on `balance`, so your own
+        {/* Stats Row, ALWAYS rendered. It was gated on `balance`, so your own
             bought/sold/holding/PnL vanished whenever the balance fetch hadn't landed
             or had failed, which is exactly when you want to look at it. None of these
             numbers come from that fetch; they're computed from the local trade log. */}

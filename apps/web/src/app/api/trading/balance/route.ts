@@ -72,7 +72,7 @@ export async function GET(req: Request) {
       }));
 
     // FALLBACK: If RPC returns no tokens, calculate from trade history.
-    // Only for custodial (session) users — client-side wallets rely on the RPC read.
+    // Only for custodial (session) users, client-side wallets rely on the RPC read.
     if (tokensWithBalance.length === 0 && session?.user?.id) {
       const trades = await prisma.trade.findMany({
         where: { userId: session.user.id, status: TradeStatus.SUCCESS },
