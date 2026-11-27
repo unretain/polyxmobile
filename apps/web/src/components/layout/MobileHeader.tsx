@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Sun, Moon, Menu, X, Wallet, Mail } from "lucide-react";
-import { EmailAuthModal } from "@/components/auth/EmailAuthModal";
+import { Sun, Moon, Menu, X, Wallet, Settings as SettingsIcon } from "lucide-react";
 import { useThemeStore } from "@/stores/themeStore";
 import { useMobileWalletStore } from "@/stores/mobileWalletStore";
 import { useState, useEffect } from "react";
@@ -23,16 +22,7 @@ export function MobileHeader() {
   const { isDark, toggleTheme } = useThemeStore();
   const { wallet } = useMobileWalletStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [emailAuthOpen, setEmailAuthOpen] = useState(false);
-  // Attached (verified) email, if any, shown in the menu; otherwise a sign-in entry.
-  const [attachedEmail, setAttachedEmail] = useState<string | null>(null);
-  useEffect(() => {
-    if (!mobileMenuOpen) return;
-    try {
-      const e = localStorage.getItem("polyx-email");
-      setAttachedEmail(e && e.includes("@") ? e : null);
-    } catch { setAttachedEmail(null); }
-  }, [mobileMenuOpen]);
+
 
   const isActive = (path: string) => pathname === path || pathname.startsWith(path + "/");
 
@@ -113,22 +103,15 @@ export function MobileHeader() {
 
             {wallet && (
               <div className="p-2 space-y-1">
-                {/* Account: verified email, or the sign-in entry */}
-                {attachedEmail ? (
-                  <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl ${isDark ? 'bg-white/5' : 'bg-black/5'}`}>
-                    <Mail className="h-4 w-4 text-[#FF6B4A]" />
-                    <span className={`text-sm truncate ${isDark ? 'text-white/60' : 'text-black/60'}`}>{attachedEmail}</span>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => { setMobileMenuOpen(false); setEmailAuthOpen(true); }}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-colors ${isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}
-                  >
-                    <Mail className="h-4 w-4 text-[#FF6B4A]" />
-                    <span className={`text-sm ${isDark ? 'text-white/70' : 'text-black/70'}`}>Sign in with email</span>
-                    <span className={`ml-auto text-xs ${isDark ? 'text-white/40' : 'text-black/40'}`}>→</span>
-                  </button>
-                )}
+                <Link
+                  href="/settings"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-colors ${isDark ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}
+                >
+                  <SettingsIcon className="h-4 w-4 text-[#FF6B4A]" />
+                  <span className={`text-sm ${isDark ? 'text-white/70' : 'text-black/70'}`}>Settings</span>
+                  <span className={`ml-auto text-xs ${isDark ? 'text-white/40' : 'text-black/40'}`}>→</span>
+                </Link>
                 <Link
                   href="/wallet"
                   onClick={() => setMobileMenuOpen(false)}
@@ -149,7 +132,6 @@ export function MobileHeader() {
           </div>
         </>
       )}
-      <EmailAuthModal isOpen={emailAuthOpen} onClose={() => setEmailAuthOpen(false)} />
     </>
   );
 }
