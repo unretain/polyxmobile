@@ -111,7 +111,7 @@ export function EmailAuthModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
               onKeyDown={(e) => { if (e.key === "Enter" && code.length === 6) verify(); }}
               placeholder="000000"
               autoFocus
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-center text-xl font-mono tracking-[0.4em] placeholder-white/20 outline-none focus:border-[#FF6B4A]/50 transition-colors"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-center text-xl font-semibold tracking-[0.4em] placeholder-white/20 outline-none focus:border-[#FF6B4A]/50 transition-colors"
             />
             {error && <p className="text-sm text-down text-center">{error}</p>}
             <button

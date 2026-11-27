@@ -354,7 +354,7 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
                   onKeyDown={(e) => { if (e.key === "Enter" && emailCode.length === 6) verifyEmailCode(); }}
                   placeholder="000000"
                   autoFocus
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3.5 text-white text-center text-2xl font-mono tracking-[0.5em] placeholder-white/20 outline-none focus:border-[#FF6B4A]/50 transition-colors"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3.5 text-white text-center text-2xl font-semibold tracking-[0.5em] placeholder-white/20 outline-none focus:border-[#FF6B4A]/50 transition-colors"
                 />
                 {emailError && <p className="text-sm text-down text-center">{emailError}</p>}
                 <button
