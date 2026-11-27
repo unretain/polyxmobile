@@ -6,7 +6,7 @@ import { create } from "zustand";
  *
  * New coins land several times a second and are inserted at the TOP, so every arrival
  * shifts every row down. Read a tweet for two seconds and the row under your cursor
- * is a different coin — which at best loses your place and at worst means the
+ * is a different coin, which at best loses your place and at worst means the
  * instant-buy lightning you were aiming at now belongs to something else.
  *
  * Scoped per column, not globally: hovering New Pairs has no reason to stall Migrated,
@@ -16,7 +16,7 @@ import { create } from "zustand";
  * Two independent reasons a column holds: the pointer is over its list, or a tweet
  * card opened from one of its rows. The card is portaled to document.body, so moving
  * onto it leaves the column's hover region entirely and would otherwise unfreeze
- * exactly when you started reading — hence it reports which column it belongs to.
+ * exactly when you started reading, hence it reports which column it belongs to.
  */
 export type PulseColumnKey = "new" | "final" | "migrated";
 

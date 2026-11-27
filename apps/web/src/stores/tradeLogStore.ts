@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 // A locally-recorded real (non-demo) trade. The client signs its own swaps, so it
-// knows them exactly — we record them here instead of relying on the shared feed,
+// knows them exactly, we record them here instead of relying on the shared feed,
 // whose trader-decoding is unreliable (many trades land with an empty trader).
 // Drives the chart's B/S bubbles and the mobile-wallet portfolio, instantly and
 // deterministically, with no feed lag.
@@ -16,7 +16,7 @@ export interface LoggedTrade {
   wallet: string; // signer pubkey, so a wallet switch shows the right history
   signature?: string;
   image?: string; // token logo, captured at trade time for the portfolio
-  // Market cap in USD at the instant the fill landed — the chart's own y-axis unit.
+  // Market cap in USD at the instant the fill landed, the chart's own y-axis unit.
   // Stamped here because it is the ONLY moment it can be known exactly. Deriving it
   // later from the candle covering the fill reads that candle's `close`, which keeps
   // moving until the candle closes, so the average lines drifted after every trade.

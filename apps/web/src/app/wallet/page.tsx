@@ -143,7 +143,7 @@ export default function WalletPage() {
         fetchBalance();
         return;
       }
-      throw new Error("Wallet locked — re-import your recovery phrase in Settings to withdraw.");
+      throw new Error("Wallet locked, re-import your recovery phrase in Settings to withdraw.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Withdrawal failed");
     } finally {
@@ -238,7 +238,7 @@ export default function WalletPage() {
         })}
       </div>
 
-      {/* Swap panel — SOL ⇄ USDC on Jupiter, signed on-device */}
+      {/* Swap panel, SOL ⇄ USDC on Jupiter, signed on-device */}
       {panel === "swap" && (
         <SwapWidget
           defaultOutputMint={USDC_MINT}
@@ -400,7 +400,7 @@ export default function WalletPage() {
         </div>
       </div>
 
-      {/* Export recovery phrase — stays on this device, revealed only on tap */}
+      {/* Export recovery phrase, stays on this device, revealed only on tap */}
       {exportOpen && (
         <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center sm:p-4">
           <div className={`absolute inset-0 backdrop-blur-sm ${isDark ? "bg-black/60" : "bg-black/40"}`} onClick={() => setExportOpen(false)} />
@@ -428,7 +428,7 @@ export default function WalletPage() {
                   ))}
                 </div>
               ) : revealed && !phrase ? (
-                <span className="text-sm text-down">Wallet locked — re-import your phrase to export it.</span>
+                <span className="text-sm text-down">Wallet locked, re-import your phrase to export it.</span>
               ) : (
                 <span className={`flex items-center justify-center gap-2 text-sm ${isDark ? "text-white/50" : "text-gray-500"}`}>
                   <Eye className="h-4 w-4" /> Tap to reveal

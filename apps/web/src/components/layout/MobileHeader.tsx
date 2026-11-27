@@ -24,7 +24,7 @@ export function MobileHeader() {
   const { wallet } = useMobileWalletStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [emailAuthOpen, setEmailAuthOpen] = useState(false);
-  // Attached (verified) email, if any — shown in the menu; otherwise a sign-in entry.
+  // Attached (verified) email, if any, shown in the menu; otherwise a sign-in entry.
   const [attachedEmail, setAttachedEmail] = useState<string | null>(null);
   useEffect(() => {
     if (!mobileMenuOpen) return;

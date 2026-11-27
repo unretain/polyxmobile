@@ -34,7 +34,7 @@ import { shortenAddress } from "@/lib/utils";
 import { Connection, PublicKey, LAMPORTS_PER_SOL, Transaction, SystemProgram } from "@solana/web3.js";
 import QRCode from "qrcode";
 
-// Solana RPC — go through our same-origin proxy (/api/rpc) so the request is
+// Solana RPC, go through our same-origin proxy (/api/rpc) so the request is
 // forwarded server-side to a working RPC. Hitting a public RPC directly from the
 // WKWebView rate-limits / CORS-fails (broken balance + "failed to get blockhash").
 function getRpcUrl(): string {
@@ -248,7 +248,7 @@ export default function ThreeXWalletPage() {
       (err) => {
         setScanning(false);
         scanCleanupRef.current = null;
-        // A user-cancelled scan isn't a real error — don't flash a red banner.
+        // A user-cancelled scan isn't a real error, don't flash a red banner.
         setError(err === "Scan cancelled" ? null : err);
         setStep("home");
       }

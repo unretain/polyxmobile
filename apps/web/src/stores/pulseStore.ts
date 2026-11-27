@@ -107,7 +107,7 @@ interface PulseStore {
  * Normalise an API token for the store.
  *
  * SPREADS the payload first, deliberately. This used to list every field by hand and
- * silently dropped the ones it did not know about — feesPaidSol, buys and sells among
+ * silently dropped the ones it did not know about, feesPaidSol, buys and sells among
  * them. That is not a cosmetic loss: the pulse filters treat a missing metric as
  * UNKNOWN and keep the row (an absent column must not silently empty a list), so a
  * fee/buys/sells bound could never exclude anything, no matter how correct the API
@@ -295,7 +295,7 @@ export const usePulseStore = create<PulseStore>()(
 
   // Connect to the ONE live stream: the API's WebSocket broadcast. Every user
   // gets the same `pulse:snapshot` (built from the single server-side gRPC feed)
-  // pushed ~1x/sec — no per-client polling.
+  // pushed ~1x/sec, no per-client polling.
   connectRealtime: () => {
     if (_pulseSocket) return;
     // Instant first paint from HTTP snapshot, then the socket takes over.
@@ -330,7 +330,7 @@ export const usePulseStore = create<PulseStore>()(
       const nd = (snap.graduated || []).map(mapTokenData);
       // The server now marks a snapshot `authoritative` when its lists are
       // ClickHouse-backed (or the live feed is connected). On those we REPLACE, so an
-      // empty list actually empties — previously "keep what we had if the snapshot is
+      // empty list actually empties, previously "keep what we had if the snapshot is
       // empty" meant the migrated list could never clear after an API restart, because
       // graduatedTokens is empty for up to 30 min after boot and the socket pushed
       // `graduated: []` every second. Non-authoritative snapshots still can't wipe us.
@@ -359,7 +359,7 @@ export const usePulseStore = create<PulseStore>()(
   disconnectRealtime: () => {
     // Intentionally does NOT tear the socket down. Home and Pulse both call this
     // on unmount, so navigating between them was disconnect -> redial -> wait for
-    // the next snapshot on every page switch — the single biggest reason moving
+    // the next snapshot on every page switch, the single biggest reason moving
     // around the app felt slow. One app-wide socket costs the server one extra
     // room member; keeping it means the store still has live lists the instant
     // the next page mounts. (connectRealtime is already idempotent.)
@@ -433,7 +433,7 @@ export const usePulseStore = create<PulseStore>()(
     {
       // v2 name intentionally abandons any previously-cached "pulse-store" data.
       name: "pulse-store-v2",
-      // Do NOT persist the live token lists — new pairs is a realtime feed and
+      // Do NOT persist the live token lists, new pairs is a realtime feed and
       // must always come fresh from the server (ClickHouse). Persisting it made
       // stale hours-old tokens rehydrate from localStorage on page load.
       partialize: () => ({}),
@@ -443,7 +443,7 @@ export const usePulseStore = create<PulseStore>()(
 
 // ---------------------------------------------------------------------------
 // Shared realtime socket accessor.
-// Other views (e.g. a token page) must NOT open their own socket to the box —
+// Other views (e.g. a token page) must NOT open their own socket to the box -
 // every NEW connection handshake to the origin tends to get reset, while an
 // already-established WebSocket survives. So they reuse THIS one connection and
 // subscribe their own rooms on it (subscribe:token). Returns the singleton,

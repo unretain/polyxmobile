@@ -4,7 +4,7 @@
  * No DB table: the /send route returns an HMAC-sealed challenge token binding
  * (email, code, expiry); /verify recomputes the seal from the user's input.
  * A verified email yields a durable `proof` that /api/wallet/register checks
- * before persisting the address — so nobody can attach an email they don't own.
+ * before persisting the address, so nobody can attach an email they don't own.
  */
 import { createHmac, randomInt, timingSafeEqual } from "crypto";
 import { config } from "./config";

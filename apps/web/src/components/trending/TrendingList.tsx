@@ -10,12 +10,12 @@ import { imgSrc } from "@/lib/imgSrc";
 import { formatNumber } from "@/lib/utils";
 
 /**
- * The trending list — shared by the homepage and the Trending page.
+ * The trending list, shared by the homepage and the Trending page.
  *
- * Quality bar: a coin must have ≥ $10K market cap, and — when the live feed
- * provides it — ≥ 0.5 SOL in gas fees actually paid on the coin (priority fees
+ * Quality bar: a coin must have ≥ $10K market cap, and, when the live feed
+ * provides it, ≥ 0.5 SOL in gas fees actually paid on the coin (priority fees
  * + tips; bots don't bribe validators for dead coins). Fallback data
- * (DexScreener) has no fee field, so the fee bar only applies to live data —
+ * (DexScreener) has no fee field, so the fee bar only applies to live data -
  * otherwise the list would be empty whenever the api is down.
  *
  * Score: volume24h × log10(10 + marketCap), with a 2× boost for coins younger
@@ -32,7 +32,7 @@ const AGE_FILTERS: Array<{ id: AgeFilter; label: string; maxAgeMs: number }> = [
 
 const MIN_MCAP_USD = 10_000;
 /** The fee bar is a RATIO: ≥0.5 SOL of global fees per $10K of market cap.
- *  A $34K coin needs ≥1.7 ◎ — size has to be backed by proportional fee burn. */
+ *  A $34K coin needs ≥1.7 ◎, size has to be backed by proportional fee burn. */
 const MIN_FEES_SOL_PER_10K = 0.5;
 const FRESH_MS = 15 * 60 * 1000;
 
@@ -196,7 +196,7 @@ export function TrendingList({ limit = 30, heightClass = "h-[26rem]", onNeedWall
         </div>
       </div>
 
-      {/* Fixed-height box with internal scroll — the page itself never grows. */}
+      {/* Fixed-height box with internal scroll, the page itself never grows. */}
       <div className={`rounded-2xl border overflow-hidden ${
         isDark ? 'border-white/10 bg-white/[0.04]' : 'border-black/10 bg-white'
       }`}>

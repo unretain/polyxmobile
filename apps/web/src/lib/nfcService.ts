@@ -60,7 +60,7 @@ export async function startNfcScan(
 
     // The native plugin emits nfcEvent with retainUntilConsumed, so a leftover
     // event from a previous session (e.g. the wallet just written) gets REPLAYED
-    // onto the next listener the instant it attaches — which showed a phantom
+    // onto the next listener the instant it attaches, which showed a phantom
     // "read" of the last wallet on a fresh scan, before any tag was presented.
     // Drain any retained event with a throwaway listener first...
     try {
@@ -68,7 +68,7 @@ export async function startNfcScan(
       await new Promise((r) => setTimeout(r, 150));
       await drain.remove();
     } catch {
-      // ignore — drain is best-effort
+      // ignore, drain is best-effort
     }
 
     // Fire each result at most once, so a cancel/timeout can't race a real read.
@@ -79,7 +79,7 @@ export async function startNfcScan(
     // takes ~1s), but a retained replay fires within a few ms of attaching.
     const scanStartedAt = Date.now();
     const listener = await CapacitorNfc.addListener("nfcEvent", async (event: NfcEvent) => {
-      if (Date.now() - scanStartedAt < 800) return; // stale replay — drop it
+      if (Date.now() - scanStartedAt < 800) return; // stale replay, drop it
       if (settled) return;
       settled = true;
       try {
@@ -95,7 +95,7 @@ export async function startNfcScan(
         onError("Failed to read NFC tag data");
       } finally {
         // We run with invalidateAfterFirstRead:false (see startScanning below), so
-        // the session does NOT auto-close after a read — close it ourselves.
+        // the session does NOT auto-close after a read, close it ourselves.
         try {
           await CapacitorNfc.stopScanning();
         } catch {
@@ -173,7 +173,7 @@ export async function writeNfcTag(
 
     // NDEF session (needs only the NDEF entitlement, which is present). Keeps the
     // session open (invalidateAfterFirstRead:false) so we can write. NOTE: the
-    // plugin's NDEF path bails on a *blank* sticker — so the sticker must already
+    // plugin's NDEF path bails on a *blank* sticker, so the sticker must already
     // hold an NDEF message (pre-format it once, then this overwrites it).
     await CapacitorNfc.startScanning({
       alertMessage: "Hold your NFC sticker near the top of your phone to write",

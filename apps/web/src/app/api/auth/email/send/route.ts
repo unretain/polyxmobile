@@ -5,7 +5,7 @@ import { makeChallenge, EMAIL_RE } from "@/lib/emailCode";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Light per-IP throttle: 5 sends / 10 min. In-memory is fine — worst case a
+// Light per-IP throttle: 5 sends / 10 min. In-memory is fine, worst case a
 // redeploy resets the window.
 const sends = new Map<string, { n: number; at: number }>();
 
@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   const now = Date.now();
   const s = sends.get(ip);
   if (s && now - s.at < 10 * 60 * 1000 && s.n >= 5) {
-    return NextResponse.json({ error: "too many codes — wait a few minutes" }, { status: 429 });
+    return NextResponse.json({ error: "too many codes, wait a few minutes" }, { status: 429 });
   }
   sends.set(ip, s && now - s.at < 10 * 60 * 1000 ? { n: s.n + 1, at: s.at } : { n: 1, at: now });
 
@@ -43,11 +43,11 @@ export async function POST(req: NextRequest) {
     });
     if (!r.ok) {
       console.error("[email/send] resend failed:", r.status, (await r.text()).slice(0, 200));
-      return NextResponse.json({ error: "couldn't send the email — try again" }, { status: 502 });
+      return NextResponse.json({ error: "couldn't send the email, try again" }, { status: 502 });
     }
   } catch (e) {
     console.error("[email/send] error:", e);
-    return NextResponse.json({ error: "couldn't send the email — try again" }, { status: 502 });
+    return NextResponse.json({ error: "couldn't send the email, try again" }, { status: 502 });
   }
   return NextResponse.json({ token, exp });
 }

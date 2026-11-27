@@ -9,7 +9,7 @@
  *    was not enough: the pulse column is `backdrop-blur-md overflow-hidden`, and a
  *    filtered element becomes the containing block for fixed descendants AND clips
  *    them. So the card was positioned against the column instead of the viewport and
- *    then cropped away — which is why hovering appeared to do nothing at all.
+ *    then cropped away, which is why hovering appeared to do nothing at all.
  *  - The card must be measured and placed from the icon's viewport rect, resolved
  *    once into a final top-left (see open()).
  *  - The row is a <Link>, so these cannot be <a> (nested anchors are invalid and
@@ -78,7 +78,7 @@ const WebIcon = () => (
 );
 
 /** One tweet: author line, text, any attached images, and the tweet it quotes.
- *  Plain img on purpose — these are pbs.twimg.com URLs the browser loads directly,
+ *  Plain img on purpose, these are pbs.twimg.com URLs the browser loads directly,
  *  and next/image would route them through the optimizer for no benefit. */
 function TweetBody({ t, quoted, isDark }: { t: Tweet; quoted?: Tweet; isDark: boolean }) {
   return (
@@ -93,7 +93,7 @@ function TweetBody({ t, quoted, isDark }: { t: Tweet; quoted?: Tweet; isDark: bo
         <span className="font-semibold truncate">{t.author}</span>
         <span className={`truncate ${isDark ? "text-white/30" : "text-gray-400"}`}>@{t.handle}</span>
       </div>
-      {/* Server-decoded plain text — never third-party markup. */}
+      {/* Server-decoded plain text, never third-party markup. */}
       {t.text && <p className="whitespace-pre-wrap break-words leading-snug line-clamp-6">{t.text}</p>}
       {!!t.media?.length && (
         <div className={`mt-2 grid gap-1 ${t.media.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
@@ -188,7 +188,7 @@ export function TweetHover({ url, isDark }: { url: string; isDark: boolean }) {
     // Resolve the FINAL top-left here and render with left/top only.
     //
     // The previous version stored y as either a top or a bottom depending on which
-    // way it flipped, then re-derived "did I flip?" from `y < 200` at render — which
+    // way it flipped, then re-derived "did I flip?" from `y < 200` at render, which
     // is a different question entirely. Any row in the top 200px of the viewport was
     // treated as flipped when it wasn't, and the card landed nowhere near its bird.
     //
@@ -213,7 +213,7 @@ export function TweetHover({ url, isDark }: { url: string; isDark: boolean }) {
   }, [setCardOpen]);
 
   // Releasing the pause on unmount matters: the list is frozen while the card is
-  // open, and a frozen list is exactly what stops this row from being unmounted —
+  // open, and a frozen list is exactly what stops this row from being unmounted -
   // but a filter change or tab switch can still pull it, and the board would then
   // stay stuck forever with no pointer anywhere near it.
   useEffect(() => () => setCardOpen(null), [setCardOpen]);

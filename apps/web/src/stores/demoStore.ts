@@ -2,10 +2,10 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 /**
- * Demo / paper-trading mode — ONLY for Apple App Review (username "apple" /
+ * Demo / paper-trading mode, ONLY for Apple App Review (username "apple" /
  * password "apple123"). Real users never touch this. Everything below is real
  * paper accounting: a trade log drives balance, positions, and realized PnL, so
- * the portfolio reflects what was actually traded — no fabricated numbers.
+ * the portfolio reflects what was actually traded, no fabricated numbers.
  */
 /** Paper balance a demo session starts with. */
 export const DEMO_START_SOL = 1000;
@@ -26,7 +26,7 @@ export interface DemoTrade {
   realized?: number;   // realized PnL in SOL (sells only)
   ts: number;
   // Market cap in USD at the fill, so the chart's average entry/exit lines can be
-  // pinned exactly the way real trades are — otherwise a demo line is recovered from
+  // pinned exactly the way real trades are, otherwise a demo line is recovered from
   // the live candle and drifts until that candle closes.
   capUsd?: number;
 }
@@ -109,7 +109,7 @@ export const useDemoStore = create<DemoState>()(
       // Sessions created before the starting balance changed are persisted in
       // localStorage, so without this a demo already in progress would sit on the old
       // 5 SOL until it was exited and re-entered. Only an UNTRADED wallet is topped
-      // up — once there are trades the balance is the result of them, and overwriting
+      // up, once there are trades the balance is the result of them, and overwriting
       // it would contradict the position and PnL history it belongs to.
       version: 2,
       migrate: (persisted: any, from: number) => {

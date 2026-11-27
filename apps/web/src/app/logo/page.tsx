@@ -1,7 +1,7 @@
 "use client";
 
 // Brand marks for iOS: the logo tile, the app icon, and the launch screen.
-// The canonical source for the generated native assets is apps/web/assets/logo.svg —
+// The canonical source for the generated native assets is apps/web/assets/logo.svg -
 // edit both together, or the app and the site drift apart.
 
 const ORANGE = "#FF6B4A";
@@ -13,7 +13,7 @@ const SPLASH = 2732;
 const SPLASH_TILE = 600;
 
 // Fraction of the tile edge the wordmark spans, and the type size within it. These
-// mirror textLength/font-size in assets/logo.svg — keep the two in step.
+// mirror textLength/font-size in assets/logo.svg, keep the two in step.
 const MARK_WIDTH_RATIO = 780 / 1024;
 const FONT_RATIO = 0.24;
 
@@ -190,7 +190,7 @@ export default function LogoPage() {
         <Mark size={previewFrame} />
       </Panel>
 
-      {/* The squircle previews iOS masking only — the exported PNG is a hard square. */}
+      {/* The squircle previews iOS masking only, the exported PNG is a hard square. */}
       <Panel
         label="App icon"
         spec={`${ICON}×${ICON} · square · no rounded corners`}

@@ -55,7 +55,7 @@ export default function LaunchPage() {
     }
 
     try {
-      // 1. Metadata to IPFS (proxied — pump.fun blocks browser CORS)
+      // 1. Metadata to IPFS (proxied, pump.fun blocks browser CORS)
       setPhase("uploading");
       const form = new FormData();
       form.set("file", image);
@@ -72,7 +72,7 @@ export default function LaunchPage() {
       // 2. Create + sign on this device
       setPhase("signing");
       const mnemonic = await useMobileWalletStore.getState().getMnemonic();
-      if (!mnemonic) throw new Error("Wallet locked — re-import your recovery phrase to launch.");
+      if (!mnemonic) throw new Error("Wallet locked, re-import your recovery phrase to launch.");
       const res = await executeClientPumpCreate(
         mnemonic,
         { name: name.trim(), symbol: symbol.trim().toUpperCase(), metadataUri: upJson.metadataUri },
@@ -112,7 +112,7 @@ export default function LaunchPage() {
       <div className="px-1 pt-1">
         <h1 className="text-lg md:text-2xl font-bold">Launch</h1>
         <p className={`text-xs md:text-sm ${isDark ? "text-white/50" : "text-gray-500"}`}>
-          Create a token on pump.fun — signed on this device, straight into Pulse
+          Create a token on pump.fun, signed on this device, straight into Pulse
         </p>
       </div>
 
@@ -224,7 +224,7 @@ export default function LaunchPage() {
             <div className="flex items-baseline justify-between">
               <label className={label}>Initial buy (SOL)</label>
               <span className={`text-[10px] ${isDark ? "text-white/30" : "text-gray-400"}`}>
-                your first buy on the fresh curve — 0 is fine
+                your first buy on the fresh curve, 0 is fine
               </span>
             </div>
             <input

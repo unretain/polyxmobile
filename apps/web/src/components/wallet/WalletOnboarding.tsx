@@ -34,7 +34,7 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
   const [verifyIndexes, setVerifyIndexes] = useState<number[]>([]);
   const [verifyInputs, setVerifyInputs] = useState<string[]>(["", "", ""]);
   const [verifyError, setVerifyError] = useState("");
-  // Email sign-up flow (Resend code) — optional, with an explicit skip warning.
+  // Email sign-up flow (Resend code), optional, with an explicit skip warning.
   const [email, setEmail] = useState("");
   const [emailCode, setEmailCode] = useState("");
   const [emailToken, setEmailToken] = useState("");
@@ -119,7 +119,7 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
     // Persist the encrypted key NOW so signing works even if backup is skipped.
     storeMnemonic(mnemonic);
 
-    // Register with backend (public key only — the seed phrase never leaves the device)
+    // Register with backend (public key only, the seed phrase never leaves the device)
     registerWallet(pk);
 
     setStep("create-intro");
@@ -266,7 +266,7 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
       // Call confirmBackup to encrypt and store the mnemonic
       confirmBackup();
 
-      // Register with backend (public key only — the seed phrase never leaves the device)
+      // Register with backend (public key only, the seed phrase never leaves the device)
       registerWallet(pk);
 
       // Clear sensitive data from state immediately after use
@@ -283,7 +283,7 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
 
   return (
     <div className="fixed inset-0 z-[100] overflow-y-auto bg-[#0a0a0a]">
-      {/* Full-page onboarding — the app IS this flow until a wallet exists */}
+      {/* Full-page onboarding, the app IS this flow until a wallet exists */}
       <div className="relative mx-auto w-full max-w-md min-h-dvh flex flex-col justify-center">
         {/* Content - pt-safe accounts for iOS notch/status bar */}
         <div className="p-6 pt-16 sm:pt-6" style={{ paddingTop: 'max(4rem, env(safe-area-inset-top, 1rem) + 1rem)' }}>
@@ -380,7 +380,7 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
                 <h2 className="text-2xl font-bold text-white mb-3">No email, no safety net</h2>
                 <p className="text-white/60 text-sm leading-relaxed">
                   Without an email, your 12-word recovery phrase is the <span className="text-white font-semibold">only</span> way
-                  into this wallet. Lose the phrase and the wallet is gone — nobody, including us, can recover it.
+                  into this wallet. Lose the phrase and the wallet is gone. Nobody can recover it, including us.
                 </p>
               </div>
               <div className="space-y-3">
@@ -392,14 +392,14 @@ export function WalletOnboarding({ isOpen, onClose }: WalletOnboardingProps) {
                   type="button"
                   className="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold py-4 rounded-xl transition-colors touch-manipulation"
                 >
-                  I understand — continue without email
+                  I understand
                 </button>
                 <button
                   onClick={() => { setStep("signup"); setEmailError(""); }}
                   type="button"
                   className="w-full bg-[#FF6B4A] hover:bg-[#FF8F6B] text-white font-semibold py-4 rounded-xl transition-colors touch-manipulation"
                 >
-                  Go back and add an email
+                  Go back
                 </button>
               </div>
             </div>

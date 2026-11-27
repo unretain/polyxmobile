@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 /**
- * POST /api/launch/ipfs — proxy token metadata + image to pump.fun's IPFS
+ * POST /api/launch/ipfs, proxy token metadata + image to pump.fun's IPFS
  * uploader. Proxied server-side because pump.fun doesn't send CORS headers for
  * browser uploads. No secrets involved; this only relays public metadata.
  */
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     const text = await r.text();
     if (!r.ok) {
       console.error("[launch/ipfs] upload failed:", r.status, text.slice(0, 200));
-      return NextResponse.json({ error: "metadata upload failed — try again" }, { status: 502 });
+      return NextResponse.json({ error: "metadata upload failed, try again" }, { status: 502 });
     }
     const json = JSON.parse(text);
     if (!json?.metadataUri) {
@@ -57,6 +57,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ metadataUri: json.metadataUri });
   } catch (e) {
     console.error("[launch/ipfs] error:", e);
-    return NextResponse.json({ error: "metadata upload failed — try again" }, { status: 502 });
+    return NextResponse.json({ error: "metadata upload failed, try again" }, { status: 502 });
   }
 }

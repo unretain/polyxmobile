@@ -1,7 +1,7 @@
 /**
  * Fallback data fetchers using free public APIs (DexScreener).
  * Used when internal API / ClickHouse feed is unavailable.
- * No API keys required — DexScreener's public endpoints are free.
+ * No API keys required, DexScreener's public endpoints are free.
  */
 
 const DEXSCREENER_BASE = "https://api.dexscreener.com";
@@ -67,7 +67,7 @@ export async function fallbackTokenInfo(address: string): Promise<FallbackToken 
 
 /** Get trending Solana tokens from DexScreener. */
 export async function fallbackTrendingTokens(limit = 50): Promise<FallbackToken[]> {
-  // DexScreener "token boosts" endpoint — shows recently boosted (trending) tokens
+  // DexScreener "token boosts" endpoint, shows recently boosted (trending) tokens
   const data = await safeFetch(`${DEXSCREENER_BASE}/token-boosts/top/v1`);
   if (!data || !Array.isArray(data)) return [];
 
@@ -230,7 +230,7 @@ function mapDexPairToPulse(pair: any, category: string): FallbackPulseToken {
 export async function fallbackNewPairs(limit = 50): Promise<FallbackPulseToken[]> {
   // DexScreener removed /latest/dex/pairs/<chain> (it returns nothing now, which
   // emptied the New Pairs column whenever the live feed was down). The newest
-  // *token profiles* are the closest public signal — resolve their pairs for
+  // *token profiles* are the closest public signal, resolve their pairs for
   // real stats, same pattern as fallbackGraduating.
   const profiles = await safeFetch(`${DEXSCREENER_BASE}/token-profiles/latest/v1`);
   if (!profiles || !Array.isArray(profiles)) return [];
@@ -297,7 +297,7 @@ export async function fallbackGraduating(limit = 20): Promise<FallbackPulseToken
     .slice(0, limit);
 }
 
-/** Fetch graduated tokens — higher market cap Solana memecoins. */
+/** Fetch graduated tokens, higher market cap Solana memecoins. */
 export async function fallbackGraduated(limit = 50): Promise<FallbackPulseToken[]> {
   // Search for Solana tokens sorted by volume (recently active = likely graduated)
   const data = await safeFetch(`${DEXSCREENER_BASE}/token-profiles/latest/v1`);

@@ -387,9 +387,9 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   }, []);
 
   const handleWebglContextLost = useCallback(() => {
-    console.warn('[Chart3D] WebGL context lost — remounting canvas to recover');
+    console.warn('[Chart3D] WebGL context lost, remounting canvas to recover');
     // A lost context does NOT trigger a React re-render, so scheduling the remount
-    // from an effect (keyed on webglKey) never fires — the effect wouldn't re-run to
+    // from an effect (keyed on webglKey) never fires, the effect wouldn't re-run to
     // observe the loss, and the chart stays frozen until a full page reload. Bump the
     // Canvas key directly here so a fresh WebGL context is acquired.
     if (webglRecoveryTimerRef.current) clearTimeout(webglRecoveryTimerRef.current);
@@ -397,7 +397,7 @@ export function Chart3D({ data, isLoading, showMarketCap, marketCap, price, onLo
   }, []);
 
   const handleWebglContextRestored = useCallback(() => {
-    // Browser restored the context on its own — cancel the pending remount.
+    // Browser restored the context on its own, cancel the pending remount.
     if (webglRecoveryTimerRef.current) {
       clearTimeout(webglRecoveryTimerRef.current);
       webglRecoveryTimerRef.current = null;

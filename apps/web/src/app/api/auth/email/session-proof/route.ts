@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/auth/email/session-proof — after an OAuth sign-in (Google/Apple),
+ * GET /api/auth/email/session-proof, after an OAuth sign-in (Google/Apple),
  * the provider has already verified the email, so the session is as good as a
  * code: hand back the same proof the code flow would have issued.
  */

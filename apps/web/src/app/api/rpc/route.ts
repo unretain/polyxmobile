@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Same-origin Solana RPC proxy for the ColdStick wallet (balance / blockhash /
-// send). The browser can't reach the configured RPC directly — the public
+// send). The browser can't reach the configured RPC directly, the public
 // mainnet-beta endpoint rate-limits and CORS-blocks inside the WKWebView, and
 // the Corvus trial RPC is IP-whitelisted to the server. So the client posts
 // JSON-RPC here and we forward it server-side.

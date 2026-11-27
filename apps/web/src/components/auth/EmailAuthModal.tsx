@@ -59,7 +59,7 @@ export function EmailAuthModal({ isOpen, onClose }: { isOpen: boolean; onClose: 
           body: JSON.stringify({ publicKey: wallet.publicKey, email: email.trim(), emailProof: j.proof }),
         }).catch(() => {});
       }
-      showToast("Email verified — receipts and account recovery are set up", "success");
+      showToast("Email verified, receipts and account recovery are set up", "success");
       onClose();
       setStage("email");
     } catch (e) { setError(e instanceof Error ? e.message : "Wrong code."); }
